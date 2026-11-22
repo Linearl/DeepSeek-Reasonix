@@ -34,23 +34,10 @@ func decodeTOMLBytes(data []byte, v any) (toml.MetaData, error) {
 		if err := isolateDecodedProviders(text, meta, cfg); err != nil {
 			return meta, err
 		}
-		inheritLegacyCollabHubKey(meta, cfg)
+		// tl1741：inheritLegacyCollabHubKey（task-856③ 一次性迁移钩子）随
+		// collabHub 撤开关退役——键自 struct 退役，无继承目标。
 	}
 	return meta, nil
-}
-
-// inheritLegacyCollabHubKey is the task-856 one-shot rename migration (856 ③):
-// the collaboration-hub switch was the task-677 group-chat switch before the
-// mail-inbox + group-chat icons merged. A config file written before the
-// rename has no experimental_collab_hub line — first read inherits the legacy
-// key's stored value so the user's entry state survives the merge untouched.
-// Files that DO define the new key read it as-is (the legacy line is retired
-// by the fixed-key-set render on the next save).
-func inheritLegacyCollabHubKey(meta toml.MetaData, cfg *Config) {
-	if cfg == nil || meta.IsDefined("desktop", "experimental_collab_hub") {
-		return
-	}
-	cfg.Desktop.ExperimentalCollabHub = cfg.Desktop.ExperimentalCollabGroupView
 }
 
 // isolateDecodedProviders stops one vendor's defaults from being written onto

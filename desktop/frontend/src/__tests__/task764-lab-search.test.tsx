@@ -83,8 +83,9 @@ ok(panel.includes("for (const member of entry.members ?? []) parts.push(t(member
   ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "绝对不存在的条目词", tZh) === null,
     "no hit → null (nav falls back to plain tab navigation)");
   // Disambiguation by layout order: a unique-but-common-word query must land
-  // on the rail-first card mentioning it (sessionCollab leads automation).
-  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "会话协作", tZh) === "sessionCollab", "first rail match wins for ambiguous queries");
+  // on the rail-first card mentioning it（tl1741：sessionCollab 退役，样例换
+  // fullAccess「完全访问」——automation 组首卡）。
+  ok(findLabEntryIdByQuery(LAB_LAYOUT_DEFAULT_DATA, "完全访问", tZh) === "fullAccess", "first rail match wins for ambiguous queries");
 }
 
 // ── ④ dedup: one chip row left, and it is the toc ──────────────────────────

@@ -13,15 +13,14 @@ import ForkFeaturesIntroDialog from "./ForkFeaturesIntroDialog";
 import LabBulkToggleDialog from "./LabBulkToggleDialog";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { QuickCommandsManagerDialog } from "./QuickCommandsManagerDialog";
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, FlaskConical, Folder, FolderLock, Monitor, RefreshCw, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Volume2, Zap } from "lucide-react";
+import { lazy, memo, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Activity, FlaskConical, Folder, FolderLock, Monitor, RefreshCw, Server, ShieldCheck, SlidersHorizontal, Sparkles, Volume2, Zap } from "lucide-react";
 import { app } from "../lib/bridge";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
 import { setAutoLoadOlderEnabled } from "../lib/autoLoadOlderPreference";
 import { setCollabGuidanceMergeEnabled } from "../lib/collabGuidanceMergePreference";
 import { setFeedbackEnabled, setFeedbackOpen } from "./FeedbackPanel";
 import { fireMockCrashDrill } from "../lib/crashMock";
-import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { setSplitViewEnabled } from "../lib/splitView";
 import { useRevealLocationWithParentFallback } from "../lib/revealLocation";
 import { type DictKey } from "../lib/i18n";
@@ -40,29 +39,9 @@ import { chimeLocalAssetsEnabled, normalizeUpdateChimeTune, UPDATE_CHIME_TUNES }
 import { SettingsPageShell, type SectionProps } from "./SettingsPageShell";
 import { LAB_PANE_IDS, type ExperimentFeatureId } from "../lab/labPaneRegistry";
 
-const DEFAULT_AUTOPILOT_MAX_RUNTIME = "8h";
 
 const HomePointerLabPane = lazy(() => import("./HomePointerLabPane").then((module) => ({ default: module.HomePointerLabPane })));
 
-/** Task 173 UI fix: number input with local state so typing works before blur commits. */
-function DailySendLimitInput({ value, disabled, onCommit }: { value: number; disabled?: boolean; onCommit: (v: number) => void }) {
-  const [local, setLocal] = useState(String(value));
-  useEffect(() => { setLocal(String(value)); }, [value]);
-  return (
-    <input
-      type="number"
-      min={0}
-      value={local}
-      disabled={disabled}
-      onChange={(e) => setLocal(e.target.value)}
-      onBlur={() => {
-        const n = Math.max(0, Number(local) || 0);
-        setLocal(String(n));
-        if (n !== value) onCommit(n);
-      }}
-    />
-  );
-}
 
 /** ExperimentalSection hosts opt-in capabilities behind one switch each (task 132).
  *
@@ -434,19 +413,6 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // the config layer normalizes 0 → 10, so the box may hold an intermediate
   // value while typing.
   const [proactiveCooldownMinutes, setProactiveCooldownMinutes] = useState<number>(s.proactiveCompactCooldownMinutes ?? 10);
-  // Task 204: the cross-session chain ceiling is a number the user can edit; the
-  // config layer clamps it, so the box may hold an intermediate value while typing.
-  const [hopLimit, setHopLimit] = useState<number>(s.sessionCollabHopLimit ?? 5);
-  // 任务 775：308-O4/O3 两参数的本地草稿态随硬编码行一并退役——值读写改走
-  // LabParamFieldsCard（组件内草稿态）+ labParamFields 注册表。
-  // tl1309 卡③：两参数随卡并入「资源治理」卡成员行后，通用参数渲染器不再
-  // 承接（logManagement 专用 pane 除外）——两行的键入草稿态按 775 同款手感
-  // 迁回本组件（onBlur 落盘，配置层自行钳制）。
-  const [gcPercentDraft, setGcPercentDraft] = useState<string>(String(s.gcPercent ?? 100));
-  const [idleReleaseDraft, setIdleReleaseDraft] = useState<string>(String(s.detachedIdleReleaseMinutes ?? 0));
-  // Task 19: the addressable roster is read on demand, not on every settings
-  // load — a session only appears once it has registered a purpose.
-  const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
   // 任务 722/724：布局数据驱动——分组树/成员徽章/排序/卡片灯引用全部来自
   // lab-layout.yaml（校验失败回退内置默认，安全网不白屏）。dev 模式改 yaml
   // 保存即热加载（vite ?raw 模块失效→刷新），无需重启。memo 化：解析一次，
@@ -466,9 +432,9 @@ export function ExperimentalSection({ s, busy, apply, focusEntry }: SectionProps
   // it OFF never asks.
   const { confirm: confirmFullAccess, dialog: fullAccessDialog } = useConfirmDialog();
 
-// Task 561: the default selection follows the first rail entry (autopilot;
-// the old default restartUpdate folded into the updateFeedback card).
-const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
+// Task 561 → tl1741：默认选中跟随 rail 第一项（fullAccess——autopilot 卡
+// 已随撤开关移除；更早的 restartUpdate 默认折叠进 updateFeedback 卡）。
+const [selected, setSelected] = useState<ExperimentFeatureId>("fullAccess");
   // 任务 775：当前选中条目的布局数据——kind:param 卡由此走通用数据渲染
   // （LabParamFieldsCard），feature 卡仍走各 selected===id 硬编码分支。
   const selectedEntry = useMemo(
@@ -536,9 +502,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     };
   }, [selected]);
   useEffect(() => {
-    // tl1309 卡③：ACP 监听状态行随 acpListen 成员行迁入「资源治理」卡——
-    // 按需加载触发条件随迁卡 id（语义不变）。
-    if (selected !== "resourceGovernance") return undefined;
+    // tl1309 卡③ → tl1741：ACP 监听状态行随「资源治理」拆卡回 acpListen
+    // 散条卡——按需加载触发条件随之（语义不变）。
+    if (selected !== "acpListen") return undefined;
     let alive = true;
     void app.ACPListenStatus()
       .then((st) => {
@@ -615,16 +581,15 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   };
   // 稳定档判定/锁定（档位数据取自 562 注册表——Go labFeatureTiers 镜像）：
   // 锁定 = 稳定档 且 开发者模式关；解锁警示 = 稳定档 且 开发者模式开。
+  // tl1741：稳定档只剩 fullAccess——锁定机制为它保留（原「desktop 开关禁用态
+  // + 开发者模式单项解锁」形态不变）。
   const labStableLocked = (id: TierFeatureId) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && !labDevMode;
   const labStableUnlocked = (id: TierFeatureId) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && labDevMode;
   // 开发者模式 toggle 旁小字的 N：当前处于关态的稳定档开关数（从 settings
-  // 状态直接算；批1 四项 = autopilot / sessionCollab / fullAccess / runtimeReuse）。
+  // 状态直接算；tl1741 后唯一稳定档 = fullAccess）。
   const labStableOffCount = (
     [
-      ["autopilot", Boolean(s.autopilot)],
-      ["sessionCollab", Boolean(s.experimentalSessionCollab)],
       ["fullAccess", Boolean(s.experimentalFullAccess)],
-      ["runtimeReuse", Boolean(s.experimentalRuntimeReuse)],
     ] as const
   ).filter(([id, on]) => EXPERIMENT_FEATURE_TIERS[id] === "stable" && !on).length;
   const t = useT();
@@ -648,14 +613,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
     if (s.sessionStorageRestartPending) setRestartNeeded(true);
   }, [s.sessionStorageRestartPending]);
 
-  const reloadSessionCollabRoster = useCallback(async () => {
-    try {
-      const rows = await app.ListAddressableSessions();
-      setSessionCollabRoster(Array.isArray(rows) ? rows : []);
-    } catch {
-      setSessionCollabRoster([]);
-    }
-  }, []);
+  // tl1741：reloadSessionCollabRoster 与 sessionCollabRoster 随 sessionCollab
+  // 卡移除退役（通讯录名册展示面随卡）。
 
   // 任务 722/724：组顺序即布局文档顺序（yaml groups 数组序 = rail 渲染序）。
   const labGroups = useMemo(
@@ -702,9 +661,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // its badge EXACTLY ONCE — on the master switch row; sibling switches and
   // dials (时长/间隔/阈值) never carry one. The task621 test pins the count
   // per id (labLabel("id") appears exactly once, or the usage card covers it).
-  // 任务 856 ③：协作中心开关的前置依赖状态（LAB_FEATURE_DEPS 唯一消费方
-  // ——sessionCollab 关 = collabHub 开关禁用 + 提示；关前置时下方联动关）。
-  const sessionCollabOn = Boolean(s.experimentalSessionCollab);
+  // tl1741：sessionCollabOn 前置依赖态随撤开关删除（LAB_FEATURE_DEPS 表已空，
+  // 跨会话协作常开）。
   const labLabel = (id: TierFeatureId, label: string) => (
     <>
       {label}
@@ -941,6 +899,72 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               未登记参数仍走下方各硬编码分支兜底（渐进迁移，登记一张删一张）。 */}
           {selectedEntry?.kind === "param" && selected !== "logManagement" && (
             <LabParamFieldsCard entry={selectedEntry} s={s} busy={busy} apply={apply} />
+          )}
+          {/* tl1741（tl1309 卡③逆向拆卡）：orphanHandling / acpListen /
+              localServer 三散条 feature 卡回归独立 pane（键/setter/档位零变化；
+              acpListen 状态行随卡回归）。 */}
+          {selected === "orphanHandling" && (
+            <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<RefreshCw size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalOrphanHandling) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalOrphanHandling(on))}
+                  >
+                    {t(on ? "settings.orphanHandling.on" : "settings.orphanHandling.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "acpListen" && (
+            <SettingsField
+              label={labLabel("acpListen", t("settings.acpListen"))}
+              hint={
+                acpListenStatus && acpListenStatus.err
+                  ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
+                  : acpListenStatus && acpListenStatus.running
+                    ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
+                    : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
+                      ? t("settings.acpListen.awaitRestart")
+                      : t("settings.acpListenHint")
+              }
+              icon={<Server size={18} />}
+            >
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalACPListen(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
+          )}
+          {selected === "localServer" && (
+            <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${Boolean(s.experimentalLocalServer) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
+                  >
+                    {t(on ? "settings.localServer.on" : "settings.localServer.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+            </SettingsField>
           )}
           {/* tl 1097：日志管理（可观测性组参数卡）——专用 pane，比通用
               参数渲染器多三样：区块说明固定行、「当前占用」实时统计行、
@@ -1605,34 +1629,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
             </>
           )}
-          {selected === "collabHub" && (
-            <SettingsField
-              label={labLabel("collabHub", t("settings.collabHub"))}
-              hint={Boolean(s.experimentalSessionCollab) && !sessionCollabOn ? t("settings.collabHubHintDep") : t("settings.collabHubHint")}
-              icon={<Sparkles size={18} />}
-            >
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalCollabHub) === on ? " set-seg__btn--on" : ""}`}
-                    // 任务 856 ③ 前置依赖（demo v2 交互稿）：跨会话协作关闭时
-                    // 协作中心开关禁用 + 提示；依赖声明在 LAB_FEATURE_DEPS。
-                    disabled={busy || (!on && Boolean(s.experimentalCollabHub) && !sessionCollabOn)}
-                    title={!on || !sessionCollabOn ? t("settings.collabHubDepBlocked") : undefined}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalCollabHub(on);
-                    })}
-                  >
-                    {t(on ? "settings.collabHub.on" : "settings.collabHub.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-              {!sessionCollabOn && (
-                <div className="set-lab-dep-note" role="note">{t("settings.collabHubDepNote")}</div>
-              )}
-            </SettingsField>
-          )}
           {/* tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
               会话图墙 + 工作流面板 + 任务完成摘要三散条并卡：三者同为「运行
               状态/产出的可视化面板面」（任务书④按先例归卡）。卡头行=卡名+
@@ -1664,54 +1660,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              {/* 成员行 2：工作流可视化面板（原 ui 独立卡，未稳定档——palette
-                  入口开 DAG 流程图；纯前端门保存即生效）。 */}
-              <SettingsField label={labLabel("workflowPanel", t("settings.workflowPanel"))} hint={t("settings.workflowPanelHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalWorkflowPanel) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        // Call-time gate（742/826 先例）：palette 条目与面板挂载
-                        // 每次渲染现读 labFlags，保存后立即生效，无需重启。
-                        await app.SetExperimentalWorkflowPanel(on);
-                      })}
-                    >
-                      {t(on ? "settings.workflowPanel.on" : "settings.workflowPanel.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* tl1454 附属行：用户自定义工作流模板（workflowPanel 家族子键，
-                  不挂独立徽章）。模板视图住在工作流面板里，面板关闭时本行
-                  禁用开启并给出依赖说明（已开着的仍可关闭）。服务端写面现读
-                  开关，保存即生效。 */}
-              {/* tl1487 二组⑤：工作流模板升独立表A 条目（推荐档）——附属行
-                  起挂自己的徽章（用户 20261107 八组清单「工作流模板→推荐」，
-                  与面板主键分档；621 单徽章口径不破——主行 workflowPanel 仍
-                  只挂自己的）。 */}
-              <SettingsField label={labLabel("workflowTemplates", t("settings.workflowTemplates"))} hint={t("settings.workflowTemplatesHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalWorkflowTemplates) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy || (on && !s.experimentalWorkflowPanel)}
-                      title={on && !s.experimentalWorkflowPanel ? t("settings.workflowTemplatesDepNote") : undefined}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalWorkflowTemplates(on);
-                      })}
-                    >
-                      {t(on ? "settings.workflowTemplates.on" : "settings.workflowTemplates.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-                {!s.experimentalWorkflowPanel && (
-                  <div className="set-lab-dep-note" role="note">{t("settings.workflowTemplatesDepNote")}</div>
-                )}
-              </SettingsField>
+              {/* tl1741：成员行 2（workflowPanel + workflowTemplates 附属行）随
+                  「稳定档不再提供开关」摘除——工作流面板/模板常显（键退役）。 */}
               {/* 成员行 3：任务完成摘要（原 ui 独立卡，可选档——每轮结果卡）。 */}
               <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -1982,7 +1932,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               774 rail 聚合徽章不动）。 */}
           {selected === "smartAutomation" && (
             <>
-              <SettingsField label={labLabel("smartAutomation", t("settings.smartAutomation"))} hint={t("settings.smartAutomationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              {/* tl1741（拍板 20261121 三条款③）：顶部卡右侧空间改子项主题概要
+                  ——左=卡名+说明，右=本卡子项各一句话（yaml members 同源）。 */}
+              <SettingsField
+                label={labLabel("smartAutomation", t("settings.smartAutomation"))}
+                hint={t("settings.smartAutomationHint")}
+                icon={<Sparkles size={18} />}
+                className="settings-field--wrapped"
+              >
+                <div className="set-lab-brief" role="note" aria-label={t("settings.smartAutomation.brief.title")}>
+                  <div className="set-lab-brief__title">{t("settings.smartAutomation.brief.title")}</div>
+                  <ul className="set-lab-brief__list">
+                    {([
+                      "decisionPatterns",
+                      "heartbeatBackground",
+                      "stalledIntentNudge",
+                      "standardContinuation",
+                    ] as const).map((id) => (
+                      <li key={id} className="set-lab-brief__item">{t(`settings.smartAutomation.brief.${id}`)}</li>
+                    ))}
+                  </ul>
+                </div>
+              </SettingsField>
               {/* tl1688：后台任务完成时唤醒空闲会话续轮——tl553 机制早已在链上（默认关），
                   本件只把它暴露成实验室开关（用户指定位置：智能自动化下面）。
                   额度影响写进说明：自动开轮受自驱预算约束（最多 3 轮/600s + 60s 节流）。 */}
@@ -2504,540 +2475,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-            </>
-          )}
-          {selected === "sessionCollab" && (
-            <>
-              <SettingsField label={labLabel("sessionCollab", t("settings.sessionCollab"))} hint={t("settings.sessionCollabHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalSessionCollab) === on ? " set-seg__btn--on" : ""}`}
-                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
-                      disabled={busy || labStableLocked("sessionCollab")}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalSessionCollab(on);
-                        // 任务 856 ③（demo v2 交互稿）：前置关闭 → 协作中心联动
-                        // 关闭——否则留下「值仍为开、开关却禁用」的不一致状态。
-                        if (!on && Boolean(s.experimentalCollabHub)) {
-                          await app.SetExperimentalCollabHub(false);
-                        }
-                        // The collaboration tools register when a session's
-                        // controller is built, so an already-open session does
-                        // not see them until it is rebuilt — surface that.
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.sessionCollab.on" : "settings.sessionCollab.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
-              {labStableLocked("sessionCollab") ? (
-                <p className="settings-field__hint-line">{t(Boolean(s.experimentalSessionCollab) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
-              ) : labStableUnlocked("sessionCollab") ? (
-                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
-              ) : null}
-              <SettingsField label={t("settings.sessionCollab.hopLimit")} hint={t("settings.sessionCollab.hopLimitHint")} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={3}
-                  max={1000}
-                  value={hopLimit}
-                  disabled={busy}
-                  onChange={(event) => setHopLimit(Number(event.target.value))}
-                  onBlur={() => void apply(async () => {
-                    await app.SetSessionCollabHopLimit(hopLimit);
-                  })}
-                />
-              </SettingsField>
-              {/* Task 308-O4 / 308-O3（闲置释放、软内存上限）两参数行已于
-                  任务 775 迁出：登记为存储组 kind:param 参数卡（数据驱动
-                  渲染，走 LabParamFieldsCard；绑定在 labParamFields 注册表，
-                  配置键/setter 零变化）。 */}
-              {/* Task 264: background-woken sessions stay out of the tab bar.
-                  A regular live panel setting (unlike the task-224
-                  consumption switch) — delivery is unchanged, only where the
-                  woken runtime lands. */}
-              <SettingsField label={t("settings.sessionCollabBackground")} hint={t("settings.sessionCollabBackgroundHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.sessionCollabBackground) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetSessionCollabBackground(on))}
-                    >
-                      {t(on ? "settings.sessionCollabBackground.on" : "settings.sessionCollabBackground.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* Task 173: the collaboration panel gates (one apply, cannot half-apply). */}
-              <SettingsField label={t("settings.sessionCollabGates")} hint={t("settings.sessionCollabGatesHint")} icon={<Sparkles size={18} />}>
-                <div className="set-gates">
-                  {([
-                    ["allowDelete", "sessionCollabAllowDelete", "settings.sessionCollabGates.allowDelete"],
-                    ["allowRequireReply", "sessionCollabAllowRequireReply", "settings.sessionCollabGates.allowRequireReply"],
-                    ["allowReadTail", "sessionCollabAllowReadTail", "settings.sessionCollabGates.allowReadTail"],
-                    ["allowCreate", "sessionCollabAllowCreate", "settings.sessionCollabGates.allowCreate"],
-                    ["allowSteer", "sessionCollabAllowSteer", "settings.sessionCollabGates.allowSteer"],
-                  ] as const).map(([key, field, labelKey]) => {
-                    const on = Boolean(s[field as keyof SettingsView] ?? false);
-                    // Task 253: gates render as checkboxes, two per row. With
-                    // the master switch off they stay visible and readable —
-                    // only the checkbox is disabled — and one hint names the
-                    // switch to flip (the grayed-out segment buttons were
-                    // effectively invisible twice in a row).
-                    const locked = busy || !Boolean(s.experimentalSessionCollab);
-                    return (
-                      <label key={key} className={`set-gates__item${locked ? " set-gates__item--locked" : ""}`}>
-                        <input
-                          type="checkbox"
-                          checked={on}
-                          disabled={locked}
-                          onChange={() => void apply(async () => {
-                            await app.SetSessionCollabGates(
-                              key === "allowDelete" ? !on : Boolean(s.sessionCollabAllowDelete),
-                              key === "allowRequireReply" ? !on : Boolean(s.sessionCollabAllowRequireReply),
-                              key === "allowReadTail" ? !on : Boolean(s.sessionCollabAllowReadTail),
-                              key === "allowCreate" ? !on : Boolean(s.sessionCollabAllowCreate),
-                              key === "allowSteer" ? !on : Boolean(s.sessionCollabAllowSteer),
-                              s.sessionCollabDailySendLimit ?? 0,
-                            );
-                          })}
-                        />
-                        <span className="set-gates__label">{t(labelKey)}</span>
-                      </label>
-                    );
-                  })}
-                  {!Boolean(s.experimentalSessionCollab) && (
-                    <div className="set-gates__hint">{t("settings.sessionCollabGates.masterOffHint")}</div>
-                  )}
-                </div>
-              </SettingsField>
-              {/* Task 530: turn-closure reply reminder. One visible host
-                  reminder per require_reply mail still unanswered at a clean
-                  turn close; off (default) keeps turns untouched. */}
-              <SettingsField label={t("settings.sessionCollabReplyNudge")} hint={t("settings.sessionCollabReplyNudgeHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.sessionCollabReplyNudge) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetSessionCollabReplyNudge(on))}
-                    >
-                      {t(on ? "settings.sessionCollab.on" : "settings.sessionCollab.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.sessionCollabDailySendLimit")} hint={t("settings.sessionCollabDailySendLimitHint")} icon={<Sparkles size={18} />}>
-                <DailySendLimitInput
-                  value={s.sessionCollabDailySendLimit ?? 0}
-                  disabled={busy}
-                  onCommit={(val) => apply(async () => {
-                    await app.SetSessionCollabGates(
-                      Boolean(s.sessionCollabAllowDelete),
-                      Boolean(s.sessionCollabAllowRequireReply),
-                      Boolean(s.sessionCollabAllowReadTail),
-                      Boolean(s.sessionCollabAllowCreate),
-                      Boolean(s.sessionCollabAllowSteer),
-                      Math.max(0, val),
-                    );
-                  })}
-                />
-              </SettingsField>
-              {/* 任务 722 点3：自动折叠跨会话消息并为跨会话协作子项（配置键
-                  experimental_session_collab_auto_fold 不变，纯 UI 归位）。 */}
-              <SettingsField label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalSessionCollabAutoFold) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalSessionCollabAutoFold(on);
-                      })}
-                    >
-                      {t(on ? "settings.sessionCollabAutoFold.on" : "settings.sessionCollabAutoFold.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* Task 309: mailbox defaults for talk_to_session. */}
-              <SettingsField label={t("settings.sessionCollabMailDefaults")} hint={t("settings.sessionCollabMailDefaultsHint")} icon={<Sparkles size={18} />}>
-                <div className="set-gates">
-                  <label className="set-gates__item">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(s.sessionCollabMailIdempotentDefault)}
-                      disabled={busy}
-                      onChange={() => void apply(async () => {
-                        await app.SetSessionCollabMailDefaults(
-                          !Boolean(s.sessionCollabMailIdempotentDefault),
-                          Boolean(s.sessionCollabMailReceiptDefault),
-                          s.sessionCollabDefaultDelivery ?? "steer",
-                        );
-                      })}
-                    />
-                    <span className="set-gates__label">{t("settings.sessionCollabMailIdempotent")}</span>
-                  </label>
-                  <label className="set-gates__item">
-                    <input
-                      type="checkbox"
-                      checked={Boolean(s.sessionCollabMailReceiptDefault)}
-                      disabled={busy}
-                      onChange={() => void apply(async () => {
-                        await app.SetSessionCollabMailDefaults(
-                          Boolean(s.sessionCollabMailIdempotentDefault),
-                          !Boolean(s.sessionCollabMailReceiptDefault),
-                          s.sessionCollabDefaultDelivery ?? "steer",
-                        );
-                      })}
-                    />
-                    <span className="set-gates__label">{t("settings.sessionCollabMailReceipt")}</span>
-                  </label>
-                  {/* 任务 722 点4：标签放左、下拉框放右（--wide 整行跨双列），
-                      半列宽下「下拉框在左+标签在右」会把标签文本截断。 */}
-                  <label className="set-gates__item set-gates__item--wide">
-                    <span className="set-gates__label">{t("settings.sessionCollabDefaultDelivery")}</span>
-                    <select
-                      value={s.sessionCollabDefaultDelivery ?? "steer"}
-                      disabled={busy}
-                      onChange={(e) => void apply(async () => {
-                        await app.SetSessionCollabMailDefaults(
-                          Boolean(s.sessionCollabMailIdempotentDefault),
-                          Boolean(s.sessionCollabMailReceiptDefault),
-                          e.target.value,
-                        );
-                      })}
-                    >
-                      <option value="steer">{t("settings.sessionCollabDefaultDeliverySteer")}</option>
-                      <option value="followup">{t("settings.sessionCollabDefaultDeliveryFollowup")}</option>
-                    </select>
-                  </label>
-                </div>
-              </SettingsField>
-              {/* Task 320: the cross-session inbox panel entry — history query,
-                  five-bucket views, retention and dismissals in one place. */}
-              <SettingsField label={t("settings.collabInbox")} hint={t("settings.collabInboxHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--secondary btn--small"
-                  disabled={busy}
-                  onClick={() => setCollabInboxOpen(true)}
-                >
-                  {t("settings.collabInbox.open")}
-                </button>
-              </SettingsField>
-              {/* Task 225: cascade approval to the autopilot parent. */}
-              <SettingsField label={t("settings.cascadeApproval")} hint={t("settings.cascadeApprovalHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalCascadeApproval) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalCascadeApproval(on);
-                      })}
-                    >
-                      {t(on ? "settings.cascadeApproval.on" : "settings.cascadeApproval.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.sessionCollabRoster")} hint={t("settings.sessionCollabRosterHint")} icon={<Sparkles size={18} />}>
-                <button
-                  type="button"
-                  className="btn btn--secondary btn--small"
-                  disabled={busy || !Boolean(s.experimentalSessionCollab)}
-                  onClick={() => void reloadSessionCollabRoster()}
-                >
-                  {t("settings.sessionCollabRosterRefresh")}
-                </button>
-              </SettingsField>
-              {sessionCollabRoster.length > 0 ? (
-                <SettingsField label={t("settings.sessionCollabRosterRows")} hint={t("settings.sessionCollabRosterRowsHint")} icon={<Sparkles size={18} />} stacked>
-                  <ul className="set-rules">
-                    {sessionCollabRoster.map((row) => (
-                      <li key={row.contactId}>
-                        <code>{row.contactId}</code>
-                        {row.purpose ? ` — ${row.purpose}` : ""}
-                        {row.title ? ` (${row.title})` : ""}
-                        {row.open ? ` · ${t("settings.sessionCollabOpen")}` : ""}
-                      </li>
-                    ))}
-                  </ul>
-                </SettingsField>
-              ) : null}
-            </>
-          )}
-          {selected === "autopilot" && (
-            <>
-              <SettingsField label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.autopilot) === on ? " set-seg__btn--on" : ""}`}
-                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
-                      disabled={busy || labStableLocked("autopilot")}
-                      onClick={() => void apply(() => {
-                        const runtime = String(s.autopilotMaxRuntime ?? "").trim();
-                        return app.SetDesktopAutopilot(
-                          on,
-                          on && runtime === "" ? DEFAULT_AUTOPILOT_MAX_RUNTIME : runtime,
-                          String(s.autopilotApprovalGrace ?? ""),
-                        );
-                      })}
-                    >
-                      {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1005：稳定档禁用态两分支解释行；开发者模式解锁态改显警示。 */}
-              {labStableLocked("autopilot") ? (
-                <p className="settings-field__hint-line">{t(Boolean(s.autopilot) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
-              ) : labStableUnlocked("autopilot") ? (
-                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
-              ) : null}
-              <SettingsField label={t("settings.autopilotMaxRuntime")} hint={t("settings.autopilotMaxRuntimeHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  className="set-input"
-                  type="text"
-                  defaultValue={String(s.autopilotMaxRuntime ?? "")}
-                  disabled={busy}
-                  placeholder="8h"
-                  aria-label={t("settings.autopilotMaxRuntime")}
-                  onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), e.target.value, String(s.autopilotApprovalGrace ?? "")))}
-                />
-              </SettingsField>
-              <SettingsField label={t("settings.autopilotApprovalGrace")} hint={t("settings.autopilotApprovalGraceHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  className="set-input"
-                  type="text"
-                  defaultValue={String(s.autopilotApprovalGrace ?? "")}
-                  disabled={busy}
-                  placeholder="15s"
-                  aria-label={t("settings.autopilotApprovalGrace")}
-                  onBlur={(e) => void apply(() => app.SetDesktopAutopilot(Boolean(s.autopilot), String(s.autopilotMaxRuntime ?? ""), e.target.value))}
-                />
-              </SettingsField>
-              {/* Task 477: the experimental ask-timeout sub-option. Off (the
-                  default) keeps the terminal stop after the built-in 10-minute
-                  wait; on answers a timed-out high-risk ask with a refusal
-                  after the configured seconds and lets the run continue.
-                  Attended sessions are never touched by either state. */}
-              <SettingsField label={t("settings.autopilotAskTimeout")} hint={t("settings.autopilotAskTimeoutHint")} icon={<ShieldCheck size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalAutopilotAskTimeout) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetDesktopAutopilotAskTimeout(on, Number(s.autopilotAskWaitSeconds ?? 0)))}
-                    >
-                      {t(on ? "settings.autopilotAskTimeout.on" : "settings.autopilotAskTimeout.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.autopilotAskWaitSeconds")} hint={t("settings.autopilotAskWaitSecondsHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  className="set-input"
-                  type="number"
-                  min={1}
-                  max={3600}
-                  defaultValue={String(s.autopilotAskWaitSeconds ?? 15)}
-                  disabled={busy || !Boolean(s.experimentalAutopilotAskTimeout)}
-                  placeholder="15"
-                  aria-label={t("settings.autopilotAskWaitSeconds")}
-                  onBlur={(e) => void apply(() => app.SetDesktopAutopilotAskTimeout(Boolean(s.experimentalAutopilotAskTimeout), Number(e.target.value)))}
-                />
-              </SettingsField>
-              {/* Task 544: the experimental ask auto-continue sub-option. Off
-                  (the default) keeps the idle stop after an answered ask; on
-                  resumes a turn that stopped right after the answer with one
-                  host continuation turn carrying the recorded decision.
-                  Independent of the ask-timeout pair above. */}
-              <SettingsField label={t("settings.autopilotAskAutoContinue")} hint={t("settings.autopilotAskAutoContinueHint")} icon={<ShieldCheck size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalAutopilotAskAutoContinue) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetDesktopAutopilotAskAutoContinue(on))}
-                    >
-                      {t(on ? "settings.autopilotAskAutoContinue.on" : "settings.autopilotAskAutoContinue.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 任务 1084：高风险操作授权清单（5 checkbox，默认全不勾）+ ask
-                  轮次上限。授权两级由硬到软：①实验室勾选（最硬）②决策模式条目
-                  （次硬）；记忆不算授权源。默认不勾 = 出厂五类全要问（保守）。
-                  高风险五类判定可靠性分级：对外发送 高/数据迁移删除 高/破坏性
-                  变更 中/新技术路线 低/付费额度 低；本机制靠模型理解规则判断动
-                  作属哪类，非字符串硬匹配；后两类必然漏判误判，漏判兜底是轮次
-                  上限+复盘。
-                  任务 1124：五个授权开关从五个独立 SettingsField 聚合为一张
-                  卡（.set-highrisk-authorize 清单块，231/527 preapprove 先例的
-                  1084 版）——聚合的是**入口层组织**，五项的配置键（config
-                  读写路径）、默认值（全不勾）、setter（五个独立 bridge 方法，
-                  一次点击只写一项，不合并批量写）与说明文案（各带自己的 hint
-                  行）逐字节不变。 */}
-              <div className="set-highrisk-authorize">
-                <div className="set-highrisk-authorize__head">
-                  <div className="set-highrisk-authorize__title">{t("settings.highRiskAuthorize")}</div>
-                  <div className="set-highrisk-authorize__hint">{t("settings.highRiskAuthorizeHint")}</div>
-                </div>
-                {([
-                  { key: "authorizeOutboundSend", label: t("settings.authorizeOutboundSend"), hint: t("settings.authorizeOutboundSendHint"), checked: Boolean(s.authorizeOutboundSend) },
-                  { key: "authorizeDataMigrationDelete", label: t("settings.authorizeDataMigrationDelete"), hint: t("settings.authorizeDataMigrationDeleteHint"), checked: Boolean(s.authorizeDataMigrationDelete) },
-                  { key: "authorizeDestructiveChange", label: t("settings.authorizeDestructiveChange"), hint: t("settings.authorizeDestructiveChangeHint"), checked: Boolean(s.authorizeDestructiveChange) },
-                  { key: "authorizeNewTechRoute", label: t("settings.authorizeNewTechRoute"), hint: t("settings.authorizeNewTechRouteHint"), checked: Boolean(s.authorizeNewTechRoute) },
-                  { key: "authorizePaidQuotaAlloc", label: t("settings.authorizePaidQuotaAlloc"), hint: t("settings.authorizePaidQuotaAllocHint"), checked: Boolean(s.authorizePaidQuotaAlloc) },
-                ]).map((row) => (
-                  <label key={row.key} className="set-highrisk-authorize__row">
-                    <input
-                      type="checkbox"
-                      checked={row.checked}
-                      disabled={busy}
-                      onChange={(e) => {
-                        const next = e.target.checked;
-                        // 五个 setter 语义零变化：一次点击只调用该项自己的
-                        // 桥接写入器（与聚合前的独立 checkbox 行为一致）。
-                        if (row.key === "authorizeOutboundSend") void apply(() => app.SetAuthorizeOutboundSend(next));
-                        else if (row.key === "authorizeDataMigrationDelete") void apply(() => app.SetAuthorizeDataMigrationDelete(next));
-                        else if (row.key === "authorizeDestructiveChange") void apply(() => app.SetAuthorizeDestructiveChange(next));
-                        else if (row.key === "authorizeNewTechRoute") void apply(() => app.SetAuthorizeNewTechRoute(next));
-                        else void apply(() => app.SetAuthorizePaidQuotaAlloc(next));
-                      }}
-                    />
-                    <span className="set-highrisk-authorize__copy">
-                      <span className="set-highrisk-authorize__label">{row.label}</span>
-                      <span className="set-highrisk-authorize__rowhint">{row.hint}</span>
-                    </span>
-                  </label>
-                ))}
-              </div>
-              <SettingsField label={t("settings.experimentalAskRoundLimit")} hint={t("settings.experimentalAskRoundLimitHint")} icon={<ShieldCheck size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalAskRoundLimit) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalAskRoundLimit(on))}
-                    >
-                      {t(on ? "settings.experimentalAskRoundLimit.on" : "settings.experimentalAskRoundLimit.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <SettingsField label={t("settings.askRoundLimit")} hint={t("settings.askRoundLimitHint")} icon={<ShieldCheck size={18} />}>
-                <input
-                  className="set-input"
-                  type="number"
-                  min={0}
-                  max={100}
-                  defaultValue={String(s.askRoundLimit ?? 3)}
-                  disabled={busy || !Boolean(s.experimentalAskRoundLimit)}
-                  placeholder="3"
-                  aria-label={t("settings.askRoundLimit")}
-                  onBlur={(e) => void apply(() => app.SetAskRoundLimit(Number(e.target.value)))}
-                />
-              </SettingsField>
-              {/* Task 364: managed-path pre-approval moved here from its own
-                  misc entry — it only affects autopilot behaviour, so it lives
-                  inside this card as a sub-block. Config keys, persistence and
-                  the approval semantics are byte-identical (moved, not
-                  rewritten); the switch + four category checkboxes + risk line
-                  render as-is. Task 527: the checkbox block + risk line moved
-                  OUT of the field's control column (they used to sit in the
-                  same flex row as the switch, sized by the warning's
-                  max-content width and spilling past the panel edge); they now
-                  render below the field as a full-width block whose left edge
-                  matches the hint text above. */}
-              <div className="autopilot-preapprove-subblock">
-                <SettingsField label={t("settings.preapproveManagedPaths")} hint={t("settings.preapproveManagedPathsHint")} icon={<ShieldAlert size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalPreapproveManagedPaths) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(() => app.SetPreapproveManagedPaths(
-                          on,
-                          Boolean(s.preapproveSkills),
-                          Boolean(s.preapproveHooks),
-                          Boolean(s.preapproveSessionStores),
-                          Boolean(s.preapproveBashEscape),
-                        ))}
-                      >
-                        {t(on ? "settings.preapproveManagedPaths.on" : "settings.preapproveManagedPaths.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
-                {/* Task 231: with the master switch on, the four categories check
-                    independently — one write carries all five values so a save can
-                    never land half-applied. 任务461-P5 (user ruling): the block
-                    reads top-down as checkbox rows FIRST (one category per line),
-                    then the risk line on its own closing row — the warning no
-                    longer sits on top of the checkboxes it describes. Task 527:
-                    the block sits BELOW the field (not inside its control
-                    column), so its left edge lines up with the hint text and its
-                    width is the card content width instead of the warning's
-                    max-content spill. */}
-                {Boolean(s.experimentalPreapproveManagedPaths) && (
-                  <div className="set-preapprove">
-                    {([
-                      { key: "preapproveSkills", label: t("settings.preapproveManagedPaths.skills"), checked: Boolean(s.preapproveSkills) },
-                      { key: "preapproveHooks", label: t("settings.preapproveManagedPaths.hooks"), checked: Boolean(s.preapproveHooks) },
-                      { key: "preapproveSessionStores", label: t("settings.preapproveManagedPaths.sessionStores"), checked: Boolean(s.preapproveSessionStores) },
-                      { key: "preapproveBashEscape", label: t("settings.preapproveManagedPaths.bashEscape"), checked: Boolean(s.preapproveBashEscape) },
-                    ]).map((row) => (
-                      <label key={row.key} className="set-preapprove__row">
-                        <input
-                          type="checkbox"
-                          checked={row.checked}
-                          disabled={busy}
-                          onChange={(event) => {
-                            const next = {
-                              skills: Boolean(s.preapproveSkills),
-                              hooks: Boolean(s.preapproveHooks),
-                              stores: Boolean(s.preapproveSessionStores),
-                              bash: Boolean(s.preapproveBashEscape),
-                            };
-                            if (row.key === "preapproveSkills") next.skills = event.target.checked;
-                            else if (row.key === "preapproveHooks") next.hooks = event.target.checked;
-                            else if (row.key === "preapproveSessionStores") next.stores = event.target.checked;
-                            else next.bash = event.target.checked;
-                            void apply(() => app.SetPreapproveManagedPaths(
-                              Boolean(s.experimentalPreapproveManagedPaths),
-                              next.skills,
-                              next.hooks,
-                              next.stores,
-                              next.bash,
-                            ));
-                          }}
-                        />
-                        <span>{row.label}</span>
-                      </label>
-                    ))}
-                    <p className="set-preapprove__warning">{t("settings.preapproveManagedPaths.warning")}</p>
-                  </div>
-                )}
-              </div>
             </>
           )}
           {/* ── Task 265 lab intake: 9 fork features + task 262 quick commands ── */}
@@ -3638,26 +3075,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               keeps its own setter (81/123 lost-save rule). */}
           {selected === "devDebug" && (
             <>
-              {/* Task 342: WebView2 CDP debug endpoint. The WebView2 browser
-                  environment is created once at startup, so a flip needs a
-                  restart — same banner pattern as the full-access boot snapshot. */}
-              <SettingsField label={labLabel("cdpDebugPort", t("settings.cdpDebugPort"))} hint={t("settings.cdpDebugPortHint")} icon={<Terminal size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalCDPDebugPort) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalCDPDebugPort(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.cdpDebugPort.on" : "settings.cdpDebugPort.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
+              {/* tl1741：CDP 调试端口行随「稳定档不再提供开关」摘除——endpoint
+                  无条件起（loopback-only 随机端口不变，键退役）。 */}
               {/* Task 377: crash-report lifecycle noise triage. Startup
                   diagnostics read the gate once per process, so the flip lands on
                   restart — same boot-snapshot rule as the CDP endpoint above. */}
@@ -3704,133 +3123,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               会话；监听/本地服务治理常驻进程资源）。各行仍读各的键、写各的
               setter（81/123 丢存铁律），配置键零变化；两参数行值读写走
               labParamFields 注册表绑定（775 值语义单源）。 */}
-          {selected === "resourceGovernance" && (
-            <>
-              <SettingsField label={labLabel("resourceGovernance", t("settings.resourceGovernance"))} hint={t("settings.resourceGovernanceHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              {/* 成员行 1：运行时复用池（原 infra 独立卡，稳定档——1005 批1
-                  转档；稳定档禁用态/开发者模式解锁语义原样随迁）。 */}
-              <SettingsField label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} hint={t("settings.runtimeReuseHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalRuntimeReuse) === on ? " set-seg__btn--on" : ""}`}
-                      // 任务 1005：稳定档开关在开发者模式关时禁用（默认态只读）。
-                      disabled={busy || labStableLocked("runtimeReuse")}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalRuntimeReuse(on);
-                      })}
-                    >
-                      {t(on ? "settings.runtimeReuse.on" : "settings.runtimeReuse.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {labStableLocked("runtimeReuse") ? (
-                <p className="settings-field__hint-line">{t(Boolean(s.experimentalRuntimeReuse) ? "settings.lab.stable.lockedOn" : "settings.lab.stable.lockedOff")}</p>
-              ) : labStableUnlocked("runtimeReuse") ? (
-                <p className="settings-field__hint-line experimental-lab__stable-warning">{t("settings.lab.stable.devWarning")}</p>
-              ) : null}
-              {/* 成员行 2：孤儿资源回收清理（原 infra 独立卡，推荐档——992
-                  随复用池升推荐；与复用池同管运行时装配的生命周期两端）。 */}
-              <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalOrphanHandling) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalOrphanHandling(on);
-                      })}
-                    >
-                      {t(on ? "settings.orphanHandling.on" : "settings.orphanHandling.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 成员行 3：后台会话闲置释放（原存储组参数卡，775/308-O4）——
-                  值读写走 labParamFields 绑定（onBlur 落盘，配置层钳制）。 */}
-              <SettingsField label={labLabel("idleReleaseMinutes", t("settings.detachedIdleRelease"))} hint={t(LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.hintKey)} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.min}
-                  max={LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.max}
-                  value={idleReleaseDraft}
-                  disabled={busy}
-                  onChange={(e) => setIdleReleaseDraft(e.target.value)}
-                  onBlur={() => {
-                    const n = Number(idleReleaseDraft);
-                    if (Number.isNaN(n)) return;
-                    void apply(() => LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write(n));
-                  }}
-                />
-              </SettingsField>
-              {/* 成员行 4：GC 策略旋钮（原存储组参数卡，tl1286）——同上走注册
-                  表绑定；0=跟随默认等效 100，设置即热改。 */}
-              <SettingsField label={labLabel("gcPercent", t("settings.gcPercent"))} hint={t(LAB_PARAM_FIELDS.gcPercent.hintKey)} icon={<Sparkles size={18} />}>
-                <input
-                  type="number"
-                  min={LAB_PARAM_FIELDS.gcPercent.min}
-                  max={LAB_PARAM_FIELDS.gcPercent.max}
-                  value={gcPercentDraft}
-                  disabled={busy}
-                  onChange={(e) => setGcPercentDraft(e.target.value)}
-                  onBlur={() => {
-                    const n = Number(gcPercentDraft);
-                    if (Number.isNaN(n)) return;
-                    void apply(() => LAB_PARAM_FIELDS.gcPercent.write(n));
-                  }}
-                />
-              </SettingsField>
-              {/* 成员行 5：ACP 常驻监听（原 infra 独立卡，790；状态灯语义原样
-                  随迁——监听在桌面 boot 装配，翻转需重启）。 */}
-              <SettingsField
-                label={labLabel("acpListen", t("settings.acpListen"))}
-                hint={
-                  acpListenStatus && acpListenStatus.err
-                    ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
-                    : acpListenStatus && acpListenStatus.running
-                      ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
-                      : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
-                        ? t("settings.acpListen.awaitRestart")
-                        : t("settings.acpListenHint")
-                }
-                icon={<Server size={18} />}
-              >
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalACPListen(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 成员行 6：本地服务（原 infra 独立卡）。 */}
-              <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalLocalServer) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(() => app.SetExperimentalLocalServer(on))}
-                    >
-                      {t(on ? "settings.localServer.on" : "settings.localServer.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
           {/* 任务 961：outputStyle 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载；Task 385a 门控+选择器
               语义不变，仅落点迁卡）。 */}

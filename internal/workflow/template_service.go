@@ -20,8 +20,9 @@ import (
 // 同样生效）。
 const RunOriginPanel = "panel"
 
-// ErrTemplatesDisabled 是开关关闭时写面的拒绝错误（文案给已存在的下一步）。
-var ErrTemplatesDisabled = errors.New("workflow templates are an experimental feature that is switched off; enable it in Settings → Lab → Session & task panels → Workflow templates")
+// tl1741：workflowTemplates 实验室开关随「稳定档不再提供开关」退役（用户
+// 20261121 三拍）——模板写/运行/改名/删除面与覆盖前归档无条件启用，
+// ErrTemplatesDisabled 与 templatesOn 门一并删除。
 
 // TemplateRunOptions 是面板运行的边界参数（工具路径不带它，行为不变）。
 type TemplateRunOptions struct {
@@ -72,9 +73,6 @@ type RunTemplateView struct {
 	UsedRequests int
 	Failure      *RunFailure
 }
-
-// templatesOn 是开关现读（测试可替换）。
-var templatesOn = config.WorkflowTemplatesLive
 
 // failureFrom 把运行错误折叠成结构化失败（nil = 无失败）。
 func failureFrom(runErr error) *RunFailure {
@@ -229,9 +227,6 @@ const RepairVersion = "repair"
 // 版本（"" = 新建；RepairVersion = 修复无效文件）：目录 head 已被别处改过
 // 则拒绝，不静默覆盖他人修改。
 func (s *Service) SaveTemplate(doc, expectedVersion string) (TemplateSaveResult, error) {
-	if !templatesOn() {
-		return TemplateSaveResult{}, ErrTemplatesDisabled
-	}
 	wf, d := Diagnose([]byte(doc))
 	if d != nil {
 		return TemplateSaveResult{}, fmt.Errorf("%s", d.Message)
@@ -344,29 +339,20 @@ func (s *Service) PreviewTemplateRun(name, workspace string) (TemplateRunPreview
 // RunTemplate 从面板运行一个模板：与 workflow_run 同一 runWorkflow → Engine
 // 路径；面板边界（会话工作区 + deny 守卫）随 run 持久化。
 func (s *Service) RunTemplate(ctx context.Context, name string, opts TemplateRunOptions) (builtin.WorkflowRunResult, error) {
-	if !templatesOn() {
-		return builtin.WorkflowRunResult{}, ErrTemplatesDisabled
-	}
 	return s.runWorkflow(ctx, name, "", &opts)
 }
 
 // DeleteTemplate 删除一个用户模板（tl1300 定义目录管理面）：head 文件 +
-// 历史目录一并移除（写面，与 SaveTemplate 同一道开关自检）。
+// 历史目录一并移除。
 func (s *Service) DeleteTemplate(name string) error {
-	if !templatesOn() {
-		return ErrTemplatesDisabled
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.store.deleteFile(name)
 }
 
 // RenameTemplate 改名一个用户模板（tl1300）：文档内 name + 存储文件 +
-// 历史目录随迁；目标名已存在则拒绝（写面，同一道开关自检）。
+// 历史目录随迁；目标名已存在则拒绝。
 func (s *Service) RenameTemplate(oldName, newName string) error {
-	if !templatesOn() {
-		return ErrTemplatesDisabled
-	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	_, err := s.store.renameFile(oldName, newName)

@@ -1993,9 +1993,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // 任务 1070: Standard 流续跑总闸（普通对话续跑通道开闸；re-applied on
   // settings save + live controller mirror, next run applies）。
   SetStandardContinuation(enabled: boolean): Promise<void>;
-  // 任务 686: workflow visualization panel (palette entry opening the DAG flow
-  // view; re-applied on settings save, no restart).
-  SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;
+  // tl1741：SetExperimentalWorkflowPanel 随撤开关退役（面板入口常显）。
   // 任务 934: workflow runs feed — panel 全量拉取（推送走 "workflow:runs"
   // 运行时通道）与运行中止。
   WorkflowRunsSnapshot(): Promise<WireWorkflowRun[]>;
@@ -2008,9 +2006,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl1434: 节点详情「工作过程」——只读回放某节点第 occurrence 次（1-based）
   // 子代理执行的 transcript（服务侧两道归属证明；只读，绝不唤醒子代理会话）。
   ReadWorkflowNodeSubagent(runId: string, nodeId: string, occurrence: number): Promise<HistoryMessage[]>;
-  // tl1454: user workflow templates (workflowPanel family sub-key). Writes and
-  // runs self-check the switch server-side; runs bind to the active tab session.
-  SetExperimentalWorkflowTemplates(enabled: boolean): Promise<void>;
+  // tl1741：SetExperimentalWorkflowTemplates 随撤开关退役（模板面常开）。
   WorkflowTemplates(): Promise<WorkflowTemplateList>;
   WorkflowTemplateSource(name: string): Promise<WorkflowTemplateSource>;
   WorkflowTemplateInvalidSource(file: string): Promise<string>;
@@ -3797,7 +3793,7 @@ function makeMockApp(): AppBindings {
     defaultModel: "deepseek",
     plannerModel: "",
     guardianModel: "",
-    autopilot: false,
+    // tl1741：autopilot 偏好随撤开关退役（fixture 不再携带）。
     autopilotMaxRuntime: "",
     autopilotApprovalGrace: "",
     experimentalAutopilotAskTimeout: false,
@@ -7256,7 +7252,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalEditResend() {},
     async SetExperimentalStartupSplash() {},
     async SetStandardContinuation() {},
-    async SetExperimentalWorkflowPanel() {},
+    // tl1741：SetExperimentalWorkflowPanel mock 随撤开关退役。
     // 任务 934：浏览器 dev mock 无工作流服务，给诚实的空表/不可中止。
     async WorkflowRunsSnapshot() {
       return [] as WireWorkflowRun[];
@@ -7277,7 +7273,7 @@ function makeMockApp(): AppBindings {
       return [] as HistoryMessage[];
     },
     // tl1454：浏览器 dev mock 无工作流服务——清单诚实空表，写/运行明确拒绝。
-    async SetExperimentalWorkflowTemplates() {},
+    // tl1741：SetExperimentalWorkflowTemplates mock 随撤开关退役。
     async WorkflowTemplates() {
       return { templates: [], invalid: [] } as WorkflowTemplateList;
     },
@@ -7623,11 +7619,7 @@ function makeMockApp(): AppBindings {
     async ChannelCancelFromHuman(_ref: string, _messageID: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
-    async SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string) {
-      settings.autopilot = enabled;
-      settings.autopilotMaxRuntime = maxRuntime;
-      settings.autopilotApprovalGrace = approvalGrace;
-    },
+    // tl1741：SetDesktopAutopilot dev-shell 实现随撤开关删除（App 层 setter 已退役）。
     async SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number) {
       if (enabled && seconds !== 0 && (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1 || seconds > 3600)) {
         throw new Error(`autopilot ask timeout must be between 1 and 3600 seconds, got ${seconds}`);

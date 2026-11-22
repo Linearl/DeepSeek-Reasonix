@@ -59,11 +59,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 此前仅手写 TOML（stalled_intent_nudge，117），无实验室设置页入口；本件
 	// 补入口（铁律 2，可选档），键语义/默认值零变化。
 	{"stalledIntentNudge", LabTierOptional, []string{"stalled_intent_nudge"}},
-	// 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（以及 infra
-	// 段 runtimeReuse）三推荐升「稳定」——C1~C5 判据见任务书；稳定 = 默认开
-	// （config.Default）+ 桌面开关禁用态（开发者模式解锁）+ 手写 false 保留。
-	{"autopilot", LabTierStable, []string{"autopilot", "experimental_autopilot_ask_timeout", "authorize_outbound_send", "authorize_data_migration_delete", "authorize_destructive_change", "authorize_new_tech_route", "authorize_paid_quota_alloc", "experimental_ask_round_limit", "ask_round_limit"}}, // ask-timeout 为 task 477 家族子键；authorize_* 与 ask_round_limit 为 task 1084 家族子键
-	{"sessionCollab", LabTierStable, []string{"experimental_session_collab"}},
+	// tl1741：autopilot / sessionCollab 条目随撤开关退役（用户 20261121 三拍：
+	// 稳定档不再提供开关，1005 C4 kill switch 口径对二者废止）——条目与
+	// renderKeys 全部出表，功能常开；ask-timeout/authorize_*/ask_round_limit
+	// 家族子键仍为活键（config 手写可调，无实验室 UI 入口）。fullAccess 保留。
 	{"fullAccess", LabTierStable, []string{"experimental_full_access", "experimental_parallel_full_access"}}, // parallel_full_access 为 task 127 家族子键
 	// 任务 801：决策模式自动提取（提取链+固化链，默认关）。归自动化组——产物
 	// 服务于 autopilot 的决策边界（决策模式文件+注入）；档位按 550 口径可选
@@ -135,16 +134,13 @@ var labFeatureTiers = []labFeatureTier{
 	// tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"outputStyle", LabTierRecommended, []string{"experimental_output_style_ui"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
-	// 任务 856 ③：collabGroupView 语义升级为「协作中心」入口总开关（信件中心+
-	// 群聊两图标合一），键随语义一次性迁移 collabHub（首次读取继承旧值，见
-	// decode.go inheritLegacyCollabHubKey；旧键随 fixed-key-set 渲染淘汰，
-	// render_coverage_test.go 豁免表登记）。
-	// tl1487 一组①：协作中心入口未稳定→稳定（用户 20261107 八组清单；默认关
-	// 与 sessionCollab 前置门控不变——批量面无 setter/无排除条目，plan 时以
-	// no_bulk_setter 原因码如实上报）。
-	{"collabHub", LabTierStable, []string{"experimental_collab_hub"}},
+	// tl1741：collabHub 条目随撤开关退役（用户 20261121 三拍）——协作中心
+	// 入口常显，decode 侧 legacy 继承（task-856③）一并删除，deprecated 清单
+	// 承接存量手写键。
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
 	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
+	// tl1741 注：宿主 sessionCollab 卡随撤开关移除，本 optional 成员行随之
+	// 失去展示面（键保持活键，config 手写可调）。
 	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
 	// ── ui（界面，16 项）────────────────────────────────────────
 	// 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
@@ -188,13 +184,8 @@ var labFeatureTiers = []labFeatureTier{
 	{"promptHistoryPicker", LabTierRecommended, []string{"experimental_prompt_history_picker"}},
 	{"restartUpdate", LabTierRecommended, []string{"experimental_restart_update", "experimental_autonomous_update"}}, // autonomous_update 为 task 254 家族子键
 	{"sessionWall", LabTierRecommended, []string{"experimental_session_wall"}},
-	// 任务 686：工作流可视化面板（DAG 流程图 + 运行进展动态点亮，palette 入口；
-	// 后端 685 编排引擎未落地，当前为前端 fixture 预览）。
-	// tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；工作流模板升推荐
-	// 走前端注册表独立登记，Go 侧仍以本条家族子键承载，无独立条目）。
-	// tl1454：experimental_workflow_templates 为家族子键（用户自定义模板视图，
-	// 面板行下的附属行；工作流面板关闭时禁用）。
-	{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}},
+	// tl1741：workflowPanel 条目随撤开关退役（用户 20261121 三拍；工作流模板
+	// 家族子键随之）——面板/模板常显，deprecated 清单承接存量键。
 	// tl1487 三组①：任务面板、子代理详情视图可选→推荐（用户 20261107 八组
 	// 清单；前端同步）。
 	{"subagentPanel", LabTierRecommended, []string{"experimental_subagent_panel"}},
@@ -231,9 +222,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 家族子键（decision_pattern_file_path 先例）；未稳定档——一期纯只读
 	// 无写路径，二期（项目分库+工具内嵌）候拍板。
 	{"tasklistPanel", LabTierUnstable, []string{"experimental_tasklist_panel", "tasklist_db_path"}},
-	// ── dev-debug（开发调试，2 项）───────────────────────────────
-	// tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变，前端同步）。
-	{"cdpDebugPort", LabTierStable, []string{"experimental_cdp_debug_port"}},
+	// ── dev-debug（开发调试，1 项）───────────────────────────────
+	// tl1741：cdpDebugPort 条目随撤开关退役（用户 20261121 三拍）——CDP
+	// endpoint 无条件起（loopback-only 随机端口不变），deprecated 清单承接。
 	{"lifecycleNoiseGate", LabTierUnstable, []string{"experimental_lifecycle_noise_gate"}},
 	// ── storage（存储，4 项；846 增 homePointer，tl-1174 增 jsonlZstd）───────
 	// tl 1172：experimental_events_slim_oversize 以家族子键并入本卡（477
@@ -243,10 +234,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 现状（left in place + WARN），铁律 2。
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation", "experimental_events_slim_oversize"}},
 	// tl1338（用户 2026-11-01 拍板）：未稳定→稳定。fork 已锁定 v3（916），卡内
-	// 余项（v4/v5 迁移、扫描清理）皆迁移工具非实验能力。前端 experimentTiers.ts
-	// 同步（562 双侧门禁）。模式键非布尔：lab_bulk.go labBulkExcluded 挂
-	// not_bool_switch，进稳定批量范围也永不盲写。
-	{"sessionStorage", LabTierStable, []string{"session_storage"}},
+	// 余项（v4/v5 迁移、扫描清理）皆迁移工具非实验能力。
+	// tl1741：sessionStorage 档位条目随「稳定档不再提供开关」撤出实验室 UI
+	// （sessionStore 卡内档位行移除，916 面板锁语义由迁移工具面延续）；键与
+	// 四模式机制保留（916 宽容往返：已存 v4 档升级用户配置原样渲染，不替用户
+	// 做降级决定），REASONIX_SESSION_STORAGE env override 语义不变。
 	// 任务 846：配置数据目录可更改（home-pointer.json + 事务化迁移向导）。
 	// 开关只守写路径（设置页入口+向导）；默认关=无入口、无指针文件=零行为。
 	{"homePointer", LabTierUnstable, []string{"experimental_home_pointer"}},
@@ -257,10 +249,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 现读开关（921 先例），翻转免重启。
 	// tl1487 六组：冷会话 zstd 归档可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"jsonlZstd", LabTierRecommended, []string{"experimental_jsonl_zstd"}},
-	// ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
-	// 任务 1005 批1 转档：runtimeReuse 随 autopilot/sessionCollab/fullAccess
-	// 一同入「稳定」档（992 刚升推荐的四项中的第四项，用户 1018 拍板批1）。
-	{"runtimeReuse", LabTierStable, []string{"experimental_runtime_reuse"}},
+	// ── infra（基础设施，5 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
+	// tl1741：runtimeReuse 条目随撤开关退役（用户 20261121 三拍）——复用池
+	// 无条件启用，deprecated 清单承接存量手写键。
 	// tl-1048：zcodeTaskBus 卡随 8787 任务总线退役（原 unstable，键 experimental_zcode_task_bus）。
 	{"acpListen", LabTierUnstable, []string{"experimental_acp_listen", "acp_listen_port"}}, // 任务 790：ACP 常驻监听（端口键为家族子键，仅开关开时生效）
 	{"sessionCwdFollow", LabTierUnstable, []string{"experimental_session_cwd_follow"}},     // 任务 545：会话 cwd 跟随，默认关新实验
@@ -337,7 +328,7 @@ var labNonFeatureKeys = map[string]string{
 // labSpecialKeys：非 experimental_ 前缀、但属于实验室特性开关键的渲染键
 // （连同 experimental_* 一起纳入门禁扫描范围）。
 var labSpecialKeys = map[string]bool{
-	"autopilot":             true,
+	// tl1741："autopilot" 随撤开关出表（键退役，deprecated 清单承接）。
 	"optimistic_write":      true,
 	"session_storage":       true,
 	"events_auto_rotation":  true,
@@ -493,12 +484,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		b.WriteString("status_bar_style_initialized = true   # icon default upgrade applied; preserve later user choices\n")
 		fmt.Fprintf(&b, "status_bar_items = %s   # desktop: ordered visible bottom status bar items\n", renderStringArray(c.DesktopStatusBarItems()))
 		fmt.Fprintf(&b, "default_tool_approval_mode = %q   # desktop: Ask/Auto/YOLO default for newly-created sessions\n", c.DesktopDefaultToolApprovalMode())
-		// Autopilot is opt-in and only meaningful with a bound, so its keys are rendered
-		// together. Writing the flag without the limit used to lose both: this renderer
-		// writes a fixed set of keys, so an unlisted one was dropped and the settings
-		// switch flipped straight back to off.
-		if c.Desktop.Autopilot || strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" || c.Desktop.AuthorizeOutboundSend || c.Desktop.AuthorizeDataMigrationDelete || c.Desktop.AuthorizeDestructiveChange || c.Desktop.AuthorizeNewTechRoute || c.Desktop.AuthorizePaidQuotaAlloc || c.Desktop.ExperimentalAskRoundLimit || c.Desktop.AskRoundLimit != 0 {
-			fmt.Fprintf(&b, "autopilot = %v   # desktop: start new sessions unattended (requires autopilot_max_runtime)\n", c.Desktop.Autopilot)
+		// tl1741：autopilot 主键随撤开关退役，渲染行删除——新会话一律默认
+		// unattended（desktopAutopilotDefaults 护栏：无有效 max_runtime 仍拒绝
+		// 降级为关）。子键块（ask-timeout / batch / authorize_* / ask_round_limit）
+		// 保留：活键，条件渲染语义不变。
+		if strings.TrimSpace(c.Desktop.AutopilotMaxRuntime) != "" || strings.TrimSpace(c.Desktop.AutopilotApprovalGrace) != "" || c.Desktop.ExperimentalAutopilotAskTimeout || c.Desktop.AutopilotAskWaitSeconds != 0 || c.Desktop.ExperimentalAutopilotAskAutoContinue || c.AutopilotBatchContextLevel() != "" || strings.TrimSpace(c.Desktop.AutopilotBatchPlan) != "" || c.Desktop.AuthorizeOutboundSend || c.Desktop.AuthorizeDataMigrationDelete || c.Desktop.AuthorizeDestructiveChange || c.Desktop.AuthorizeNewTechRoute || c.Desktop.AuthorizePaidQuotaAlloc || c.Desktop.ExperimentalAskRoundLimit || c.Desktop.AskRoundLimit != 0 {
 			if runtime := strings.TrimSpace(c.Desktop.AutopilotMaxRuntime); runtime != "" {
 				fmt.Fprintf(&b, "autopilot_max_runtime = %q   # desktop: wall-clock bound for an unattended run, e.g. 8h\n", runtime)
 			}
@@ -592,10 +582,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_split_view = %v   # desktop: tab-bar split view (task 70-1)\n", c.Desktop.ExperimentalSplitView)
 		// Task 856: fixed-key-set rule — an unlisted key would be dropped on
 		// every save. The unified collaboration-hub switch (856 ③: mail-inbox +
-		// group-chat icons merged into one entry) writes the NEW key only; the
-		// legacy task-677 line is retired by this very drop (decode.go inherits
-		// its stored value on first read).
-		fmt.Fprintf(&b, "experimental_collab_hub = %v   # desktop: unified collaboration-hub entry (task 856; inherits legacy task-677 group-chat switch)\n", c.Desktop.ExperimentalCollabHub)
+		// tl1741：experimental_collab_hub 渲染行随撤开关退役（入口常显，
+		// deprecated 清单承接存量键）。
 		// Task 705: fixed-key-set rule (same as above) — the fold switch must
 		// survive every settings save.
 		fmt.Fprintf(&b, "experimental_session_collab_auto_fold = %v   # desktop: fold over-long cross-session messages into a summary bar (task 705; off = render in full)\n", c.Desktop.ExperimentalSessionCollabAutoFold)
@@ -662,11 +650,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off never renders the startup splash (铁律 2 zero regression).
 		fmt.Fprintf(&b, "experimental_startup_splash = %v   # desktop: DSH-style startup splash overlay (logo + subtitle + pulse dots) covering the main region until the core UI is mounted — off (default) = never renders, on = shows until ready then fades out (tl 1132; settings save re-applies, no restart)\n", c.Desktop.ExperimentalStartupSplash)
-		// 任务 686: same fixed-key-set rule — an unlisted key is dropped on
-		// every save and the switch would flip itself back off (81/123
-		// lesson). Off renders no palette entry at all (铁律 2 zero regression).
-		fmt.Fprintf(&b, "experimental_workflow_panel = %v   # desktop: workflow visualization panel — command-palette entry opening the DAG flow view (plan preview + live node-state lighting); off = palette byte-for-byte unchanged (task 686; settings save re-applies, no restart)\n", c.Desktop.ExperimentalWorkflowPanel)
-		fmt.Fprintf(&b, "experimental_workflow_templates = %v   # desktop: user workflow templates in the workflow panel (edit/validate/save/run + version history); requires the workflow panel; off = panel, bridges and definition store unchanged (tl1454; live-read, no restart)\n", c.Desktop.ExperimentalWorkflowTemplates)
+		// tl1741：experimental_workflow_panel / experimental_workflow_templates
+		// 渲染行随撤开关退役（面板/模板常显，deprecated 清单承接存量键）。
 		// Task 651: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the setting would flip itself back (81/123 lesson).
 		// The resolved indicator renders so the saved value round-trips even
@@ -683,9 +668,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		fmt.Fprintf(&b, "experimental_subagent_tps = %v   # desktop: ~N tok/s readouts on sub-agent cards and the job table (task 265; boot snapshot)\n", c.DesktopSubagentTpsEnabled())
 		fmt.Fprintf(&b, "experimental_completion_summary = %v   # desktop: per-turn result notice on the transcript (task 265; boot snapshot)\n", c.DesktopCompletionSummaryEnabled())
 		fmt.Fprintf(&b, "experimental_quick_commands = %v   # desktop: gate the whole quick-commands surface (task 262; boot snapshot)\n", c.Desktop.ExperimentalQuickCommands)
-		// Task 342: same fixed-key-set rule — an unlisted key is dropped on
-		// every save and the lab switch would flip itself back off.
-		fmt.Fprintf(&b, "experimental_cdp_debug_port = %v   # desktop: WebView2 CDP debug endpoint (task 342; loopback-only random port; boot snapshot, restart to apply)\n", c.Desktop.ExperimentalCDPDebugPort)
+		// tl1741：experimental_cdp_debug_port 渲染行随撤开关退役（endpoint
+		// 无条件起，deprecated 清单承接存量键）。
 		// Task 385a: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_output_style_ui = %v   # desktop: gate the lab 回答风格 (output style) section (task 385a; UI surface only)\n", c.Desktop.ExperimentalOutputStyleUI)
@@ -969,7 +953,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// list 摘要档 30×240B + 两道体积闸、search 附组与 call_hint）。显式渲染
 	// ——同 81/123 丢档教训，omit-on-off 会在下一次渲染时把已保存的开关静默弹回。
 	fmt.Fprintf(&b, "experimental_capability_groups = %v   # task 953/955: capability group disclosure (use_capability list summary tier 30x240B + kind=group rows + volume gates, search group attribution + call_hint, route group suggestions, group cards; off = zero behaviour)\n", c.Agent.ExperimentalCapabilityGroups)
-	fmt.Fprintf(&b, "experimental_session_collab = %v   # task 19: multi-session collaboration tools (141-145)\n", c.Agent.ExperimentalSessionCollab)
+	// tl1741：experimental_session_collab 渲染行随撤开关退役（协作工具/信件泵
+	// 无条件启用，deprecated 清单承接存量键）。
 	// Task 632: explicit render — omit-on-off would silently spring a saved-on
 	// switch back off on the next render (81/123 lost-save lesson).
 	fmt.Fprintf(&b, "experimental_general_purpose_subagent = %v   # task 632: expose the built-in general-purpose writer profile (task profile=\"general-purpose\"; off = absent from the skill index, restart to apply)\n", c.Agent.ExperimentalGeneralPurposeSubagent)
@@ -1087,9 +1072,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	// the B9 gate was removed (it misjudged turn-level attachment candidates as
 	// the subagent's own inputs). The toml field stays READ-ONLY so old configs
 	// still load; a stale true is inert and vanishes on the next save.
-	// Task 363A: runtime assembly reuse pool. Unconditional render —
-	// omit-on-default would let a hand-added line vanish on the next save.
-	fmt.Fprintf(&b, "experimental_runtime_reuse = %v   # task 363A: reuse the runtime assembly (prompt/skills/commands/hooks/registry) across tabs with the same root+model+effort instead of full rebuild\n", c.Agent.ExperimentalRuntimeReuse)
+	// tl1741：experimental_runtime_reuse 渲染行随撤开关退役（复用池无条件
+	// 启用，deprecated 清单承接存量手写键）。
 	fmt.Fprintf(&b, "perf_monitor_interval_seconds = %d   # task 184: sampler interval in seconds (default 5, clamped 1..300)\n", c.Agent.PerfMonitorIntervalSeconds)
 	// Unconditional render — omit-on-default would let a hand-added line vanish
 	// on the next save (same rule as its sampler sibling above).

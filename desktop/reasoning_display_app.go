@@ -27,7 +27,7 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		ReasoningDisplayModeExplicit: cfg.DesktopReasoningDisplayModeExplicit(), StatusBarStyle: cfg.DesktopStatusBarStyle(),
 		StatusBarItems: cfg.DesktopStatusBarItems(), CheckUpdates: cfg.DesktopCheckUpdates(),
 		UpdateChannel: cfg.DesktopUpdateChannel(), ConversationWidth: cfg.DesktopConversationWidth(),
-		Autopilot:                 cfg.Desktop.Autopilot,
+		// tl1741：Autopilot 偏好镜像随撤开关退役（新会话恒默认 unattended）。
 		ExperimentalAutoLoadOlder: cfg.Agent.ExperimentalAutoLoadOlder,
 		// Task 318.3: the draft-persistence gate is read at startup so a
 		// restart with the switch off never rehydrates old drafts.

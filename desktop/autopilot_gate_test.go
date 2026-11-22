@@ -26,7 +26,7 @@ func autopilotGateTestApp(t *testing.T, approvalMode string) (*App, *WorkspaceTa
 	t.Helper()
 	isolateDesktopUserDirs(t)
 	cfg := config.Default()
-	cfg.Desktop.Autopilot = true
+	// tl1741：autopilot 开关退役（常开）——fixture 只需护栏伴生默认（Default 已带）。
 	cfg.Desktop.AutopilotMaxRuntime = "8h"
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("save config: %v", err)
@@ -449,7 +449,7 @@ func TestAutopilotReverseLinkageOnComposerProfile(t *testing.T) {
 func TestAutopilotGateOnNewTabDefaults(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	cfg := config.Default()
-	cfg.Desktop.Autopilot = true
+	// tl1741：autopilot 开关退役（常开），护栏伴生默认保留。
 	cfg.Desktop.AutopilotMaxRuntime = "8h"
 	app := NewApp()
 	app.ctx = context.Background()
@@ -551,49 +551,9 @@ func TestSetDesktopAutopilotAskTimeoutPersistsAndBounds(t *testing.T) {
 	}
 }
 
-func TestSetDesktopAutopilotRequiresYoloDefault(t *testing.T) {
-	isolateDesktopUserDirs(t)
-	app := NewApp()
-	app.ctx = context.Background()
-	app.readyHook = func() {}
-
-	// 任务 1005：autopilot 转稳定档后默认开——本测试的前提（拒绝路径的起点是
-	// 关）需显式夹具固定；手写 autopilot = false 正是 C4 kill switch 路径。
-	cfgSeed := config.LoadForEdit(config.UserConfigPath())
-	cfgSeed.Desktop.Autopilot = false
-	if err := cfgSeed.SaveTo(config.UserConfigPath()); err != nil {
-		t.Fatalf("seed config: %v", err)
-	}
-
-	// Default approval is auto → enabling the autopilot default is refused.
-	if err := app.SetDesktopAutopilot(true, "8h", ""); err == nil {
-		t.Fatal("enabling the autopilot default under a non-yolo approval default must be refused")
-	} else if !strings.Contains(err.Error(), "yolo") {
-		t.Fatalf("refusal should name the yolo requirement, got: %v", err)
-	}
-	cfg := config.LoadForEdit(config.UserConfigPath())
-	if cfg.Desktop.Autopilot {
-		t.Fatal("refused enable must not persist the autopilot flag")
-	}
-
-	// Under yolo the same call succeeds.
-	cfg.Desktop.DefaultToolApprovalMode = "yolo"
-	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
-		t.Fatalf("save config: %v", err)
-	}
-	if err := app.SetDesktopAutopilot(true, "8h", ""); err != nil {
-		t.Fatalf("enabling the autopilot default under yolo should succeed: %v", err)
-	}
-	cfg = config.LoadForEdit(config.UserConfigPath())
-	if !cfg.Desktop.Autopilot {
-		t.Fatal("accepted enable must persist the autopilot flag")
-	}
-
-	// Disabling never requires yolo.
-	if err := app.SetDesktopAutopilot(false, "", ""); err != nil {
-		t.Fatalf("disabling must always be allowed: %v", err)
-	}
-}
+// tl1741：TestSetDesktopAutopilotRequiresYoloDefault 随撤开关删除——
+// SetDesktopAutopilot setter 退役（新会话恒默认 unattended；护栏：无有效
+// max_runtime 仍拒绝降级为关，desktopAutopilotDefaults）。
 
 // Task 544: the ask auto-continue sub-option is a plain desktop preference —
 // the setter persists both states and it stays independent of the task-477

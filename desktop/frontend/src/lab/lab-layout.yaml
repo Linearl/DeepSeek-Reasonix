@@ -49,29 +49,13 @@
 
 version: 1
 groups:
-  # ── 自动化（4 项；任务 742 增心跳任务后台化；任务 961 三散条并智能自动化卡）──
+  # ── 自动化（2 项；任务 742 增心跳任务后台化；任务 961 三散条并智能自动化卡；
+  #    tl1741：autopilot/sessionCollab 两张稳定卡随「稳定档不再提供开关」移除
+  #    （用户 20261121 三拍，功能常开）——sessionCollabAutoFold optional 成员
+  #    随宿主卡失去展示面（键保持活键，config 手写可调）；fullAccess 保留）──
   - key: automation
     labelKey: settings.labGroup.automation
     entries:
-      # 任务 1005 批1 转档：autopilot / sessionCollab / fullAccess（及 infra 段
-      # runtimeReuse）四项 tier 升「稳定」——与内置默认同构（724 回退安全网）。
-      # 任务 1084：autopilot pane 硬编码渲染区加 5 个高风险授权 checkbox
-      # （默认全不勾）+ 1 个 ask 轮次上限数值字段——kind 仍为 feature。
-      - id: autopilot
-        labelKey: settings.autopilot
-        tier: stable
-        onKeys: [autopilot]
-      - id: sessionCollab
-        labelKey: settings.sessionCollab
-        tier: stable
-        # 任务 815：cascade_approval 是卡内行级开关（Task 225），补灯——
-        # 审批回投开 = 卡亮（无 member 行，家族伴生不挂徽章）。
-        onKeys: [experimentalSessionCollab, experimentalCascadeApproval]
-        members:
-          # 任务 722 点3：跨会话协作的展示子项。
-          - id: sessionCollabAutoFold
-            labelKey: settings.sessionCollabAutoFold
-            tier: optional
       - id: fullAccess
         labelKey: settings.fullAccess
         tier: stable
@@ -193,12 +177,8 @@ groups:
           - id: outputStyle
             labelKey: settings.outputStyle
             tier: recommended
-      - id: collabHub
-        labelKey: settings.collabHub
-        # tl1487 一组①：协作中心入口 unstable→稳定（用户 20261107 八组清单；
-        # 前置依赖 sessionCollab 语义不变，LAB_FEATURE_DEPS 仍单条）。
-        tier: stable
-        onKeys: [experimentalCollabHub]
+      # tl1741：collabHub 稳定卡随「稳定档不再提供开关」移除（协作中心入口
+      # 常显；LAB_FEATURE_DEPS 的 collabHub→sessionCollab 依赖随双卡退役删除）。
       # tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认瘦
       # 身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪不落
       # IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留 pinned，
@@ -261,8 +241,8 @@ groups:
         # tl1309 卡②：trajectoryView（轨迹观测）迁出本卡成员表，入可观测性组
         # 「运行可观测」卡（704 定位即「可观测性视图」）；灯键随迁出。容器档
         # 仍推荐（自有档推荐压过其余可选成员，聚合徽章不变）。
-        # tl1746 顺手收口：editResend（tl1544）入卡成员行时本 yaml 灯键漏补
-        # （默认布局已含，722 结构对账基线红）——补齐对齐，键语义零变化。
+        # tl1544 预存红收口（20261121 随 tl1746 顺手修）：editResend 键与成员行
+        # 补进本卡（default 侧早已有之，yaml 侧 tl1544 漏同步）。
         onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite, experimentalEditResend]
         members:
           - id: splitView
@@ -301,8 +281,8 @@ groups:
           - id: draftRewrite
             labelKey: settings.draftRewrite
             tier: recommended
-          # tl1746 顺手收口：editResend（tl1544）成员行——默认布局已含本行
-          # （档位可选，Go 渲染表同档），yaml 漏补致 722 结构对账基线红。
+          # tl1544：运行中编辑历史消息回溯重发（默认关=运行中编辑入口维持
+          # 拒绝现状；回合后 rewind 链零变化）。
           - id: editResend
             labelKey: settings.editResend
             tier: optional
@@ -314,18 +294,13 @@ groups:
       - id: sessionTaskPanels
         labelKey: settings.sessionTaskPanels
         tier: recommended
-        onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary]
+        # tl1741：workflowPanel（含家族子键 workflowTemplates）成员行随「稳定
+        # 档不再提供开关」摘除——面板/模板常显（键退役）。
+        onKeys: [experimentalSessionWall, experimentalCompletionSummary]
         members:
           - id: sessionWall
             labelKey: settings.sessionWall
             tier: recommended
-          # tl1487 二组⑤：工作流面板 unstable→稳定、任务完成摘要可选→推荐
-          # （用户 20261107 八组清单；工作流模板为 pane 附属行，同清单升推荐
-          # ——前端注册表独立登记，Go 渲染表仍以 workflowPanel 家族子键承载）。
-          # 容器档=成员最高档：随 workflowPanel 升至稳定。
-          - id: workflowPanel
-            labelKey: settings.workflowPanel
-            tier: stable
           - id: completionSummary
             labelKey: settings.completionSummary
             tier: recommended
@@ -481,14 +456,10 @@ groups:
     entries:
       - id: devDebug
         labelKey: settings.devDebug
-        onKeys: [experimentalCDPDebugPort, experimentalLifecycleNoiseGate]
+        # tl1741：cdpDebugPort 成员行随「稳定档不再提供开关」摘除——CDP
+        # endpoint 无条件起（loopback-only 随机端口不变，键退役）。
+        onKeys: [experimentalLifecycleNoiseGate]
         members:
-          - id: cdpDebugPort
-            labelKey: settings.cdpDebugPort
-            # tl1487 五组：CDP 调试端口未稳定→稳定（用户 20261107 八组清单；
-            # 默认关语义不变——稳定档在此只表达成熟度，pane 开关不接
-            # labStableLocked，与 sessionStorage tl1338 特例同口径）。
-            tier: stable
           - id: lifecycleNoiseGate
             labelKey: settings.lifecycleNoiseGate
             tier: unstable
@@ -507,17 +478,13 @@ groups:
       - id: sessionStore
         labelKey: settings.sessionStore
         # tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表，入可观测
-        # 性组「运行可观测」卡——存储档位面（sessionStorage）留本卡；灯键
-        # eventsRotationNonDefault 随迁出。
-        # tl1338（用户 2026-11-01 拍板）：sessionStorage 未稳定→稳定——本 fork
-        # 已锁定 v3（916），卡内其余条目（v4/v5 迁移、扫描清理）均为迁移操作
-        # 工具而非实验能力，不该挂未稳定徽章。容器档=成员最高档：未稳定→稳定
-        # （导航 rail 与卡头徽章同源 labEntryBadgeTier，随之联动）。
+        # 性组「运行可观测」卡——灯键 eventsRotationNonDefault 随迁出。
+        # tl1338（用户 2026-11-01 拍板）：本 fork 已锁定 v3（916），卡内其余
+        # 条目（v4/v5 迁移、扫描清理）均为迁移操作工具而非实验能力。
+        # tl1741：sessionStorage 档位行随「稳定档不再提供开关」摘除（916 面板
+        # 锁语义由迁移工具面延续）；session_storage 键与四模式机制保留（916
+        # 宽容往返不替升级用户做降级决定），REASONIX_SESSION_STORAGE 不变。
         onKeys: [sessionStorageNonDefault]
-        members:
-          - id: sessionStorage
-            labelKey: settings.sessionStorage
-            tier: stable
       # 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡+独立 pane
       # （向导在 SettingsPanel 的 homePointer 分支，HomePointerLabPane）。
       - id: homePointer
@@ -537,50 +504,53 @@ groups:
       # 入基础设施组「资源治理」卡成员行（同为内存/资源生命周期面；字段绑定
       # 仍在 labParamFields 注册表，配置键/setter 零变化）。
 
-  # ── 基础设施（3 项；任务 785：S1 常驻底座开关条目随底座退役移除；
-  #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役；tl1309 卡③：
-  #    复用池/孤儿回收/ACP 监听/本地服务 + GC 策略/闲置释放（自存储组迁入）
-  #    六项并「资源治理」卡）──
+  # ── 基础设施（7 项；任务 785：S1 常驻底座开关条目随底座退役移除；
+  #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役；tl1741：资源
+  #    治理合并卡（tl1309 卡③）随「稳定档不再提供开关」整卡移除——runtimeReuse
+  #    撤开关（复用池常开，键退役），其余五成员回 tl1309 前散条形态（键/
+  #    setter 零变化，non-goals：不动推荐/可选/未稳定档开关））──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:
-      # tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
-      # 复用池 + 孤儿回收 + ACP 常驻监听 + 本地服务四散条，加 GC 策略与闲置
-      # 释放两参数卡（自存储组迁入，字段绑定仍在 labParamFields，值语义单源）
-      # 六成员并卡（任务书③：同为内存/资源生命周期面）。容器档 = 成员最高档
-      # （复用池稳定 → 稳定）；卡内各行各读各的键、各写各的 setter，配置键
-      # 零变化，已存偏好零迁移。
-      - id: resourceGovernance
-        labelKey: settings.resourceGovernance
-        tier: stable
-        onKeys: [experimentalRuntimeReuse, experimentalOrphanHandling, experimentalACPListen, experimentalLocalServer]
-        members:
-          # 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。
-          - id: runtimeReuse
-            labelKey: settings.runtimeReuse
-            tier: stable
-          # 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
-          - id: orphanHandling
-            labelKey: settings.orphanHandling
-            tier: recommended
-          # 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
-          - id: idleReleaseMinutes
-            labelKey: settings.detachedIdleRelease
-            tier: recommended
-          # GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
-          # tl1487 七组①：可选→推荐，建议值 100（用户 20261107 八组清单；
-          # 显示层 gcPercentForView 已把 0=跟随默认渲染为等效 100）。
+      # tl1741：runtimeReuse 稳定卡随撤开关移除——运行时复用池无条件启用
+      # （1005 C4 口径废止，deprecated 清单承接存量手写键）。
+      # tl1309 卡③逆向（tl1741 拆卡回散条）：孤儿回收/闲置释放/GC/ACP 监听/
+      # 本地服务五成员回归独立卡形态，键/setter/档位零变化。
+      # 孤儿资源回收清理（推荐档——992 随复用池升推荐）。
+      - id: orphanHandling
+        labelKey: settings.orphanHandling
+        tier: recommended
+        onKeys: [experimentalOrphanHandling]
+      # 后台会话闲置释放（kind:param 参数卡，775 首批；推荐档；字段绑定在
+      # src/lab/labParamFields.ts）。
+      - id: idleReleaseMinutes
+        labelKey: settings.detachedIdleRelease
+        kind: param
+        tier: recommended
+        onKeys: []
+        fields:
+          - id: detachedIdleReleaseMinutes
+            input: number
+      # GC 策略旋钮（kind:param 参数卡，tl1286；显示层 gcPercentForView 已把
+      # 0=跟随默认渲染为等效 100）。
+      - id: gcPercent
+        labelKey: settings.gcPercent
+        kind: param
+        tier: recommended
+        onKeys: []
+        fields:
           - id: gcPercent
-            labelKey: settings.gcPercent
-            tier: recommended
-          # ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
-          - id: acpListen
-            labelKey: settings.acpListen
-            tier: unstable
-          # 本地服务（原 infra 独立卡；tl1265 第2轮 2026-11-13 拍板：未稳定→可选）。
-          - id: localServer
-            labelKey: settings.localServer
-            tier: optional
+            input: number
+      # ACP 常驻监听（未稳定档，790；loopback TCP，每连接独立 client 面）。
+      - id: acpListen
+        labelKey: settings.acpListen
+        tier: unstable
+        onKeys: [experimentalACPListen]
+      # 本地服务（可选档；tl1265 第2轮 2026-11-13 拍板：未稳定→可选）。
+      - id: localServer
+        labelKey: settings.localServer
+        tier: optional
+        onKeys: [experimentalLocalServer]
       # tl134/tl1487 七组③：路径规则整卡移除——结构化路径作用域判定为过时
       # 技术（zh 文案自证「未接线：开关开/关均无效果」，生产走 confine+
       # allow_write+写入审批），用户 20261107 20:17 裁决移除；机制存档见

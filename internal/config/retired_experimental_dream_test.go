@@ -19,7 +19,7 @@ func TestRetiredExperimentalDreamStillDecodes(t *testing.T) {
 	oldCfg := `
 [agent]
 experimental_dream = true
-experimental_session_collab = true
+experimental_full_access = true
 
 [desktop]
 experimental_dream = true
@@ -31,7 +31,7 @@ experimental_dream = true
 	if !got.Agent.ExperimentalDream || !got.Desktop.ExperimentalDream {
 		t.Fatal("retired key must still decode into its tombstone fields (values are ignored, not lost)")
 	}
-	if !got.Agent.ExperimentalSessionCollab {
+	if !got.Agent.ExperimentalFullAccess {
 		t.Fatal("a neighbouring live key must survive the decode untouched")
 	}
 
@@ -39,7 +39,7 @@ experimental_dream = true
 	if strings.Contains(rendered, "experimental_dream") {
 		t.Fatalf("retired key rendered back on save:\n%s", rendered)
 	}
-	if !strings.Contains(rendered, "experimental_session_collab = true") {
+	if !strings.Contains(rendered, "experimental_full_access = true") {
 		t.Fatalf("live neighbour key missing from the re-render:\n%s", rendered)
 	}
 }

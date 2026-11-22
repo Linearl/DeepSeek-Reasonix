@@ -2834,10 +2834,8 @@ export interface DesktopStartupSettingsView {
   experimentalSmoothScrollFollow?: boolean;
   /** 启动遮罩（tl 1132，DSH 式启动画面）：off（默认）= splash 不渲染，on = 覆盖主区待核心 UI 挂载完成后淡出；纯前端门，保存即生效。 */
   experimentalStartupSplash?: boolean;
-  /** 工作流可视化面板（任务 686）：palette 入口开 DAG 流程图；默认关，纯前端门，保存即生效。 */
-  experimentalWorkflowPanel?: boolean;
-  // tl1454: user workflow templates (workflowPanel family sub-key).
-  experimentalWorkflowTemplates?: boolean;
+  // tl1741：experimentalWorkflowPanel / experimentalWorkflowTemplates 随撤开关
+  // 退役——面板与模板常显（键退役，deprecated 清单承接）。
   /** 心跳任务后台化（任务 742）；默认关；开启后心跳触发不进标签栏（264 detached 语义）。 */
   experimentalHeartbeatBackground?: boolean;
   /** Subagent detail view (task 507); off = inline preview + widen affordance, on = read-only in-dock detail view. */

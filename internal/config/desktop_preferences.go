@@ -22,10 +22,12 @@ type DesktopConfig struct {
 	StatusBarStyleInitialized bool     `toml:"status_bar_style_initialized"` // one-time icon default upgrade; later choices are user-owned
 	StatusBarItems            []string `toml:"status_bar_items"`             // ordered visible desktop status bar items
 	DefaultToolApprovalMode   string   `toml:"default_tool_approval_mode"`   // ask|auto|yolo; defaults to auto for newly-created desktop sessions
-	// Autopilot defaults for newly-created desktop sessions. Autopilot runs a
-	// session unattended: the goal machine bounds it by wall clock, and the reviewer
-	// answers approval prompts nobody is there to answer.
-	Autopilot bool `toml:"autopilot"`
+	// tl1741：autopilot 实验室开关随「稳定档不再提供开关」退役（用户 20261121
+	// 三拍：清理 false 分支，非写死 true）——新会话一律按 autopilot 默认开走
+	// （desktopAutopilotDefaults 不再读本键），会话级 autopilot 状态不受影响。
+	// AutopilotMaxRuntime / AutopilotApprovalGrace 是运行护栏键，保留（无 UI
+	// 入口，config 手写可调）。存量手写 autopilot 键由 config_key_warn 的
+	// deprecated 清单承接（WARN 可见、不阻断，fixed-key-set 渲染下次保存清行）。
 	// Task 381: configurable fast-switch staging directory (task 81 family).
 	// Empty = the historical default (<installRoot>/staging). Behavior config,
 	// not a new capability — no experimental_ prefix.
@@ -102,15 +104,9 @@ type DesktopConfig struct {
 	// utility row renders exactly the pre-409 four-icon layout, and the panel
 	// becomes unreachable — the 409 deliverable itself is untouched.
 	ExperimentalCollabGroupView bool `toml:"experimental_collab_group_view"`
-	// ExperimentalCollabHub gates the unified collaboration-hub entry (task 856:
-	// 信件中心+群聊两图标融合为一个「协作中心」入口). It inherits the legacy
-	// task-677 group-chat switch's stored value on first read (decode-time
-	// fallback, decode.go) so an existing user keeps their entry state across
-	// the rename; once the settings view saves, the new key is the only one on
-	// disk (fixed-key-set drop retires the legacy line). Ships off per 铁律 2:
-	// with it off the utility row renders exactly the pre-856 layout minus the
-	// two merged icons.
-	ExperimentalCollabHub bool `toml:"experimental_collab_hub"`
+	// tl1741：collabHub 实验室开关随「稳定档不再提供开关」退役（用户 20261121
+	// 三拍）——协作中心入口常显，decode 侧 legacy 键继承（task-856③）随之退役。
+	// 存量手写 experimental_collab_hub 键由 deprecated 清单承接。
 	// ExperimentalSessionCollabAutoFold folds over-long cross-session messages
 	// in the transcript into a summary bar (task 705). It ships off per 铁律 2:
 	// off = every cross-session message renders in full, exactly as before the
@@ -285,20 +281,9 @@ type DesktopConfig struct {
 	// layer and is not gated by this switch. Pure frontend gate: the settings
 	// save re-applies the boot snapshot, no restart.
 	ExperimentalStartupSplash bool `toml:"experimental_startup_splash"`
-	// ExperimentalWorkflowPanel gates the workflow visualization panel (task
-	// 686): a command-palette entry opening the DAG flow view (plan preview
-	// plus live node-state lighting from the run event stream). It ships off
-	// (铁律 2): with the zero value no palette entry renders and no panel
-	// chunk loads, so the palette and every surface stay byte-for-byte
-	// identical to the pre-686 behaviour. Pure frontend gate: the settings
-	// save re-applies the boot snapshot, so a change is visible without a
-	// restart. The in-session workflow-card entry lands with task 685's
-	// engine (handoff-686.md records the wait point).
-	ExperimentalWorkflowPanel bool `toml:"experimental_workflow_panel"`
-	// ExperimentalWorkflowTemplates (tl1454, workflowPanel family sub-key):
-	// template view + write bridges + pre-overwrite version archive. Off =
-	// everything as before (铁律 2); live-read, no restart.
-	ExperimentalWorkflowTemplates bool `toml:"experimental_workflow_templates"`
+	// tl1741：workflowPanel（任务 686 可视化面板）+ workflowTemplates（tl1454
+	// 家族子键）两实验室开关随「稳定档不再提供开关」退役（用户 20261121 三拍）
+	// ——面板入口/模板视图常显。存量手写两键由 deprecated 清单承接。
 	// ExperimentalTabModeTint is the task-504 tab-mode-tint switch, retired to
 	// a legacy alias by task 651: it only applies while the replacement
 	// TabPermissionIndicator key is still empty (true = "background", false or
@@ -353,9 +338,9 @@ type DesktopConfig struct {
 	// field, kept only so old configs still decode; never folded, never
 	// rendered — a leftover line vanishes on the next save.
 	ExperimentalDream bool `toml:"experimental_dream"`
-	// ExperimentalSessionCollab mirrored Agent.ExperimentalSessionCollab
-	// (task 19).
-	ExperimentalSessionCollab bool `toml:"experimental_session_collab"`
+	// tl1741：ExperimentalSessionCollab 的 [desktop] 镜像随撤开关退役——
+	// [agent] 主键一并退役（跨会话协作常开），load.go 的 fold 迁移逻辑随之
+	// 删除。存量 [desktop]/[agent] 两段手写键均由 deprecated 清单承接。
 	// SessionCollabHopLimit caps how many hops a cross-session chain may take
 	// (task 204). 0 keeps the package default (5); values are clamped into
 	// [MinHop, MaxHopCeiling] on write, so a stored value is always legal.
@@ -401,9 +386,8 @@ type DesktopConfig struct {
 	// kept READ-ONLY so old configs still load (task 551; the [agent] gate is
 	// removed). Never rendered or written back.
 	ExperimentalModelCapabilityFilter bool `toml:"experimental_model_capability_filter"`
-	// ExperimentalRuntimeReuse mirrored the [agent] runtime flag of task 363A
-	// (runtime assembly reuse pool).
-	ExperimentalRuntimeReuse bool `toml:"experimental_runtime_reuse"`
+	// tl1741：ExperimentalRuntimeReuse 的 [desktop] 镜像随撤开关退役——
+	// [agent] 主键一并退役，load fold 迁移删除，deprecated 清单承接存量键。
 	// CollabInboxMerge is the settings-view mirror for Agent.CollabInboxMerge
 	// (task 221): off | same_sender | all.
 	CollabInboxMerge string `toml:"collab_inbox_merge"`
@@ -530,18 +514,10 @@ type DesktopConfig struct {
 	// the general-page entry and the lab pane all hide, and nothing about the
 	// stored snippets changes.
 	ExperimentalQuickCommands bool `toml:"experimental_quick_commands"`
-	// ExperimentalCDPDebugPort is the task-342 lab switch for a WebView2 CDP
-	// (Chrome DevTools Protocol) debug endpoint. It ships OFF (铁律 2): with
-	// the zero value the desktop binary is byte-for-byte behaviour-identical
-	// to a build without the feature — no extra browser argument, no port,
-	// nothing to connect to. The WebView2 environment is created once at
-	// startup, so a flip applies on the next restart (the settings card says
-	// so). When on, the browser gets `--remote-debugging-port=0` pinned to
-	// loopback only: Chromium then picks a free ephemeral port (random, so a
-	// fixed 9222 collision is impossible) and binds it to 127.0.0.1, which is
-	// not reachable from other machines. The resolved port is written to
-	// <REASONIX_HOME>/logs/desktop/cdp-endpoint.txt for tooling to read.
-	ExperimentalCDPDebugPort bool `toml:"experimental_cdp_debug_port"`
+	// tl1741：cdpDebugPort 实验室开关随「稳定档不再提供开关」退役（用户
+	// 20261121 三拍；本机 config 实测该键显式 true，撤开关=本机行为零变化）。
+	// CDP endpoint 无条件起：loopback-only 随机端口 + endpoint 文件落盘语义
+	// 不变。存量手写 experimental_cdp_debug_port 键由 deprecated 清单承接。
 	// ExperimentalOutputStyleUI gates the lab's 「回答风格」 section (task 385a).
 	// It ships OFF (铁律 2): with the zero value the desktop exposes no
 	// output-style UI at all. It gates the UI surface only — prompt injection

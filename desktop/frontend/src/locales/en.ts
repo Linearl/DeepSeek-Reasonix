@@ -3680,6 +3680,12 @@ export const en = {
 "settings.viewLayout": "View Layout",
 "settings.smartAutomation": "Smart Automation",
 "settings.smartAutomationHint": "Smart automation merged card (task 961): decision-pattern extraction + background heartbeat mode and more in one card. Each row keeps its own switch and its own config key; the rail badge shows the highest member tier.",
+  // tl1741: right-side sub-item brief on the header card (ruling 20261121 clause 3).
+  "settings.smartAutomation.brief.title": "Sub-items in this card",
+  "settings.smartAutomation.brief.decisionPatterns": "Decision-pattern extraction: harvest verdicts from user corrections; heartbeat tasks consolidate them into the pattern file.",
+  "settings.smartAutomation.brief.heartbeatBackground": "Background heartbeat mode: scheduled runs park detached after submit — the topic tab no longer stays in the tab strip.",
+  "settings.smartAutomation.brief.stalledIntentNudge": "Stalled-intent nudge: one follow-up reminder when the model announces a next step but stops.",
+  "settings.smartAutomation.brief.standardContinuation": "Standard continuation: the host adds one bounded follow-up turn when a turn ends with unfinished work.",
   "settings.backgroundJobWakeIdleSession": "Wake the idle session when a background job finishes",
   "settings.backgroundJobWakeIdleSessionHint": "Off by default (iron rule 2: automatic wake turns are bound by the self-drive budget). When on, a background job owned by this session (including backgrounded subagents) finishing starts one automatic continuation turn while the session is idle — cost note: at most 3 wake turns per 600s, at least 60s apart. Takes effect after restart.",
   "settings.backgroundJobWakeIdleSession.on": "On",

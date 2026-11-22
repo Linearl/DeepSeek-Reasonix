@@ -1069,14 +1069,14 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		}
 	}
 	promptSegs.mark("skills")
-	if sessionCollabEnabled(cfg) {
-		// Name the directory in the prompt itself, in the words the user is
-		// likely to say. Tool schemas alone do not teach the model that
-		// 「通讯录」 maps to list_addressable_sessions / talk_to_session, and the
-		// first package shipped without this line — the model answered "no such
-		// tool" even with the tools registered.
-		sysPrompt += "\n\n" + sessionCollabIndexBlock()
-	}
+	// tl1741：跨会话协作撤开关——通讯录索引段无条件进 prompt（原默认开=
+	// 已在集，provider-visible 面零变化）。
+	// Name the directory in the prompt itself, in the words the user is
+	// likely to say. Tool schemas alone do not teach the model that
+	// 「通讯录」 maps to list_addressable_sessions / talk_to_session, and the
+	// first package shipped without this line — the model answered "no such
+	// tool" even with the tools registered.
+	sysPrompt += "\n\n" + sessionCollabIndexBlock()
 	promptSegs.mark("collab_block")
 	sysPrompt = config.ApplyOfficialDeepSeekV4ProPersona(sysPrompt, entry)
 	promptSegs.mark("persona")
@@ -1116,12 +1116,10 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		if implicitSkillInvocation {
 			rebuilt += "\n\n" + skill.InvocationPolicyBlock()
 		}
-		// 任务 1005 C4：sessionCollab 默认开，boot 在 skills policy 之后追加
-		// 通讯录索引段。压缩后的 memory 重建必须与 boot 同构，否则默认开的
+		// 任务 1005 C4 → tl1741：sessionCollab 撤开关常开，boot 在 skills policy
+		// 之后追加通讯录索引段。压缩后的 memory 重建必须与 boot 同构，否则
 		// 会话在首次压缩后就丢掉该段教学（模型会对「通讯录」答 no such tool）。
-		if sessionCollabEnabled(cfg) {
-			rebuilt += "\n\n" + sessionCollabIndexBlock()
-		}
+		rebuilt += "\n\n" + sessionCollabIndexBlock()
 		return config.ApplyOfficialDeepSeekV4ProPersona(rebuilt, entry)
 	}
 
@@ -2351,12 +2349,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// messaging off, the stream still lets a batch manager decide from file
 	// evidence alone (decoupling acceptance).
 	collabStatusPath := agent.ResolveCollabStatusPath("", config.SessionCollabMailDir(), root)
-	// Task 530: the turn-closure reply reminder arms only when the collab
-	// master switch AND the dial are both on (parent wins, 172 pre-AND
-	// shape); the session-path resolver fills in below once the executor
-	// exists. nil keeps the hook byte-for-byte silent.
+	// Task 530: the turn-closure reply reminder arms only when the dial is on
+	// (tl1741：collab 总开关撤除，dial 是唯一条件)；the session-path resolver
+	// fills in below once the executor exists. nil keeps the hook silent.
 	var collabReplyNudge *agent.CollabReplyNudgeConfig
-	if sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge {
+	if cfg.Agent.SessionCollabReplyNudge {
 		collabReplyNudge = &agent.CollabReplyNudgeConfig{StatusPath: collabStatusPath}
 	}
 	executor := agent.New(execProv, reg, execSess, agent.Options{
@@ -2500,287 +2497,287 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// the same way Trace-as-State is: the settings toggle writes both keys, and a
 	// session whose boot only saw one of them would silently lose the whole
 	// toolset — which is exactly how the first package shipped dead.
-	if sessionCollabEnabled(cfg) {
-		collabSessionDir := sessionDir
-		if strings.TrimSpace(collabSessionDir) == "" {
-			collabSessionDir = config.SessionDir()
+	// tl1741：跨会话协作撤开关——工具注册块无条件执行（原默认开=
+	// 已在集，provider-visible 工具面零变化）。Task 19 / 141-145。
+	collabSessionDir := sessionDir
+	if strings.TrimSpace(collabSessionDir) == "" {
+		collabSessionDir = config.SessionDir()
+	}
+	sessionPath := executor.SessionPath()
+	// Mint/lookup this session's contact id so replies and cards stamp a
+	// stable initiator without requiring set_session_purpose first.
+	currentContact := ""
+	if sessionPath != "" {
+		if id, err := agent.EnsureContactID(sessionPath); err == nil {
+			currentContact = id
 		}
-		sessionPath := executor.SessionPath()
-		// Mint/lookup this session's contact id so replies and cards stamp a
-		// stable initiator without requiring set_session_purpose first.
-		currentContact := ""
-		if sessionPath != "" {
-			if id, err := agent.EnsureContactID(sessionPath); err == nil {
-				currentContact = id
-			}
-		}
-		// Task 530: the reply-nudge scan shares the collab toolset's identity
-		// resolution — boot-minted contact id first, live transcript path
-		// (bound after boot for desktop sessions) as the call-time fallback.
-		if collabReplyNudge != nil {
-			collabReplyNudge.ContactID = currentContact
-			collabReplyNudge.ResolveSessionPath = executor.SessionPath
-		}
-		collab := agent.SessionCollabConfig{
+	}
+	// Task 530: the reply-nudge scan shares the collab toolset's identity
+	// resolution — boot-minted contact id first, live transcript path
+	// (bound after boot for desktop sessions) as the call-time fallback.
+	if collabReplyNudge != nil {
+		collabReplyNudge.ContactID = currentContact
+		collabReplyNudge.ResolveSessionPath = executor.SessionPath
+	}
+	collab := agent.SessionCollabConfig{
+		Enabled:            true,
+		SessionDir:         collabSessionDir,
+		WorkspaceRoot:      root,
+		CollabStatusPath:   collabStatusPath,
+		CurrentSessionPath: sessionPath,
+		CurrentContactID:   currentContact,
+		// Task 309: mailbox defaults from [agent] config.
+		MailReceiptDefault: cfg.Agent.SessionCollabMailReceiptDefault,
+		DefaultDelivery:    cfg.Agent.SessionCollabDefaultDelivery,
+		// 任务 509: pre-archive unconsumed-mail gate for delete_session
+		// (软开关 default off; boot-time snapshot — a flip applies on
+		// restart, like the other collab gates).
+		DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate,
+		// 任务 1145: registry-shell reachability for delete_session. The
+		// host closure owns the shell verdict AND the iron-rule-2 switch
+		// (both at call time); nil probes (CLI hosts, tests) leave the
+		// tool byte-identical to its pre-1145 behavior.
+		RegistryShellProbe: opts.OnRegistryShellProbe,
+		RegistryShellTrash: opts.OnRegistryShellTrash,
+		// Task 158.B: the transcript path is bound by the control layer
+		// AFTER boot, so `sessionPath` above is empty for a fresh desktop
+		// session. Resolving at call time keeps a self-directed call
+		// (set_session_purpose without target, the sender's own address)
+		// working instead of failing with "no session path".
+		ResolveSessionPath: executor.SessionPath,
+		// Task 204: resolve the chain ceiling per call, so a settings change
+		// applies to newly arriving messages without rebuilding the session.
+		HopLimit: config.SessionCollabHopLimitLive,
+		// Task 218: the host answers running/idle from its own controllers;
+		// nil (CLI, tests) keeps every state unknown instead of a guess.
+		SessionStatus: opts.OnSessionStatus,
+		// 任务 667: opt-in work detail behind include_tasks_and_subagents —
+		// the 440-panel/557-capsule runtime rows as a tool face; nil (CLI,
+		// tests) answers known=false instead of a guessed empty set.
+		SessionWorkDetail: opts.OnSessionWorkDetail,
+		// Task 243 A2: turn-scoped dispatch echo — agent method values
+		// (executor exists above; call-time reads keep it turn-accurate).
+		RecordDispatch:   executor.RecordDispatch,
+		RecentDispatches: executor.RecentDispatches,
+		// Task 274 ①: model/provider visibility for the directory rows.
+		SessionInfo: opts.OnSessionInfo,
+		// 任务 285: 会话信息面三探针（分组/版本谱系/版本切换）。
+		SessionGroup:        opts.OnSessionGroup,
+		SessionGroupMatch:   opts.OnSessionGroupMatch,
+		SessionVersions:     opts.OnSessionVersions,
+		AdoptSessionVersion: opts.OnAdoptSessionVersion,
+		// Task 274 ②③: controller hooks for stop/set_model (gated below);
+		// tl1311 adds reopen (the tab-reopen remount for a wedged session).
+		SessionControl: agent.SessionControlHooks{
+			Stop:     opts.OnSessionStop,
+			SetModel: opts.OnSessionSetModel,
+			Reopen:   opts.OnSessionReopen,
+		},
+		SessionTurnStatus: opts.OnSessionTurnStatus,
+		// Task 173: parameter-level panel gates, checked at call time with
+		// actionable refusals that name the panel switch.
+		AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
+		// Task 517: the B3 gate rides the merged safety/cost switch.
+		// Task 722: fine-grained sub-switch override (nil = inherit the master).
+		EventWaitRecheck: cfg.SafetyEventWaitRecheckEnabled(),
+		AllowSteer:       cfg.Agent.SessionCollabAllowSteer,
+		DailySendLimit:   cfg.Agent.SessionCollabDailySendLimit,
+	}
+	// Task 174: the tool family is consolidated — search folded into the
+	// list tool's query, the sync twin folded into talk's wait, and the
+	// four card tools folded into one action-routed tool. Constructors for
+	// the old names stay in agent for tests and direct callers.
+	reg.Add(agent.NewSetSessionPurposeTool(collab))
+	reg.Add(agent.NewListAddressableSessionsTool(collab))
+	reg.Add(agent.NewGetSessionStatusTool(collab))
+	// 任务 285: 会话信息面三工具（分组/版本谱系读 + 带确认的版本切换写）。
+	reg.Add(agent.NewGetSessionInfoTool(collab))
+	reg.Add(agent.NewListSessionVersionsTool(collab))
+	reg.Add(agent.NewAdoptSessionVersionTool(collab))
+	// Task 228: the orchestration wait — same state judgement as
+	// get_session_status (shared collabStatusRecords), blocking semantics.
+	// Read-only, so it rides the same unconditional registration.
+	reg.Add(agent.NewEventWaitTool(collab))
+	// Task 202: batch progress events (not busy/idle metadata - that is
+	// what get_session_status answers). Read-only and messaging-independent.
+	reg.Add(agent.NewReadCollabStatusTool(collab))
+	// Task 320 b / task 689: the SQL-shaped history query registers as the
+	// deprecated alias of mailbox(action=query) — the old constructor stays
+	// in agent for tests and direct callers (task 174 pattern).
+	reg.Add(agent.NewQueryCollabMailAliasTool(collab))
+	// Task 349: the channel tools (0928 拍板 tool set + 20261002 取消消息
+	// 增量) — list/read/send/cancel over the chat-channel entity; send
+	// expands to task-309 mailbox singles, never a second delivery path.
+	reg.Add(agent.NewChannelListTool(collab))
+	reg.Add(agent.NewChannelReadTool(collab))
+	reg.Add(agent.NewChannelSendTool(collab))
+	reg.Add(agent.NewChannelCancelTool(collab))
+	reg.Add(agent.NewTalkToSessionTool(collab))
+	// 任务 570 (c1)：按 messageId 查询投递终态（只读）。talk_to_session
+	// 的 queued 只是入队回执；注入/降级/拒绝由投递泵异步定局并写入回执
+	// 存储，发送方从这里读回真实结局。读类工具，随协作工具集注册。
+	reg.Add(agent.NewGetMessageStatusTool(collab))
+	// 任务 570 (c2) / task 689: 只读自读信箱注册为 mailbox(action=peek) 的
+	// 淡化别名（不 Claim 不 Ack，不写游标——泵/drain 的单消费者设计不受
+	// 影响）。降级/拒绝系统回执由此第一次对发送方可见。
+	reg.Add(agent.NewPeekOwnInboxAliasTool(collab))
+	// Task 284: cross-session subscriptions (the push half). Registered
+	// ONLY under task 230's experimental_event_trigger switch — 284 is
+	// the persistent form of the same engine family, so one switch
+	// governs both and no new polling surface appears while it is off
+	// (fork rule 2: default off). EnsureStarted is idempotent over the
+	// process-wide singleton; with zero subscriptions its loop blocks on
+	// the wake channel (never polls).
+	if cfg.Agent.ExperimentalEventTrigger {
+		subscribeSvc := SharedSubscribeService(collab)
+		reg.Add(agent.NewSubscribeSessionTool(collab, subscribeSvc, nil))
+		subscribeSvc.EnsureStarted()
+	}
+	// Task 274: cross-session control (stop/set_model) — registered only
+	// under its own experimental switch (fork rule 2, default off): with
+	// the switch off the directory gains no mutating verbs at all.
+	if cfg.Agent.ExperimentalSessionControl {
+		reg.Add(agent.NewSessionControlTool(collab))
+	}
+	// Task 235 / 689: the receive half of the collab mailbox. Pure pull
+	// into a tool result (D1) — settle=true claims+acks, settle=false
+	// peeks. Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
+	// exclusively by the agent's drain_inbox tool"): MailStore has exactly
+	// one consumer at a time. With experimental_collab_background_delivery
+	// ON the host pump skips delivery entirely and the drain face pulls;
+	// with it OFF the host pump delivers (runCollabDelivery) and neither
+	// mailbox(action=drain) nor its alias is executable — the pump's
+	// two-phase Claim→Ack would otherwise double-consume the same batch
+	// (audit M-a). Task 689 folds the three mailbox tools into one
+	// mailbox(action=peek|drain|query) entry: the merged tool registers
+	// unconditionally (peek/query are read-only views) while the drain
+	// ACTION re-checks the boot decision at call time, so consumption
+	// rights keep following the switch. Registration is boot-time: a switch
+	// flip applies on restart.
+	drainInboxRegistered := collabDrainInboxEnabled(&cfg.Agent)
+	// minor-1 (audit-2): publish the same decision the desktop pump gate
+	// reads, so registration and pump-skip resolve from one boot snapshot.
+	PublishCollabDrainInboxGate(drainInboxRegistered)
+	reg.Add(agent.NewMailboxTool(collab, drainInboxRegistered))
+	if drainInboxRegistered {
+		// Deprecated alias (task 689): old name forwards to
+		// mailbox(action=drain); the gate decides visibility exactly as it
+		// decided the old drain_inbox registration.
+		reg.Add(agent.NewDrainInboxAliasTool(collab, drainInboxRegistered))
+	}
+	// Task 173 ⑤: read_session_tail reads another session's transcript, so
+	// the panel keeps it unregistered until allowed — the model must not
+	// even see a tool it is not permitted to call.
+	if cfg.Agent.SessionCollabAllowReadTail {
+		reg.Add(agent.NewReadSessionTailTool(collab))
+	}
+	// Task 254: the autonomous-update surface, same iron-rule-2 gate as the
+	// early builtins — but registered HERE, after the executor exists, so
+	// the constructor can bind executor.SessionPath: capability-routed
+	// calls never cross the agent's context-binding point, and the
+	// busy-guard exemption needs the calling session on every call face.
+	// With experimental_autonomous_update off the tool is not in the
+	// registry at all; the boot snapshot decides, so a flip applies on
+	// restart.
+	if cfg.Desktop.ExperimentalAutonomousUpdate {
+		reg.Add(builtin.NewRestartUpdateWithCallerSession(executor.SessionPath))
+	}
+	if tc := agent.NewTaskCardTool(agent.TaskCardConfig{
+		Enabled:            true,
+		WorkspaceRoot:      root,
+		CurrentSessionPath: sessionPath,
+		CurrentContactID:   currentContact,
+		// Same reason as collab above (task 158.B): a card filed by a
+		// desktop session must carry its real initiator/session, not "".
+		ResolveSessionPath: executor.SessionPath,
+	}); tc != nil {
+		reg.Add(tc)
+	}
+	// Task 1001: the in-session delayed self-reminder tool. Same host-
+	// callback pattern as the card tool, but the callbacks resolve through
+	// ctrlRef (the controller is built later in this function): set/cancel/
+	// list route to the controller's durable reminder queue, and delivery
+	// rides the follow-up enqueue (任务579 idle-turn bridge) — never
+	// talk_to_session, so the cross-session receipt face (tl 1000) stays
+	// structurally untouched. With the switch off the tool is not in the
+	// registry at all; the boot snapshot decides, so a flip applies on
+	// restart.
+	if cfg.SessionRemindersEnabled() {
+		if sr := agent.NewSessionRemindTool(agent.RemindConfig{
 			Enabled:            true,
-			SessionDir:         collabSessionDir,
-			WorkspaceRoot:      root,
-			CollabStatusPath:   collabStatusPath,
 			CurrentSessionPath: sessionPath,
-			CurrentContactID:   currentContact,
-			// Task 309: mailbox defaults from [agent] config.
-			MailReceiptDefault: cfg.Agent.SessionCollabMailReceiptDefault,
-			DefaultDelivery:    cfg.Agent.SessionCollabDefaultDelivery,
-			// 任务 509: pre-archive unconsumed-mail gate for delete_session
-			// (软开关 default off; boot-time snapshot — a flip applies on
-			// restart, like the other collab gates).
-			DeleteUnreadGate: cfg.Agent.SessionCollabDeleteUnreadGate,
-			// 任务 1145: registry-shell reachability for delete_session. The
-			// host closure owns the shell verdict AND the iron-rule-2 switch
-			// (both at call time); nil probes (CLI hosts, tests) leave the
-			// tool byte-identical to its pre-1145 behavior.
-			RegistryShellProbe: opts.OnRegistryShellProbe,
-			RegistryShellTrash: opts.OnRegistryShellTrash,
-			// Task 158.B: the transcript path is bound by the control layer
-			// AFTER boot, so `sessionPath` above is empty for a fresh desktop
-			// session. Resolving at call time keeps a self-directed call
-			// (set_session_purpose without target, the sender's own address)
-			// working instead of failing with "no session path".
 			ResolveSessionPath: executor.SessionPath,
-			// Task 204: resolve the chain ceiling per call, so a settings change
-			// applies to newly arriving messages without rebuilding the session.
-			HopLimit: config.SessionCollabHopLimitLive,
-			// Task 218: the host answers running/idle from its own controllers;
-			// nil (CLI, tests) keeps every state unknown instead of a guess.
-			SessionStatus: opts.OnSessionStatus,
-			// 任务 667: opt-in work detail behind include_tasks_and_subagents —
-			// the 440-panel/557-capsule runtime rows as a tool face; nil (CLI,
-			// tests) answers known=false instead of a guessed empty set.
-			SessionWorkDetail: opts.OnSessionWorkDetail,
-			// Task 243 A2: turn-scoped dispatch echo — agent method values
-			// (executor exists above; call-time reads keep it turn-accurate).
-			RecordDispatch:   executor.RecordDispatch,
-			RecentDispatches: executor.RecentDispatches,
-			// Task 274 ①: model/provider visibility for the directory rows.
-			SessionInfo: opts.OnSessionInfo,
-			// 任务 285: 会话信息面三探针（分组/版本谱系/版本切换）。
-			SessionGroup:        opts.OnSessionGroup,
-			SessionGroupMatch:   opts.OnSessionGroupMatch,
-			SessionVersions:     opts.OnSessionVersions,
-			AdoptSessionVersion: opts.OnAdoptSessionVersion,
-			// Task 274 ②③: controller hooks for stop/set_model (gated below);
-			// tl1311 adds reopen (the tab-reopen remount for a wedged session).
-			SessionControl: agent.SessionControlHooks{
-				Stop:     opts.OnSessionStop,
-				SetModel: opts.OnSessionSetModel,
-				Reopen:   opts.OnSessionReopen,
+			Schedule: func(sessionPath, message string, dueAt time.Time) (reminder.Reminder, error) {
+				c := ctrlRef.Load()
+				if c == nil {
+					return reminder.Reminder{}, fmt.Errorf("session_remind: controller is not ready")
+				}
+				return c.ScheduleReminder(message, dueAt)
 			},
-			SessionTurnStatus: opts.OnSessionTurnStatus,
-			// Task 173: parameter-level panel gates, checked at call time with
-			// actionable refusals that name the panel switch.
-			AllowRequireReply: cfg.Agent.SessionCollabAllowRequireReply,
-			// Task 517: the B3 gate rides the merged safety/cost switch.
-			// Task 722: fine-grained sub-switch override (nil = inherit the master).
-			EventWaitRecheck: cfg.SafetyEventWaitRecheckEnabled(),
-			AllowSteer:       cfg.Agent.SessionCollabAllowSteer,
-			DailySendLimit:   cfg.Agent.SessionCollabDailySendLimit,
+			Cancel: func(sessionPath, id string) (bool, error) {
+				c := ctrlRef.Load()
+				if c == nil {
+					return false, fmt.Errorf("session_remind: controller is not ready")
+				}
+				return c.CancelReminder(id)
+			},
+			List: func(sessionPath string) ([]reminder.Reminder, error) {
+				c := ctrlRef.Load()
+				if c == nil {
+					return nil, fmt.Errorf("session_remind: controller is not ready")
+				}
+				return c.ListReminders()
+			},
+		}); sr != nil {
+			reg.Add(sr)
 		}
-		// Task 174: the tool family is consolidated — search folded into the
-		// list tool's query, the sync twin folded into talk's wait, and the
-		// four card tools folded into one action-routed tool. Constructors for
-		// the old names stay in agent for tests and direct callers.
-		reg.Add(agent.NewSetSessionPurposeTool(collab))
-		reg.Add(agent.NewListAddressableSessionsTool(collab))
-		reg.Add(agent.NewGetSessionStatusTool(collab))
-		// 任务 285: 会话信息面三工具（分组/版本谱系读 + 带确认的版本切换写）。
-		reg.Add(agent.NewGetSessionInfoTool(collab))
-		reg.Add(agent.NewListSessionVersionsTool(collab))
-		reg.Add(agent.NewAdoptSessionVersionTool(collab))
-		// Task 228: the orchestration wait — same state judgement as
-		// get_session_status (shared collabStatusRecords), blocking semantics.
-		// Read-only, so it rides the same unconditional registration.
-		reg.Add(agent.NewEventWaitTool(collab))
-		// Task 202: batch progress events (not busy/idle metadata - that is
-		// what get_session_status answers). Read-only and messaging-independent.
-		reg.Add(agent.NewReadCollabStatusTool(collab))
-		// Task 320 b / task 689: the SQL-shaped history query registers as the
-		// deprecated alias of mailbox(action=query) — the old constructor stays
-		// in agent for tests and direct callers (task 174 pattern).
-		reg.Add(agent.NewQueryCollabMailAliasTool(collab))
-		// Task 349: the channel tools (0928 拍板 tool set + 20261002 取消消息
-		// 增量) — list/read/send/cancel over the chat-channel entity; send
-		// expands to task-309 mailbox singles, never a second delivery path.
-		reg.Add(agent.NewChannelListTool(collab))
-		reg.Add(agent.NewChannelReadTool(collab))
-		reg.Add(agent.NewChannelSendTool(collab))
-		reg.Add(agent.NewChannelCancelTool(collab))
-		reg.Add(agent.NewTalkToSessionTool(collab))
-		// 任务 570 (c1)：按 messageId 查询投递终态（只读）。talk_to_session
-		// 的 queued 只是入队回执；注入/降级/拒绝由投递泵异步定局并写入回执
-		// 存储，发送方从这里读回真实结局。读类工具，随协作工具集注册。
-		reg.Add(agent.NewGetMessageStatusTool(collab))
-		// 任务 570 (c2) / task 689: 只读自读信箱注册为 mailbox(action=peek) 的
-		// 淡化别名（不 Claim 不 Ack，不写游标——泵/drain 的单消费者设计不受
-		// 影响）。降级/拒绝系统回执由此第一次对发送方可见。
-		reg.Add(agent.NewPeekOwnInboxAliasTool(collab))
-		// Task 284: cross-session subscriptions (the push half). Registered
-		// ONLY under task 230's experimental_event_trigger switch — 284 is
-		// the persistent form of the same engine family, so one switch
-		// governs both and no new polling surface appears while it is off
-		// (fork rule 2: default off). EnsureStarted is idempotent over the
-		// process-wide singleton; with zero subscriptions its loop blocks on
-		// the wake channel (never polls).
-		if cfg.Agent.ExperimentalEventTrigger {
-			subscribeSvc := SharedSubscribeService(collab)
-			reg.Add(agent.NewSubscribeSessionTool(collab, subscribeSvc, nil))
-			subscribeSvc.EnsureStarted()
+	}
+	// 144: only a host that can create sessions gets the creator tool.
+	// Task 173 ⑦ additionally lets the panel withhold it even then.
+	if opts.OnCreateCollabSession != nil && cfg.Agent.SessionCollabAllowCreate {
+		reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
+	}
+	// 154 sub-item A: only a host that can delete sessions gets the tool.
+	// Task 173 ②: the panel's 「允许删除其他会话」 gates it the same way —
+	// unregistered, not registered-but-refusing.
+	if opts.OnDeleteSession != nil && cfg.Agent.SessionCollabAllowDelete {
+		reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
+		// tl1710: trash_list / trash_restore ride the same gate — the trash
+		// faces only matter where delete_session exists, and a separate
+		// switch would be one more toggle with no separate caller.
+		if opts.OnTrashList != nil {
+			reg.Add(agent.NewTrashListTool(collab, opts.OnTrashList))
 		}
-		// Task 274: cross-session control (stop/set_model) — registered only
-		// under its own experimental switch (fork rule 2, default off): with
-		// the switch off the directory gains no mutating verbs at all.
-		if cfg.Agent.ExperimentalSessionControl {
-			reg.Add(agent.NewSessionControlTool(collab))
+		if opts.OnTrashRestore != nil {
+			reg.Add(agent.NewTrashRestoreTool(collab, opts.OnTrashRestore))
 		}
-		// Task 235 / 689: the receive half of the collab mailbox. Pure pull
-		// into a tool result (D1) — settle=true claims+acks, settle=false
-		// peeks. Block2 M-a (mutual exclusion, per the M4 user ruling "consumed
-		// exclusively by the agent's drain_inbox tool"): MailStore has exactly
-		// one consumer at a time. With experimental_collab_background_delivery
-		// ON the host pump skips delivery entirely and the drain face pulls;
-		// with it OFF the host pump delivers (runCollabDelivery) and neither
-		// mailbox(action=drain) nor its alias is executable — the pump's
-		// two-phase Claim→Ack would otherwise double-consume the same batch
-		// (audit M-a). Task 689 folds the three mailbox tools into one
-		// mailbox(action=peek|drain|query) entry: the merged tool registers
-		// unconditionally (peek/query are read-only views) while the drain
-		// ACTION re-checks the boot decision at call time, so consumption
-		// rights keep following the switch. Registration is boot-time: a switch
-		// flip applies on restart.
-		drainInboxRegistered := collabDrainInboxEnabled(&cfg.Agent)
-		// minor-1 (audit-2): publish the same decision the desktop pump gate
-		// reads, so registration and pump-skip resolve from one boot snapshot.
-		PublishCollabDrainInboxGate(drainInboxRegistered)
-		reg.Add(agent.NewMailboxTool(collab, drainInboxRegistered))
-		if drainInboxRegistered {
-			// Deprecated alias (task 689): old name forwards to
-			// mailbox(action=drain); the gate decides visibility exactly as it
-			// decided the old drain_inbox registration.
-			reg.Add(agent.NewDrainInboxAliasTool(collab, drainInboxRegistered))
-		}
-		// Task 173 ⑤: read_session_tail reads another session's transcript, so
-		// the panel keeps it unregistered until allowed — the model must not
-		// even see a tool it is not permitted to call.
-		if cfg.Agent.SessionCollabAllowReadTail {
-			reg.Add(agent.NewReadSessionTailTool(collab))
-		}
-		// Task 254: the autonomous-update surface, same iron-rule-2 gate as the
-		// early builtins — but registered HERE, after the executor exists, so
-		// the constructor can bind executor.SessionPath: capability-routed
-		// calls never cross the agent's context-binding point, and the
-		// busy-guard exemption needs the calling session on every call face.
-		// With experimental_autonomous_update off the tool is not in the
-		// registry at all; the boot snapshot decides, so a flip applies on
-		// restart.
-		if cfg.Desktop.ExperimentalAutonomousUpdate {
-			reg.Add(builtin.NewRestartUpdateWithCallerSession(executor.SessionPath))
-		}
-		if tc := agent.NewTaskCardTool(agent.TaskCardConfig{
-			Enabled:            true,
-			WorkspaceRoot:      root,
-			CurrentSessionPath: sessionPath,
-			CurrentContactID:   currentContact,
-			// Same reason as collab above (task 158.B): a card filed by a
-			// desktop session must carry its real initiator/session, not "".
-			ResolveSessionPath: executor.SessionPath,
-		}); tc != nil {
-			reg.Add(tc)
-		}
-		// Task 1001: the in-session delayed self-reminder tool. Same host-
-		// callback pattern as the card tool, but the callbacks resolve through
-		// ctrlRef (the controller is built later in this function): set/cancel/
-		// list route to the controller's durable reminder queue, and delivery
-		// rides the follow-up enqueue (任务579 idle-turn bridge) — never
-		// talk_to_session, so the cross-session receipt face (tl 1000) stays
-		// structurally untouched. With the switch off the tool is not in the
-		// registry at all; the boot snapshot decides, so a flip applies on
-		// restart.
-		if cfg.SessionRemindersEnabled() {
-			if sr := agent.NewSessionRemindTool(agent.RemindConfig{
-				Enabled:            true,
-				CurrentSessionPath: sessionPath,
-				ResolveSessionPath: executor.SessionPath,
-				Schedule: func(sessionPath, message string, dueAt time.Time) (reminder.Reminder, error) {
-					c := ctrlRef.Load()
-					if c == nil {
-						return reminder.Reminder{}, fmt.Errorf("session_remind: controller is not ready")
-					}
-					return c.ScheduleReminder(message, dueAt)
-				},
-				Cancel: func(sessionPath, id string) (bool, error) {
-					c := ctrlRef.Load()
-					if c == nil {
-						return false, fmt.Errorf("session_remind: controller is not ready")
-					}
-					return c.CancelReminder(id)
-				},
-				List: func(sessionPath string) ([]reminder.Reminder, error) {
-					c := ctrlRef.Load()
-					if c == nil {
-						return nil, fmt.Errorf("session_remind: controller is not ready")
-					}
-					return c.ListReminders()
-				},
-			}); sr != nil {
-				reg.Add(sr)
-			}
-		}
-		// 144: only a host that can create sessions gets the creator tool.
-		// Task 173 ⑦ additionally lets the panel withhold it even then.
-		if opts.OnCreateCollabSession != nil && cfg.Agent.SessionCollabAllowCreate {
-			reg.Add(agent.NewCreateCollabSessionTool(root, opts.OnCreateCollabSession))
-		}
-		// 154 sub-item A: only a host that can delete sessions gets the tool.
-		// Task 173 ②: the panel's 「允许删除其他会话」 gates it the same way —
-		// unregistered, not registered-but-refusing.
-		if opts.OnDeleteSession != nil && cfg.Agent.SessionCollabAllowDelete {
-			reg.Add(agent.NewDeleteSessionTool(collab, opts.OnDeleteSession))
-			// tl1710: trash_list / trash_restore ride the same gate — the trash
-			// faces only matter where delete_session exists, and a separate
-			// switch would be one more toggle with no separate caller.
-			if opts.OnTrashList != nil {
-				reg.Add(agent.NewTrashListTool(collab, opts.OnTrashList))
-			}
-			if opts.OnTrashRestore != nil {
-				reg.Add(agent.NewTrashRestoreTool(collab, opts.OnTrashRestore))
-			}
-		}
-		// 170: the "改" half of the CRUD. Both are host capabilities like the
-		// two above: a CLI host without a sidebar has nothing to move or retitle.
-		if opts.OnRenameSession != nil {
-			reg.Add(agent.NewRenameSessionTool(collab, opts.OnRenameSession))
-			// 任务 949：rename_topic——按 topic_id/contact_id 定址的改名面（命名
-			// 方案执行用），与 rename_session 同一宿主回调、同一权限面：宿主无
-			// 能力则整件不注册，与上面两个 host-capability 工具同门。
-			reg.Add(agent.NewRenameTopicTool(collab, opts.OnRenameSession))
-		}
-		if opts.OnMoveTopicToGroup != nil {
-			reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
-		}
-		// Task 892: the unified manage face. Same host-capability gate as the
-		// two above — a host without the desktop's group store has nothing to
-		// manage, so the tool stays unregistered rather than refusing.
-		if opts.OnManageSessions != nil {
-			reg.Add(agent.NewManageSessionsTool(collab, opts.OnManageSessions))
-		}
-		// 任务 954（951 第二批②）：L0 聚合件 session_hub——仅在
-		// experimental_capability_groups 开启时注册（铁律 2 默认关）。分发层是薄壳：
-		// 从注册表取回上面九件的同一实例（reg.Get），action 路由+参数归一后转发，
-		// 不重写任何逻辑（架构修点②）。关态不注册，九件保持直挂行为等价；开态 hub
-		// 经 providerSurfaceExtras 独占可见面，旧件仅 use_capability 可达（修点③：
-		// 撤 L0 但保持注册，存量转录经 use_capability 仍能调到旧名）。
-		if cfg.Agent.ExperimentalCapabilityGroups {
-			reg.Add(agent.NewSessionHubTool(sessionHubTargetsFromRegistry(reg)))
-		}
+	}
+	// 170: the "改" half of the CRUD. Both are host capabilities like the
+	// two above: a CLI host without a sidebar has nothing to move or retitle.
+	if opts.OnRenameSession != nil {
+		reg.Add(agent.NewRenameSessionTool(collab, opts.OnRenameSession))
+		// 任务 949：rename_topic——按 topic_id/contact_id 定址的改名面（命名
+		// 方案执行用），与 rename_session 同一宿主回调、同一权限面：宿主无
+		// 能力则整件不注册，与上面两个 host-capability 工具同门。
+		reg.Add(agent.NewRenameTopicTool(collab, opts.OnRenameSession))
+	}
+	if opts.OnMoveTopicToGroup != nil {
+		reg.Add(agent.NewMoveTopicToGroupTool(collab, opts.OnMoveTopicToGroup))
+	}
+	// Task 892: the unified manage face. Same host-capability gate as the
+	// two above — a host without the desktop's group store has nothing to
+	// manage, so the tool stays unregistered rather than refusing.
+	if opts.OnManageSessions != nil {
+		reg.Add(agent.NewManageSessionsTool(collab, opts.OnManageSessions))
+	}
+	// 任务 954（951 第二批②）：L0 聚合件 session_hub——仅在
+	// experimental_capability_groups 开启时注册（铁律 2 默认关）。分发层是薄壳：
+	// 从注册表取回上面九件的同一实例（reg.Get），action 路由+参数归一后转发，
+	// 不重写任何逻辑（架构修点②）。关态不注册，九件保持直挂行为等价；开态 hub
+	// 经 providerSurfaceExtras 独占可见面，旧件仅 use_capability 可达（修点③：
+	// 撤 L0 但保持注册，存量转录经 use_capability 仍能调到旧名）。
+	if cfg.Agent.ExperimentalCapabilityGroups {
+		reg.Add(agent.NewSessionHubTool(sessionHubTargetsFromRegistry(reg)))
 	}
 	// Task 482（fence 退役）: the tool_recovery self-diagnosis tool is withdrawn
 	// with the fence it served — no remaining error copy may point at it.
@@ -4343,17 +4340,11 @@ func workspaceFileInventory(root string) []string {
 	return out
 }
 
-// collabDisabledSkillNames hides the collaboration secretary protocol while the
-// experiment is off. The skill's own text tells the model to call
-// talk_to_session / task_card / create_collab_session; with those tools
-// unregistered, offering the skill would guarantee a "tool not found" failure,
-// which is exactly what "failures are never silent" is meant to prevent.
+// collabDisabledSkillNames returns the user-disabled skill names. tl1741：跨
+// 会话协作撤开关后工具/技能无条件注册，协作秘书协议不再需要 experiment-off
+// 隐藏分支（原「开关关时隐藏 collab-secretary」分支删除）。
 func collabDisabledSkillNames(cfg *config.Config) []string {
-	names := cfg.DisabledSkillNames()
-	if sessionCollabEnabled(cfg) {
-		return names
-	}
-	return append(append([]string(nil), names...), "collab-secretary")
+	return cfg.DisabledSkillNames()
 }
 
 // featureGatedBuiltinNames hides shipped built-ins whose feature switch is off
@@ -4368,13 +4359,8 @@ func featureGatedBuiltinNames(cfg *config.Config) []string {
 	return []string{skill.GeneralPurposeProfileName}
 }
 
-// sessionCollabEnabled reports whether multi-session collaboration is on. Either
-// the agent runtime flag or the desktop settings mirror is enough: the toggle
-// writes both, and a boot that only read one of them would fail to register the
-// toolset while Settings still showed the experiment as enabled.
-func sessionCollabEnabled(cfg *config.Config) bool {
-	return cfg != nil && cfg.Agent.ExperimentalSessionCollab
-}
+// tl1741：sessionCollabEnabled 门随撤开关删除——跨会话协作无条件启用
+// （工具注册/prompt 段/信件泵不再读任何开关）。
 
 // highSpeedModelsFromConfig arms the high-speed model lane only when the
 // experiment is on (task 318.1). Off — the default — ignores the configured

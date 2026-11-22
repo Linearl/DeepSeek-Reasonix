@@ -45,29 +45,12 @@ func TestCDPEndpointFileLifecycle(t *testing.T) {
 	}
 }
 
-// The disabled arm is the zero-behaviour contract (铁律 2): no argument.
-func TestCDPDebugPortBrowserArgDisabled(t *testing.T) {
-	if got := cdpDebugPortBrowserArg(false); got != "" {
-		t.Fatalf("disabled switch must return no browser argument, got %q", got)
-	}
-	if got := cdpDebugPortBrowserArg(true); got != "--remote-debugging-port=0" {
-		t.Fatalf("enabled switch must request the random loopback port, got %q", got)
+// tl1741：开关退役——arg 无条件返回（loopback-only 随机端口契约不变）。
+func TestCDPDebugPortBrowserArgAlwaysArmed(t *testing.T) {
+	if got := cdpDebugPortBrowserArg(); got != "--remote-debugging-port=0" {
+		t.Fatalf("armed endpoint must request the random loopback port, got %q", got)
 	}
 }
 
-// prepareCDPDebugEndpoint with the switch off must not touch the env channel:
-// the process environment is part of the zero-behaviour surface.
-func TestPrepareCDPDebugEndpointOffKeepsEnvClean(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv(cdpEndpointFileEnv, filepath.Join(dir, "cdp-endpoint.txt"))
-	t.Setenv("REASONIX_WEBVIEW2_EXTRA_ARGS", "")
-	t.Setenv("REASONIX_HOME", filepath.Join(dir, "home"))
-
-	prepareCDPDebugEndpoint()
-	if got := os.Getenv("REASONIX_WEBVIEW2_EXTRA_ARGS"); got != "" {
-		t.Fatalf("switch off must not set REASONIX_WEBVIEW2_EXTRA_ARGS, got %q", got)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "cdp-endpoint.txt")); !os.IsNotExist(err) {
-		t.Fatalf("switch off must leave no endpoint file, stat err = %v", err)
-	}
-}
+// tl1741：TestPrepareCDPDebugEndpointOffKeepsEnvClean 随撤开关删除——
+// endpoint 无条件武装，off 态不存在（armed 态由其余断言覆盖）。

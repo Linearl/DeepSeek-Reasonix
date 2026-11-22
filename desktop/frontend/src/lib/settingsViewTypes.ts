@@ -10,7 +10,7 @@ export interface SettingsView {
   modelEfforts?: Record<string, string>;
   plannerModel: string;
   guardianModel: string;
-  autopilot: boolean;
+  // tl1741：autopilot 偏好随撤开关退役；MaxRuntime/ApprovalGrace 护栏键保留。
   autopilotMaxRuntime: string;
   autopilotApprovalGrace: string;
   /** Task 477: the experimental ask-timeout sub-option switch (default off). */
@@ -49,10 +49,8 @@ export interface SettingsView {
   experimentalSessionMonitor?: boolean;
   // Task 70-1: exposes the tab-bar split view (experimental).
   experimentalSplitView?: boolean;
-  // Task 677: LEGACY group-chat entry switch (task 856 migration source only).
-  experimentalCollabGroupView?: boolean;
-  // Task 856 ③: gates the unified collaboration-hub entry (experimental).
-  experimentalCollabHub?: boolean;
+  // tl1741：experimentalCollabGroupView（task-677 legacy）与 experimentalCollabHub
+  // （856③）随撤开关退役——协作中心入口常显。
   // Task 705: folds over-long cross-session messages into a summary bar (experimental; off = render in full).
   experimentalSessionCollabAutoFold?: boolean;
   // Task 704: gates the topicbar transcript|trajectory switch and the trajectory surface (experimental; off = transcript only).
@@ -111,11 +109,8 @@ export interface SettingsView {
   // covers the main region until the core UI is mounted then fades out);
   // default off, pure frontend gate — settings save re-applies.
   experimentalStartupSplash?: boolean;
-  // 任务 686: workflow visualization panel (palette entry opening the DAG flow
-  // view; default off, pure frontend gate — settings save re-applies).
-  experimentalWorkflowPanel?: boolean;
-  // tl1454: user workflow templates (workflowPanel family sub-key; live-read).
-  experimentalWorkflowTemplates?: boolean;
+  // tl1741：experimentalWorkflowPanel / experimentalWorkflowTemplates 随撤开关
+  // 退役——工作流面板/模板常显。
   // 任务 742: heartbeat background mode (runs park their tab detached after
   // submit; default off). The engine reads the switch at call time.
   experimentalHeartbeatBackground?: boolean;
@@ -134,9 +129,7 @@ export interface SettingsView {
   experimentalCompletionSummary?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
-  // Task 342: WebView2 CDP debug endpoint (loopback-only random port; ships
-  // off; the WebView2 browser args are read at startup — restart to apply).
-  experimentalCDPDebugPort?: boolean;
+  // tl1741：experimentalCDPDebugPort 随撤开关退役——CDP endpoint 无条件起。
   // Task 790: resident ACP listener (ships off; the listener arms at desktop
   // boot — restart to apply).
   experimentalACPListen?: boolean;
@@ -301,8 +294,7 @@ export interface SettingsView {
   experimentalCurateContext?: boolean;
   // tl1378: review-hint prompt layer (boot snapshot).
   experimentalReviewHint?: boolean;
-  // Task 19: multi-session collaboration experiment.
-  experimentalSessionCollab?: boolean;
+  // tl1741：experimentalSessionCollab 随撤开关退役（跨会话协作常开）。
   // 任务 517: merged safety/cost switch (one「安全 / 成本控制」knob for the
   // task-244 B1/B2/B3 guards).
   experimentalSafetyCostControl?: boolean;
@@ -316,8 +308,7 @@ export interface SettingsView {
   // Task 449: merged orphan switch (folds task 244 B5 lease reclaim + B4
   // recovery sweep into one key).
   experimentalOrphanHandling?: boolean;
-  // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
-  experimentalRuntimeReuse?: boolean;
+  // tl1741：experimentalRuntimeReuse 随撤开关退役（复用池常开）。
   visionModel: string;
   webSearchModel?: string;
   webSearchModels?: string[];

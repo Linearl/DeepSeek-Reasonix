@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -237,40 +236,8 @@ func TestTL1454PanelGateDenyRulesBite(t *testing.T) {
 	}
 }
 
-// A3: switch off ⇒ template writes refused, definition overwrites archive
-// nothing (store byte-identical to pre-tl1454); switch on ⇒ the agent
-// overwrite path archives too.
-func TestTL1454SwitchOffKeepsStoreUnchanged(t *testing.T) {
-	home := templateHome(t, false)
-	dir := filepath.Join(home, "workflows")
-	svc := NewService(dir)
-	ctx := context.Background()
-	if _, err := svc.SaveTemplate(tplFixed, ""); !errors.Is(err, ErrTemplatesDisabled) {
-		t.Fatalf("save must be refused while off: %v", err)
-	}
-	if _, err := svc.RunTemplate(ctx, "audit", TemplateRunOptions{}); !errors.Is(err, ErrTemplatesDisabled) {
-		t.Fatalf("run must be refused while off: %v", err)
-	}
-	if _, err := svc.DefineWorkflow(ctx, tplFixed, false); err != nil {
-		t.Fatal(err)
-	}
-	edited := strings.Replace(tplFixed, "scan the workspace", "rescan", 1)
-	if _, err := svc.DefineWorkflow(ctx, edited, true); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, versionsDirName)); !os.IsNotExist(err) {
-		t.Fatalf("switch off: overwrite must not create %s/ (err=%v)", versionsDirName, err)
-	}
-
-	templateHome(t, true)
-	svc2 := NewService(dir)
-	if _, err := svc2.DefineWorkflow(ctx, tplFixed, true); err != nil {
-		t.Fatal(err)
-	}
-	if hist := svc2.TemplateHistory("audit"); len(hist) != 1 {
-		t.Fatalf("switch on: the agent overwrite path archives the previous head too: %+v", hist)
-	}
-}
+// tl1741：A3（TestTL1454SwitchOffKeepsStoreUnchanged）随撤开关删除——
+// 模板写/运行/归档无条件启用，off 态不存在；归档语义由其余测试覆盖。
 
 // B6: invalid catalog files are listed with a located error, never rewritten,
 // and can be repaired explicitly (the original bytes go to history first).

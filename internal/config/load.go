@@ -159,16 +159,9 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 	globalSandboxAllowGlobal := append([]string(nil), cfg.Sandbox.AllowGlobal...)
 
 	tomlSources = append(tomlSources, projectTOML)
-	// tl1579: inheritLegacyCollabHubKey runs inside every decodeTOMLBytes
-	// (decode.go), so merging the project file — which typically does not
-	// define desktop.experimental_collab_hub — re-triggers the task-856
-	// legacy inheritance on the accumulated cfg and overwrites the value the
-	// user config already placed there with the retired legacy key's value
-	// (the desktop collab-hub entry then boots hidden). Snapshot the
-	// user-merged value and restore it when the project file does not define
-	// the new key; a project-defined value still wins, same precedence as
-	// every other key.
-	collabHubBeforeProjectMerge := cfg.Desktop.ExperimentalCollabHub
+	// tl1579 的 collabHub legacy 继承保护随 tl1741 撤开关退役：键自 struct
+	// 退役后 decode 侧不再有任何继承钩子，项目合并无法再触发覆盖，快照/
+	// 恢复逻辑一并删除。
 	projectMeta, err := mergeTOML(cfg, projectTOML)
 	if err != nil {
 		// Project config damage is isolated to this workspace: continue with
@@ -182,14 +175,6 @@ func loadForRoot(root string, opts loadForRootOptions) (*Config, error) {
 		tomlSources = tomlSources[:len(tomlSources)-1]
 	} else if projectMeta.IsDefined("agent", "system_prompt_file") {
 		cfg.systemPromptFileSource = promptFileSourceProject
-	}
-	// Restore after the branch above so a project file that also defines
-	// agent.system_prompt_file still gets the snapshot back (the inheritance
-	// hook fired inside this merge whenever the project file lacks the new key,
-	// regardless of what else it defines). On decode error the hook never ran
-	// and the accumulated cfg was left untouched, so nothing to restore.
-	if err == nil && !projectMeta.IsDefined("desktop", "experimental_collab_hub") {
-		cfg.Desktop.ExperimentalCollabHub = collabHubBeforeProjectMerge
 	}
 	// The native CLI update channel controls the one user-installed binary.
 	// A repository-local reasonix.toml must never switch that global choice.
@@ -910,7 +895,9 @@ func migrateLabMirrorKeysToAgent(c *Config) bool {
 	// tl1453: the dream fold is gone with the feature — both tombstone fields
 	// decode and are ignored (a stale mirror true stays inert; nothing consumes
 	// either side anymore).
-	fold(&c.Agent.ExperimentalSessionCollab, &c.Desktop.ExperimentalSessionCollab)
+	// tl1741: the sessionCollab / runtimeReuse folds are gone with the retired
+	// switches — both sides retired from the struct, deprecated-key warnings
+	// cover leftover lines, no fold target exists anymore.
 	fold(&c.Agent.ExperimentalAutoLoadOlder, &c.Desktop.ExperimentalAutoLoadOlder)
 	fold(&c.Agent.ExperimentalPerfMonitor, &c.Desktop.ExperimentalPerfMonitor)
 	fold(&c.Agent.ExperimentalHeapHighProfile, &c.Desktop.ExperimentalHeapHighProfile)
@@ -919,7 +906,6 @@ func migrateLabMirrorKeysToAgent(c *Config) bool {
 	fold(&c.Agent.ExperimentalEventWaitRecheck, &c.Desktop.ExperimentalEventWaitRecheck)
 	fold(&c.Agent.ExperimentalOrphanHandling, &c.Desktop.ExperimentalOrphanHandling)
 	fold(&c.Agent.ExperimentalModelCapabilityFilter, &c.Desktop.ExperimentalModelCapabilityFilter)
-	fold(&c.Agent.ExperimentalRuntimeReuse, &c.Desktop.ExperimentalRuntimeReuse)
 	fold(&c.Agent.CollabGuidanceMerge, &c.Desktop.CollabGuidanceMerge)
 	return changed
 }

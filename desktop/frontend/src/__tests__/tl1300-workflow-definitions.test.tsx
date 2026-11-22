@@ -301,7 +301,8 @@ function renameDraftProblemActive(): boolean {
     ok(en.includes(`"${key}"`) && zh.includes(`"${key}"`) && zhTw.includes(`"${key}"`), `three dialects carry ${key}`);
   }
   ok(read("src/styles.css").includes(".wf-def-card {"), "the definitions card styles are appended to the stylesheet");
-  ok(labFlagEnabled("workflowPanel") === false && labFlagEnabled("workflowTemplates") === false, "no new lab switch was introduced (defaults restored)");
+  // tl1741：两 flag 随撤开关退役——labFlags 无此二键（undefined，非 off）。
+  ok(labFlagEnabled("workflowPanel") === undefined && labFlagEnabled("workflowTemplates") === undefined, "no lab switch remains for panel/templates (tl1741 retired both)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

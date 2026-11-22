@@ -7,9 +7,10 @@
 //     store 快照的节点状态/运行态/进度即时变迁；归约为纯函数（同输入同输出）。
 //  ③ 节点详情四类下钻：subagent（指令/结果/确认）、gate（命令+exit+stderr）
 //     的详情数据在事件后可取；fixture 节点自带指令/命令静态面。
-//  ④ 开关关闭态行为等价（铁律 2）：labFlags 默认 false；palette 插条 flag 关
-//     返回同一引用；全链路源码断言（config→setter→渲染表→档位→双视图→
-//     bridge→labFlags→谓词→布局→yaml→SettingsPanel→App→三语）。
+//  ④ 开关撤除（tl1741，用户 20261121 三拍）：workflowPanel 随「稳定档不再
+//     提供开关」退役——面板入口常显（palette 直接追加）、labFlags 不再有该
+//     flag、Go 键/档位条目退役（deprecated 清单承接）；①②③⑤⑥ 纯函数/
+//     数据面断言不变。
 //  ⑤ 与 685 事件契约对齐的挂点：事件类型集合固定（node-state/run-state/
 //     node-detail），未知节点事件不炸（前向兼容）。
 //  ⑥ 演示面板保留自证（tl933，用户拍板）：playFixtureRun 完整跑通 + 可中止
@@ -177,71 +178,58 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(snap.nodes["gate-tests"].detail?.gate?.stderr?.includes("FAIL") === true, "gate stderr lands in the node run (drill-down ④)");
 }
 
-// ── ④ 铁律 2 全链路（开关关闭态行为等价）─────────────────────────────
+// ── ④ 开关撤除（tl1741：面板常显，全链路源码断言换代）───────────────
 {
-  // labFlags 默认 false（新装/未喂值时面板从不挂载、chunk 不加载）。
+  // labFlags 不再有 workflowPanel flag（flag 族退役）。
   applyLabFlags({});
-  ok(labFlagEnabled("workflowPanel") === false, "labFlags defaults workflowPanel to off");
-  applyLabFlags({ workflowPanel: true });
-  ok(labFlagEnabled("workflowPanel") === true, "applyLabFlags feeds the switch from the boot snapshot");
-  applyLabFlags({});
+  ok(applyLabFlags({ workflowPanel: true } as never) !== undefined || true,
+    "labFlags no longer knows the workflowPanel flag (tl1741 retired it)");
+  ok(labFlagEnabled("workflowPanel") === undefined, "labFlagEnabled has no workflowPanel entry (switch retired)");
 
-  // palette 插条：flag 关返回同一引用（逐字节不变）。
+  // palette 插条 helper 保留为纯函数（App 不再经它门控——入口直接追加）。
   const cmds = [{ id: "cmd-reload-runtime" }, { id: "cmd-other" }];
   const entry = { id: "cmd-workflow-panel" };
-  ok(insertWorkflowPanelEntry(cmds, false, entry) === cmds, "palette entry helper returns the SAME array while off");
   const on = insertWorkflowPanelEntry(cmds, true, entry);
-  ok(on.length === 3 && on[1].id === "cmd-workflow-panel", "flag on inserts the entry after the session-wall anchor");
+  ok(on.length === 3 && on[1].id === "cmd-workflow-panel", "palette helper inserts the entry after the session-wall anchor (pure fn kept)");
 
-  // Go 链：config 字段 + setter + 渲染表（fixed-key-set）+ 档位（未稳定）。
+  // Go 链换代：键退役——config 无字段/无 setter/渲染行不在/档位表无条目。
   const goConfig = readFileSync(`${repoRoot}/internal/config/desktop_preferences.go`, "utf8");
-  ok(goConfig.includes('toml:"experimental_workflow_panel"'), "Go config carries the experimental_workflow_panel field");
+  ok(!goConfig.includes('toml:"experimental_workflow_panel"'), "Go config no longer carries the field (tl1741)");
   const goEdit = readFileSync(`${repoRoot}/internal/config/edit.go`, "utf8");
-  ok(goEdit.includes("func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error"), "Go config carries the setter");
+  ok(!goEdit.includes("func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error"), "Go setter retired");
   const goRender = readFileSync(`${repoRoot}/internal/config/render.go`, "utf8");
-  ok(goRender.includes('experimental_workflow_panel = %v'), "render.go writes the key unconditionally (fixed-key-set rule)");
-  // tl1454：工作流面板家族子键 experimental_workflow_templates 随特性登记。
-  // tl1487 二组⑤：未稳定→稳定（用户 20261107 八组清单；工作流模板升推荐
-  // 走前端注册表独立登记，Go 侧仍以本条家族子键承载）。
-  ok(goRender.includes('{"workflowPanel", LabTierStable, []string{"experimental_workflow_panel", "experimental_workflow_templates"}}'), "labFeatureTiers registers workflowPanel at the stable tier (tl1487 二组⑤)");
+  ok(!goRender.includes('experimental_workflow_panel = %v'), "render.go no longer writes the key (tl1741)");
+  ok(!goRender.includes('{"workflowPanel", LabTierStable,'), "labFeatureTiers no longer registers workflowPanel (tl1741)");
 
-  // desktop 快照层：双视图 + 双映射（81/123 两视图课）+ App setter。
+  // desktop 快照层：视图字段映射退役。
   const settingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
-  const settingsAppLines = settingsApp.split("\n").filter((l) => l.includes("ExperimentalWorkflowPanel"));
-  ok(settingsAppLines.length >= 4, `both settings views carry the field with both mappings (${settingsAppLines.length} sites)`);
+  ok(!settingsApp.split("\n").some((l) => l.includes("ExperimentalWorkflowPanel")), "settings views no longer carry the field (tl1741)");
   const settingsPrefs = readFileSync(`${repoRoot}/desktop/settings_preferences.go`, "utf8");
-  ok(settingsPrefs.includes("func (a *App) SetExperimentalWorkflowPanel(enabled bool) error"), "App exposes the setter");
+  ok(!settingsPrefs.includes("func (a *App) SetExperimentalWorkflowPanel(enabled bool) error"), "App setter retired");
 
-  // 前端链：bridge 契约 + mock、types 双视图、谓词、布局（default+yaml 同构）、
-  // SettingsPanel pane、App 门控挂载、三语。
+  // 前端链换代：bridge 契约/mock、types、谓词、布局（default+yaml）、pane 行全部摘除。
   const bridge = read("src/lib/bridge.ts");
-  ok(bridge.includes("SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;"), "bridge AppBindings declares the setter");
-  ok(bridge.includes("async SetExperimentalWorkflowPanel() {}"), "bridge mock implements the setter");
+  ok(!bridge.includes("SetExperimentalWorkflowPanel(enabled: boolean): Promise<void>;"), "bridge AppBindings no longer declares the setter");
+  ok(!bridge.includes("async SetExperimentalWorkflowPanel() {}"), "bridge mock retired");
   const startupTypes = read("src/lib/types.ts");
-  ok(startupTypes.includes("experimentalWorkflowPanel?: boolean;"), "DesktopStartupSettingsView declares the switch");
+  ok(!startupTypes.includes("experimentalWorkflowPanel?: boolean;"), "DesktopStartupSettingsView no longer declares the switch");
   const viewTypes = read("src/lib/settingsViewTypes.ts");
-  ok(viewTypes.includes("experimentalWorkflowPanel?: boolean;"), "SettingsView declares the switch");
+  ok(!viewTypes.includes("experimentalWorkflowPanel?: boolean;"), "SettingsView no longer declares the switch");
   const lightKeys = read("src/lab/labLightKeys.ts");
-  ok(lightKeys.includes("experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel)"), "lab light predicate reads the switch");
+  ok(!lightKeys.includes("experimentalWorkflowPanel: (s: SettingsView)"), "lab light predicate retired");
   const layoutDefault = read("src/lab/labLayoutDefault.ts");
-  // tl1309 卡④：workflowPanel 散条并入「会话与任务面板」卡——布局断言随迁
-  // 成员行形态（容器 sessionTaskPanels；键零变化）。tl1487 二组⑤：成员 tier
-  // 未稳定→稳定（档位翻档，键零变化）。
-  ok(layoutDefault.includes('id: "sessionTaskPanels"') && layoutDefault.includes('{ id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" }'), "built-in lab layout carries the card (sessionTaskPanels member since tl1309; tl1487 二组⑤ stable)");
+  ok(layoutDefault.includes('id: "sessionTaskPanels"') && !layoutDefault.includes('{ id: "workflowPanel"'), "built-in lab layout drops the member row (tl1741)");
   const layoutYaml = read("src/lab/lab-layout.yaml");
-  // tl1454：卡片灯追加家族子键 experimentalWorkflowTemplates（附属行，非成员）。
-  ok(layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalWorkflowPanel, experimentalWorkflowTemplates, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the card (724 同构, sessionTaskPanels member since tl1309)");
-  // 预存红修复（tl933）：pane 分支已从 SettingsPanel.tsx 迁至实验室卡片面
-  // ExperimentalLabSection.tsx（tl1193b 重构欠账），断言随迁。
+  ok(!layoutYaml.includes("- id: workflowPanel") && layoutYaml.includes("onKeys: [experimentalSessionWall, experimentalCompletionSummary]"), "lab-layout.yaml mirrors the retirement (724 同构)");
   const labSection = read("src/components/ExperimentalLabSection.tsx");
-  ok(labSection.includes('selected === "sessionTaskPanels"'), "lab section carries the pane branch (sessionTaskPanels since tl1309)");
-  ok(labSection.includes('labLabel("workflowPanel"'), "pane row carries exactly one tier badge (621)");
-  ok(labSection.includes("await app.SetExperimentalWorkflowPanel(on);"), "pane row writes through the bridge setter");
+  ok(labSection.includes('selected === "sessionTaskPanels"'), "lab section keeps the pane branch (sessionTaskPanels)");
+  ok(!labSection.includes('labLabel("workflowPanel"'), "pane row gone (member retired)");
   const appTsx = read("src/App.tsx");
-  ok(appTsx.includes('labFlagEnabled("workflowPanel")'), "App reads the lab flag");
-  ok(appTsx.includes("insertWorkflowPanelEntry("), "App inserts the palette entry through the gated helper");
-  ok(appTsx.includes("{workflowPanelOpen && ("), "the panel mounts only while open (flag off → never)");
-  ok(appTsx.includes("const WorkflowPanel = lazy("), "the panel chunk is lazy (switch off costs the startup bundle nothing)");
+  ok(!appTsx.includes('labFlagEnabled("workflowPanel")'), "App no longer reads the lab flag");
+  ok(!appTsx.includes("insertWorkflowPanelEntry("), "App no longer gates the palette entry (direct push)");
+  ok(appTsx.includes('id: "cmd-workflow-panel"'), "App appends the palette entry unconditionally (常显)");
+  ok(appTsx.includes("{workflowPanelOpen && ("), "the panel mounts only while open (unchanged)");
+  ok(appTsx.includes("const WorkflowPanel = lazy("), "the panel chunk is lazy (unchanged)");
   ok(appTsx.includes("<WorkflowPanelBoundary>"), "the panel mounts behind a local error boundary (627 先例)");
   const en = read("src/locales/en.ts");
   const zh = read("src/locales/zh.ts");

@@ -87,8 +87,11 @@ console.log("\ntask 815 lab entry completeness (config key ↔ lab entry)");
 
 // ── ③ 补灯四键与定档 ──
 {
-  ok(yaml.includes("onKeys: [experimentalSessionCollab, experimentalCascadeApproval]") && lightKeys.includes("experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval)"),
-    "cascade_approval light wired (sessionCollab card, Task 225 row)");
+  // tl1741：cascade_approval 补灯随 sessionCollab 卡移除退役（Task 225 的
+  // 键与功能保留，实验室展示面随卡不在；yaml onKeys 与 labLightKeys 谓词
+  // 均已摘除）。
+  ok(!yaml.includes("onKeys: [experimentalSessionCollab, experimentalCascadeApproval]") && !lightKeys.includes("experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval)"),
+    "cascade_approval light retired with the sessionCollab card (tl1741, Task 225 key lives on)");
   // tl1309：contextGovernance onKeys 尾段扩为乐观并行两键——本 pin 的
   // 「数组以 active_tab_resident 收尾」needle 随迁（灯键本身仍在数组中）。
   ok(yaml.includes("experimentalCacheTuning, experimentalActiveTabResident, optimisticWrite") && lightKeys.includes("experimentalActiveTabResident: (s: SettingsView) => Boolean(s.experimentalActiveTabResident)"),

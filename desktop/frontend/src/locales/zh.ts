@@ -3660,6 +3660,12 @@ export const zh: Record<DictKey, string> = {
 "settings.viewLayout": "视图布局",
 "settings.smartAutomation": "智能自动化",
 "settings.smartAutomationHint": "智能自动化合并卡（任务 961）：决策模式提取 + 心跳任务后台化等行合一。卡内各行各自独立开关、各读各的配置键；右侧 rail 徽章取卡内最高档。",
+  // tl1741：顶部卡右侧子项概要（拍板 20261121 三条款③——右侧空间改主题概要）。
+  "settings.smartAutomation.brief.title": "本卡子项",
+  "settings.smartAutomation.brief.decisionPatterns": "决策模式提取：从用户否定/修正 AI 的轮次提取裁决，心跳任务定期固化进决策模式文件。",
+  "settings.smartAutomation.brief.heartbeatBackground": "心跳任务后台化：计划任务提交后转入后台驻留，话题标签不常驻标签栏。",
+  "settings.smartAutomation.brief.stalledIntentNudge": "提前结束续轮提醒：模型宣布下一步却停手时，追加一次续轮提醒。",
+  "settings.smartAutomation.brief.standardContinuation": "普通对话续跑：「列了待办没收尾」时宿主补一轮有界续跑（无进展即停）。",
   "settings.backgroundJobWakeIdleSession": "后台任务完成时自动唤醒空闲会话续轮",
   "settings.backgroundJobWakeIdleSessionHint": "默认关（铁律 2：自动开轮受自驱预算约束）。开启后，本会话拥有的后台任务（含后台化子代理）完成时，会话空闲会自动续一轮处理结果——额度影响：自动开轮最多 3 轮/600s，两轮之间至少隔 60s。改动需重启生效。",
   "settings.backgroundJobWakeIdleSession.on": "开",

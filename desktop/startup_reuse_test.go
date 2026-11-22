@@ -39,32 +39,19 @@ func TestStartupChainReuseHitAndStore(t *testing.T) {
 	a := &App{}
 	key := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
 
-	// Gate off: seed an explicit false — 任务 1005 后 runtimeReuse 转稳定档
-	// 默认开，缺省键读默认开，「gate off」必须走 C4 kill switch 手写 false。
+	// tl1741：开关退役（复用池常开）——gate on/off 双分支退化为单分支：
+	// 冷池 acquire nil + store→hit 返回原 assembly（语义与原 gate-on 一致）。
 	cfgPath := filepath.Join(home, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = false\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := a.acquireRuntimeAssembly(key); got != nil {
-		t.Fatal("gate-off acquire returned an assembly")
-	}
-	a.storeRuntimeAssembly(key, &boot.ReusedAssembly{})
-	if got := a.acquireRuntimeAssembly(key); got != nil {
-		t.Fatal("gate-off store became visible")
-	}
-
-	// Gate on: flip the seeded key to true, then store→hit.
-	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = true\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, _, err := a.loadDesktopUserConfigForView()
-	if err != nil || cfg == nil || !cfg.Agent.ExperimentalRuntimeReuse {
-		t.Fatalf("gate config not picked up: err=%v cfg=%v", err, cfg)
+		t.Fatal("cold-pool acquire returned an assembly")
 	}
 	assembly := &boot.ReusedAssembly{}
 	a.storeRuntimeAssembly(key, assembly)
 	if got := a.acquireRuntimeAssembly(key); got != assembly {
-		t.Fatal("gate-on acquire did not return the stored assembly (startup chain would rebuild discovery)")
+		t.Fatal("store→acquire did not return the stored assembly (startup chain would rebuild discovery)")
 	}
 }
 

@@ -36,7 +36,7 @@ export function baseSettings(displayMode: "standard" | "compact" = "standard"): 
     defaultModel: "",
     plannerModel: "",
     guardianModel: "",
-    autopilot: false,
+    // tl1741：autopilot 偏好随撤开关退役（fixture 不再携带）。
     autopilotMaxRuntime: "",
     autopilotApprovalGrace: "",
     visionModel: "",

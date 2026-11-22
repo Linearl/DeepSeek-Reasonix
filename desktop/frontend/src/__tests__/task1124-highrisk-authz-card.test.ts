@@ -1,16 +1,11 @@
 // Run: npx tsx src/__tests__/task1124-highrisk-authz-card.test.ts
-// tl 1124 acceptance harness (高风险授权五开关聚合卡):
-//  ① 聚合结构：五开关在 SettingsPanel 的 autopilot pane 中聚合为**一张**
-//     .set-highrisk-authorize 清单卡（卡头 + 5 条清单行），不再是五个独立
-//     的 SettingsField —— 聚合前的五个 SettingsField 形态必须消失；
-//  ② 语义零变化：五项各读各的授权键（s.authorize*）、各走各的桥接 setter
-//     （app.SetAuthorize*，一次点击只调用一项，无批量合并写）、默认值语义
-//     （默认全不勾 = Boolean(s.*) 为假）逐项在卡内可见；
-//  ③ 说明文案保留：五项各自的 Hint 键（settings.authorize*Hint）仍在卡内
-//     渲染；卡头补充标题 + 总说明两把新钥（三语均有）；
-//  ④ 五开关的语义面（Go setter + config 键 + bridge 声明）零改动 —— 本测试
-//     核验 bridge.ts 五个 SetAuthorize* 方法仍在、settingsViewTypes 五个
-//     字段仍声明。
+// tl 1124 acceptance harness → tl1741 换代（用户 20261121 三拍：autopilot 稳定
+// 卡随「稳定档不再提供开关」移除——卡内 .set-highrisk-authorize 聚合卡随宿主
+// pane 退役；authorize_* 五键保留为活键，config 手写可调，Go setter / bridge
+// 声明 / settingsViewTypes 字段 / 三语 Hint 键全部保留——语义面零改动）：
+//  ① 聚合卡不在实验室面板渲染（随 autopilot pane 移除）；
+//  ② 语义面零改动：bridge 五 setter + view types 五字段 + Go setter 仍在；
+//  ③ 三语文案键保留（退役不删——图墙/未来重挂位可复用）。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -22,40 +17,22 @@ function ok(value: boolean, label: string) {
   else { process.stdout.write(`  FAIL  ${label}\n`); failed += 1; }
 }
 
-console.log("\ntask 1124 high-risk authorize aggregation card");
+console.log("\ntask 1124 high-risk authorize aggregation card (retired with autopilot pane, tl1741)");
 
 const panel = readFileSync(fileURLToPath(new URL("../components/SettingsPanel.tsx", import.meta.url)), "utf8") + "\n" + readFileSync(fileURLToPath(new URL("../components/ExperimentalLabSection.tsx", import.meta.url)), "utf8");
 const bridge = readFileSync(fileURLToPath(new URL("../lib/bridge.ts", import.meta.url)), "utf8");
 const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.ts", import.meta.url)), "utf8");
+const goEdit = readFileSync(fileURLToPath(new URL("../../../../internal/config/edit.go", import.meta.url)), "utf8");
 
-// ① 聚合结构.
+// ① 聚合卡退役（tl1741）：.set-highrisk-authorize 随 autopilot pane 移除。
 {
-  ok(panel.includes('className="set-highrisk-authorize"'),
-    "the autopilot pane renders ONE .set-highrisk-authorize card");
-  ok(panel.includes('className="set-highrisk-authorize__head"') &&
-     panel.includes('set-highrisk-authorize__title') &&
-     panel.includes('set-highrisk-authorize__hint'),
-    "the card carries a head block (title + overall hint)");
-  // 聚合前的五个独立 SettingsField 形态必须消失。
-  const oldStandaloneCount = (panel.match(/<SettingsField label=\{t\("settings\.authorize/g) ?? []).length;
-  ok(oldStandaloneCount === 0,
-    `the five standalone SettingsField rows are gone (found ${oldStandaloneCount})`);
-  // 五行清单行都在卡内（按 key 断言）。
-  const rowKeys = [
-    "authorizeOutboundSend",
-    "authorizeDataMigrationDelete",
-    "authorizeDestructiveChange",
-    "authorizeNewTechRoute",
-    "authorizePaidQuotaAlloc",
-  ];
-  const missingRows = rowKeys.filter((k) => !panel.includes(`{ key: "${k}"`));
-  ok(missingRows.length === 0,
-    `the card lists all five rows (missing: ${JSON.stringify(missingRows)})`);
-  ok(panel.includes('className="set-highrisk-authorize__row"'),
-    "rows render with the aggregated-row class (one map template covering all five)");
+  ok(!panel.includes('className="set-highrisk-authorize"'),
+    "the aggregated authorize card left the lab panel with the autopilot pane (tl1741)");
+  ok(!panel.includes('t("settings.highRiskAuthorize")'),
+    "the card head renders nowhere (card retired)");
 }
 
-// ② 语义零变化：读写键 + setter + 默认值语义.
+// ② 语义面零改动：bridge 五 setter + view types 五字段 + Go setter 仍在。
 {
   const setters = [
     "SetAuthorizeOutboundSend",
@@ -64,27 +41,9 @@ const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.t
     "SetAuthorizeNewTechRoute",
     "SetAuthorizePaidQuotaAlloc",
   ];
-  const missingSetters = setters.filter((s) => !panel.includes(`app.${s}(`));
-  ok(missingSetters.length === 0,
-    `every row wires its own bridge setter (missing: ${JSON.stringify(missingSetters)})`);
-  const stateKeys = [
-    "s.authorizeOutboundSend",
-    "s.authorizeDataMigrationDelete",
-    "s.authorizeDestructiveChange",
-    "s.authorizeNewTechRoute",
-    "s.authorizePaidQuotaAlloc",
-  ];
-  const missingState = stateKeys.filter((s) => !panel.includes(s));
-  ok(missingState.length === 0,
-    `every row reads its own settings-view key (missing: ${JSON.stringify(missingState)})`);
-  // 默认值语义：全不勾（checked 由 Boolean(s.*) 派生，出厂 false）。
-  ok((panel.match(/checked: Boolean\(s\.authorize/g) ?? []).length >= 5,
-    "every checkbox defaults from its boolean state (unchecked by default)");
-  // bridge 五个方法仍在（语义面零改动）。
   const missingBridge = setters.filter((s) => !bridge.includes(`${s}(enabled: boolean)`));
   ok(missingBridge.length === 0,
     `bridge.ts keeps all five setters declared (missing: ${JSON.stringify(missingBridge)})`);
-  // settingsViewTypes 五个字段仍在。
   const missingTypes = [
     "authorizeOutboundSend",
     "authorizeDataMigrationDelete",
@@ -94,9 +53,12 @@ const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.t
   ].filter((k) => !viewTypes.includes(k));
   ok(missingTypes.length === 0,
     `settingsViewTypes keeps all five fields (missing: ${JSON.stringify(missingTypes)})`);
+  const missingGo = setters.filter((s) => !goEdit.includes(`func (c *Config) ${s}`));
+  ok(missingGo.length === 0,
+    `internal/config keeps all five Go setters (missing: ${JSON.stringify(missingGo)})`);
 }
 
-// ③ 说明文案保留（五 Hint 键 + 卡头两把新钥三语）.
+// ③ 三语文案键保留（退役不删）。
 {
   const hintKeys = [
     "settings.authorizeOutboundSendHint",
@@ -105,11 +67,6 @@ const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.t
     "settings.authorizeNewTechRouteHint",
     "settings.authorizePaidQuotaAllocHint",
   ];
-  const missingHints = hintKeys.filter((k) => !panel.includes(`t("${k}")`));
-  ok(missingHints.length === 0,
-    `every row renders its retained hint (missing: ${JSON.stringify(missingHints)})`);
-  ok(panel.includes('t("settings.highRiskAuthorize")') && panel.includes('t("settings.highRiskAuthorizeHint")'),
-    "the card head renders the title + overall-hint keys");
   for (const locale of ["zh", "en", "zh-TW"]) {
     const dict = readFileSync(fileURLToPath(new URL(`../locales/${locale}.ts`, import.meta.url)), "utf8");
     const missing = [
@@ -118,7 +75,7 @@ const viewTypes = readFileSync(fileURLToPath(new URL("../lib/settingsViewTypes.t
       ...hintKeys,
     ].filter((k) => !dict.includes(`"${k}"`));
     ok(missing.length === 0,
-      `${locale} carries the card head keys + all five row hints (missing: ${JSON.stringify(missing)})`);
+      `${locale} keeps the card head keys + all five row hints (missing: ${JSON.stringify(missing)})`);
   }
 }
 

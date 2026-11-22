@@ -1,18 +1,15 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/task1005-stable-tier.test.ts
-// 任务 1005 acceptance harness — 实验室新增「稳定」档：批1 四项转档
-// （autopilot / sessionCollab / fullAccess / runtimeReuse）+ 禁用态两分支显示
-// + 开发者模式单项解锁：
-//  ① 档位与徽章（C1/C5 数据面）：四项在注册表/Go labFeatureTiers/布局数据
-//     （yaml + 内置默认）三处同为 stable；LAB_TIER_ORDER 稳定居首（最强档）；
-//     稳定档永不触发「建议开启」角标；rail 卡头聚合出单枚稳定徽章。
-//  ② C4 kill switch（Go 面）：Default() 四项默认开（autopilot 伴生
-//     max_runtime 8h，防 desktopAutopilotDefaults 拒绝降级致默认开空转），
-//     显式 false 不被覆盖的验收测试在案（internal/config/lab_stable_tier_1005_test.go）。
-//  ③ 禁用态两分支文案（定稿 ⑤）：四个 pane 开关禁用态挂 labStableLocked，
-//     解释行按存储值分支（值开=默认开启说明 / 值关=曾手动关闭说明）。
-//  ④ 开发者模式（定稿 ②⑥）：单项 toggle（localStorage reasonix.lab.devMode，
-//     作用域仅稳定档），标签显示当前态；「检测到你手动关闭了 N 个稳定能力」
-//     小字仅开发者模式开且 N>0 时可见（只提示不弹窗）。
+// 任务 1005 acceptance harness → tl1741 换代（用户 20261121 三拍：稳定档不再
+// 提供开关，1005 C1/C4 口径对 autopilot/sessionCollab/runtimeReuse 废止；
+// fullAccess 保留）：
+//  ① 注册表标注保留（拍板②「注册表不动」——图墙/徽章展示面仍用）：四项在
+//     前端注册表同为 stable；LAB_TIER_ORDER 稳定居首；稳定档永不 nag；
+//     Go 表条目退役（feOnly 承接，562 对账）。
+//  ② C4（Go 面）：三键退役（struct 无字段=读取层不存在），fullAccess 默认开
+//     + 手写 false 生效语义保留（internal/config/lab_stable_tier_1005_test.go
+//     已换代为 tl1741 语义）。
+//  ③ 禁用态两分支文案：仅 fullAccess pane 保留（锁定形态不变）。
+//  ④ 开发者模式：单项 toggle 保留；N 计数退化为 fullAccess 单项。
 //  ⑤ 三语 locale 全量在位。
 
 import assert from "node:assert/strict";
@@ -81,37 +78,31 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");
-  // Go 侧同源：四项 LabTierStable（562 双侧一致门禁的数据面抽查）。
+  // tl1741：Go 表条目退役——autopilot/sessionCollab/runtimeReuse 三条 stable
+  // 行出表（撤开关），fullAccess 行保留；LabTierStable 枚举保留。
   const goRender = readRepo("internal/config/render.go");
-  ok([
-    '{"autopilot", LabTierStable,',
-    '{"sessionCollab", LabTierStable,',
-    '{"fullAccess", LabTierStable,',
-    '{"runtimeReuse", LabTierStable,',
-  ].every((s) => goRender.includes(s)) && goRender.includes('LabTierStable      LabTier = "stable"'),
-    "Go labFeatureTiers registers the four as LabTierStable");
-  // 布局数据两份同源：四项 tier stable（yaml 与内置默认同构由 722 锚守护，
-  // 这里钉四项本身）。tl1309 卡③：runtimeReuse 独立卡退役为「资源治理」卡
-  // 成员行——flatTiers 同步收录成员面（成员 tier 也入映射，登记语义不变）。
+  ok(!goRender.includes('{"autopilot", LabTierStable,') &&
+     !goRender.includes('{"sessionCollab", LabTierStable,') &&
+     goRender.includes('{"fullAccess", LabTierStable,') &&
+     !goRender.includes('{"runtimeReuse", LabTierStable,') &&
+     goRender.includes('LabTierStable      LabTier = "stable"'),
+    "Go labFeatureTiers retires three stable rows and keeps fullAccess (tl1741)");
+  // tl1741：八项实验室展示面移除——布局数据（yaml+默认）不再含四项；唯一
+  // stable 卡=fullAccess（单枚稳定徽章）。
   const yamlText = read("src/lab/lab-layout.yaml");
   const paneIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries.map((e) => e.id)));
   const resolved = resolveLabLayout(yamlText, { allowedEntryIds: paneIds });
-  const flatTiers = (layout: typeof LAB_LAYOUT_DEFAULT_DATA) =>
-    layout.groups.flatMap((g) => g.entries.flatMap((e) => [
-      [e.id, e.tier ?? null] as const,
-      ...(e.members ?? []).map((m) => [m.id, m.tier] as const),
-    ])).filter(([id]) => four.includes(id as TierFeatureId));
-  assert.deepEqual(flatTiers(resolved.layout), flatTiers(LAB_LAYOUT_DEFAULT_DATA));
-  ok(resolved.source === "yaml" && flatTiers(resolved.layout).every(([, tier]) => tier === "stable"),
-    "yaml and built-in default carry the four at stable (entry or member, resolved from yaml)");
-  // 徽章聚合：autopilot 卡头单枚稳定；sessionCollab 卡头稳定压过可选子项。
-  // tl1309 卡③：runtimeReuse 独立卡退役为「资源治理」卡成员行——稳定档聚合
-  // 面随迁容器卡（成员最高档=稳定，聚合方向与四卡各自单枚稳定同源）。
-  ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance") === "stable",
-    "rail aggregation yields the single stable badge for the stable cards (tl1309: runtimeReuse rides resourceGovernance)");
+  const layoutIds = new Set(resolved.layout.groups.flatMap((g) => g.entries.flatMap((e) => [
+    e.id,
+    ...(e.members ?? []).map((m) => m.id),
+  ])));
+  ok(!layoutIds.has("autopilot") && !layoutIds.has("sessionCollab") && !layoutIds.has("runtimeReuse") && layoutIds.has("fullAccess"),
+    "layout data drops the retired ids and keeps fullAccess (tl1741)");
+  ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === null &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === null &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === null,
+    "rail aggregation: fullAccess keeps its stable badge, retired ids aggregate to none");
   // TierBadge 渲染 stable（轻渲染：类名 + 文案 + tooltip 键）。
   const dom = new JSDOM("<div id='root'></div>");
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
@@ -130,18 +121,22 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     "styles.css carries the stable badge pill");
 }
 
-// ── ② C4 kill switch（Go 面，源码锚）───────────────────────────
+// ── ② C4 → tl1741（Go 面，源码锚）──────────────────────────────
 {
   const configGo = readRepo("internal/config/config.go");
-  // Default() 四项默认开（autopilot 伴生 max_runtime 8h）。
-  ok(configGo.includes("Autopilot:               true") && configGo.includes('AutopilotMaxRuntime:     "8h"') &&
-     configGo.includes("ExperimentalSessionCollab: true") && configGo.includes("ExperimentalFullAccess:    true") && configGo.includes("ExperimentalRuntimeReuse:  true"),
-    "config.Default() turns the four on (autopilot rides max_runtime 8h)");
-  // C4 验收测试在案：显式 false 不覆盖 / 显式 true 保留 / 键缺省读默认 / 渲染往返。
+  // 三键退役：Default() 无三键赋值（struct 无字段=读取层不存在=「手写 false
+  // 启动仍为开」的机制级保证）；fullAccess 默认开保留。
+  ok(!configGo.includes("Autopilot:               true") &&
+     !configGo.includes("ExperimentalSessionCollab: true") &&
+     !configGo.includes("ExperimentalRuntimeReuse:  true") &&
+     configGo.includes("ExperimentalFullAccess: true"),
+    "config.Default() retires the three keys and keeps fullAccess on (tl1741)");
+  // tl1741 验收测试在案：手写 false 残留无害（加载不阻断+渲染面清行）+
+  // fullAccess 显式 false 仍生效。
   const goTest = readRepo("internal/config/lab_stable_tier_1005_test.go");
-  ok(["TestLabStableTierDefaultsOn", "TestLabStableTierExplicitFalseSurvives", "TestLabStableTierExplicitTrueSurvives", "TestLabStableTierAbsentKeyReadsDefault", "TestLabStableTierDefaultRenderRoundTrip"]
+  ok(["TestLabStableTierDefaultsOnAfterRetire", "TestRetiredLabKeysHandwrittenFalseHarmless", "TestRetiredLabKeysHandwrittenTrueHarmless", "TestRetiredLabKeysAbsentFromRender"]
       .every((name) => goTest.includes(`func ${name}(t *testing.T)`)),
-    "the C1/C4 acceptance tests exist in internal/config");
+    "the tl1741 acceptance tests exist in internal/config");
 }
 
 // ── ③ 禁用态两分支文案（四个 pane）──────────────────────────────
@@ -150,7 +145,7 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
 // wt-reds-cleanup 件5c 补）。
 {
   const panel = read("src/components/ExperimentalLabSection.tsx");
-  const panes = ["autopilot", "sessionCollab", "fullAccess", "runtimeReuse"] as const;
+  const panes = ["fullAccess"] as const;
   for (const id of panes) {
     ok(panel.includes(`disabled={busy || labStableLocked("${id}")}`),
       `${id} pane: the switch disables while stable-locked`);
@@ -172,9 +167,9 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // N 计数小字：仅开发者模式开且 N>0 时渲染（定稿 ⑥：普通用户零打扰）。
   ok(panel.includes('{labDevMode && labStableOffCount > 0 ? (') && panel.includes('t("settings.lab.devMode.disabledCount", { n: labStableOffCount })'),
     "the disabled-count notice renders only while developer mode is on and n > 0");
-  // N 从 settings 状态直接算（批1 四项）。
-  ok(panel.includes('["autopilot", Boolean(s.autopilot)]') && panel.includes('["runtimeReuse", Boolean(s.experimentalRuntimeReuse)]'),
-    "the count derives from the live settings state of the batch-1 four");
+  // N 从 settings 状态直接算（tl1741 后唯一稳定档=fullAccess）。
+  ok(panel.includes('["fullAccess", Boolean(s.experimentalFullAccess)]') && !panel.includes('["autopilot", Boolean(s.autopilot)]'),
+    "the count derives from the live settings state of fullAccess only");
 }
 
 // ── ⑤ 三语 locale ───────────────────────────────────────────────

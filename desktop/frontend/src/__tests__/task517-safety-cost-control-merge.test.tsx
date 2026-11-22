@@ -63,7 +63,9 @@ console.log("\n任务 517 安全 / 成本控制 合并开关");
 
 // ① card: master switch + three read-only member rows.
 {
-  const card = cardSlice('{selected === "safetyCostControl" && (', '{selected === "sessionCollab" && (');
+  // tl1741：sessionCollab 分支随撤开关删除——slice 结束锚随迁下一现存分支
+  // modelStrategy（needle-随迁教训：锚消失=slice 退化=断言假绿）。
+  const card = cardSlice('{selected === "safetyCostControl" && (', '{selected === "modelStrategy" && (');
   ok(card.length > 0, "safetyCostControl pane branch located");
   ok(card.includes('labLabel("safetyCostControl", t("settings.safetyCostControl"))'),
     "master row is the labLabel(badged) row");

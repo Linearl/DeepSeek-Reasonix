@@ -5,19 +5,16 @@ import (
 	"testing"
 )
 
-// The user-config renderer writes a fixed set of keys, so a preference that is
-// not listed there can be set in Settings and still vanish on save - which is
-// exactly how the Autopilot switch behaved: it flipped back to off because the
-// flag never reached the file. These assertions pin the keys to the renderer.
+// tl1741：autopilot 主键随撤开关退役（渲染行删除，deprecated 清单承接）；
+// 护栏键（max_runtime / approval_grace）保留条件渲染——有值才落盘。这些
+// 断言钉住护栏键仍在渲染表（81/123 教训：漏键的键在下一次保存时静默丢）。
 func TestAutopilotPreferencesRoundTripThroughRender(t *testing.T) {
 	c := &Config{}
-	c.Desktop.Autopilot = true
 	c.Desktop.AutopilotMaxRuntime = "8h"
 	c.Desktop.AutopilotApprovalGrace = "20s"
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
 	for _, want := range []string{
-		"autopilot = true",
 		`autopilot_max_runtime = "8h"`,
 		`autopilot_approval_grace = "20s"`,
 	} {
@@ -31,13 +28,9 @@ func TestAutopilotDisabledStillRendersItsFlag(t *testing.T) {
 	// Turning the switch off must be recorded too: a bound left behind would
 	// otherwise keep the keys alive with a stale limit.
 	c := &Config{}
-	c.Desktop.Autopilot = false
 	c.Desktop.AutopilotMaxRuntime = "8h"
 
 	out := RenderTOMLForScope(c, RenderScopeUser)
-	if !strings.Contains(out, "autopilot = false") {
-		t.Fatalf("disabled autopilot should still render its flag\n---\n%s", out)
-	}
 	if !strings.Contains(out, `autopilot_max_runtime = "8h"`) {
 		t.Fatalf("the bound should survive while it is set\n---\n%s", out)
 	}

@@ -29,30 +29,12 @@ func TestTL1660R2EffortReuseGateOffAndRoundTrip(t *testing.T) {
 	oldKey := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "low")
 	newKey := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
 
-	// Gate off: seed an explicit false (任务 1005 后 runtimeReuse 默认开，缺省
-	// 键读默认开，「gate off」必须走 C4 kill switch 手写 false)。
+	// tl1741：开关退役（复用池常开）——gate off 分支退化为单分支：
+	// effort rebuild 仍 acquire 出向 identity 的 assembly + 发布入向 assembly
+	// （下一次同配置高效 build 跳过 discovery）。
 	cfgPath := filepath.Join(home, "config.toml")
-	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = false\n"), 0o644); err != nil {
+	if err := os.WriteFile(cfgPath, []byte(""), 0o644); err != nil {
 		t.Fatal(err)
-	}
-	if got := a.acquireRuntimeAssembly(oldKey); got != nil {
-		t.Fatal("gate-off acquire returned an assembly")
-	}
-	a.storeRuntimeAssembly(newKey, &boot.ReusedAssembly{})
-	if got := a.acquireRuntimeAssembly(newKey); got != nil {
-		t.Fatal("gate-off store became visible")
-	}
-
-	// Gate on: the effort rebuild acquires the outgoing identity's assembly
-	// (stored here under oldKey = the pre-switch effort) and the freshly built
-	// one is published under the post-switch identity (newKey) — the next
-	// high-effort same-config build skips discovery.
-	if err := os.WriteFile(cfgPath, []byte("[agent]\nexperimental_runtime_reuse = true\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	cfg, _, err := a.loadDesktopUserConfigForView()
-	if err != nil || cfg == nil || !cfg.Agent.ExperimentalRuntimeReuse {
-		t.Fatalf("gate config not picked up: err=%v cfg=%v", err, cfg)
 	}
 	outgoing := &boot.ReusedAssembly{}
 	a.storeRuntimeAssembly(oldKey, outgoing)

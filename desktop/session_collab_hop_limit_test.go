@@ -17,7 +17,7 @@ func TestSessionCollabRefusedHopTextReportsConfiguredLimit(t *testing.T) {
 	if err := cfg.SetSessionCollabHopLimit(7); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Agent.ExperimentalSessionCollab = true
+	// tl1741：sessionCollab 开关退役（常开）——fixture 置位删除。
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("save config: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestPumpDerivedHopExhaustionIsAHopRefusal(t *testing.T) {
 	if err := cfg.SetSessionCollabHopLimit(1); err != nil {
 		t.Fatal(err)
 	}
-	cfg.Agent.ExperimentalSessionCollab = true
+	// tl1741：sessionCollab 开关退役（常开）——fixture 置位删除。
 	if err := cfg.SaveTo(config.UserConfigPath()); err != nil {
 		t.Fatalf("save config: %v", err)
 	}

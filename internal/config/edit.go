@@ -1053,14 +1053,8 @@ func (c *Config) SetExperimentalCollabGroupView(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalCollabHub toggles the unified collaboration-hub entry (task
-// 856 ③: the mail-inbox + group-chat icons merge into one 「协作中心」 entry;
-// the lab switch renames with it). Pure frontend gate: the sidebar reads the
-// flag from the settings snapshot, so a flip is visible without a restart.
-func (c *Config) SetExperimentalCollabHub(enabled bool) error {
-	c.Desktop.ExperimentalCollabHub = enabled
-	return nil
-}
+// tl1741：SetExperimentalCollabHub 随撤开关退役——协作中心入口常显
+// （键自 struct 退役，deprecated 清单承接存量手写键）。
 
 // SetExperimentalTasklistPanel toggles the desktop tasklist panel (tl1746
 // phase 1: embedded read-only view of the tasklist DB). Pure frontend gate:
@@ -1233,34 +1227,9 @@ func (c *Config) SetExperimentalSessionWall(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalWorkflowPanel toggles the workflow visualization panel
-// (task 686): the command-palette entry opening the DAG flow view (plan
-// preview plus live node-state lighting). Opt-in: with it off the palette
-// keeps the exact legacy item list (铁律 2). Pure frontend gate: the settings
-// save re-applies the boot snapshot, so a change is visible without a
-// restart.
-func (c *Config) SetExperimentalWorkflowPanel(enabled bool) error {
-	c.Desktop.ExperimentalWorkflowPanel = enabled
-	return nil
-}
-
-// SetExperimentalWorkflowTemplates toggles the tl1454 user workflow templates
-// (workflowPanel family sub-key; live-read, no restart).
-func (c *Config) SetExperimentalWorkflowTemplates(enabled bool) error {
-	c.Desktop.ExperimentalWorkflowTemplates = enabled
-	return nil
-}
-
-// WorkflowTemplatesLive is the package-level read of the tl1454 switch
-// (READ-ONLY user-config read, RangesCompactLive precedent): the workflow
-// service consults it per template write/run and per definition overwrite.
-func WorkflowTemplatesLive() bool {
-	cfg, err := LoadUserConfigReadOnly()
-	if err != nil || cfg == nil {
-		return false
-	}
-	return cfg.Desktop.ExperimentalWorkflowTemplates
-}
+// tl1741：SetExperimentalWorkflowPanel / SetExperimentalWorkflowTemplates /
+// WorkflowTemplatesLive 随撤开关退役——工作流面板入口与模板视图常显（键自
+// struct 退役，deprecated 清单承接存量手写键）。
 
 // SetExperimentalTabCompress toggles the tab-strip adaptive compression (task
 // 506): tiered tab-width reduction once more than 8 tabs are open, floor 84px,
@@ -1431,14 +1400,8 @@ func (c *Config) SetExperimentalQuickCommands(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalCDPDebugPort toggles the task-342 WebView2 CDP debug
-// endpoint. It ships off: the zero value leaves the browser argument list
-// unchanged. The WebView2 environment is created once per process, so the
-// flip applies on the next restart — the settings card communicates that.
-func (c *Config) SetExperimentalCDPDebugPort(enabled bool) error {
-	c.Desktop.ExperimentalCDPDebugPort = enabled
-	return nil
-}
+// tl1741：SetExperimentalCDPDebugPort 随撤开关退役——CDP endpoint 无条件起
+// （loopback-only 随机端口语义不变），键自 struct 退役，deprecated 清单承接。
 
 // SetExperimentalOutputStyleUI toggles the lab's 「回答风格」 section (task
 // 385a). It ships off (new-capability rule); off hides the selector and every
@@ -1678,15 +1641,8 @@ func (c *Config) SetBackgroundJobWakeIdleSession(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalSessionCollab toggles multi-session collaboration (task 19).
-// Single-writes the [agent] key (task 473); the [desktop] mirror is retired
-// and only cleared here. Agent.ExperimentalSessionCollab gates the
-// collaboration tools.
-func (c *Config) SetExperimentalSessionCollab(enabled bool) error {
-	c.Agent.ExperimentalSessionCollab = enabled
-	c.Desktop.ExperimentalSessionCollab = false
-	return nil
-}
+// tl1741：SetExperimentalSessionCollab 随撤开关退役——协作工具/信件泵无条件
+// 启用（键自 struct 退役，deprecated 清单承接存量手写键）。
 
 // SetExperimentalSafetyCostControl toggles the merged unattended-safety
 // switch (task 517): one「安全 / 成本控制」knob for all three task-244 B-group
@@ -1810,19 +1766,12 @@ func (c *Config) SetExperimentalRecoveryOrphanSweep(enabled bool) error {
 	return c.SetExperimentalOrphanHandling(enabled)
 }
 
-// SetExperimentalRuntimeReuse toggles the task-363A runtime assembly reuse
-// pool (settings → 实验特性). Single-writes the [agent] key (task 473); the
-// [desktop] mirror is retired and only cleared here.
-func (c *Config) SetExperimentalRuntimeReuse(enabled bool) error {
-	c.Agent.ExperimentalRuntimeReuse = enabled
-	c.Desktop.ExperimentalRuntimeReuse = false
-	return nil
-}
+// tl1741：SetExperimentalRuntimeReuse 随撤开关退役——运行时复用池无条件
+// 启用（键自 struct 退役，deprecated 清单承接存量手写键）。
 
 // SetSessionCollabGates writes the task-173 collaboration panel gates in one
 // call so the settings view cannot half-apply a panel. Nil pointers keep the
-// current value; the master switch is written separately through
-// SetExperimentalSessionCollab.
+// current value; the master switch is retired (tl1741, always on).
 // SetSessionCollabMailDefaults writes the task-309 mailbox defaults (settings
 // → 实验特性 → 跨会话通信): idempotency default, read-receipt default, and the
 // default delivery channel used when a talk_to_session call omits delivery.

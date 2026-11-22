@@ -44460,6 +44460,32 @@ button.statusbar__mcp:focus-visible {
   overflow: auto;
 }
 
+/* tl1741：智能自动化顶部卡右侧子项概要（拍板 20261121 三条款③）——
+   左=卡名+说明，右=子项一句话列表；紧凑小字，不与控件区争位。 */
+.set-lab-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, inherit);
+}
+.set-lab-brief__title {
+  font-weight: 600;
+  color: var(--text-secondary, inherit);
+}
+.set-lab-brief__list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.set-lab-brief__item {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 /* 任务 856 ③：实验室开关前置依赖提示行（collabHub ← sessionCollab） */
 .set-lab-dep-note {
   margin-top: 6px;

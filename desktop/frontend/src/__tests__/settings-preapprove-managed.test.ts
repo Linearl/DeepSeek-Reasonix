@@ -1,10 +1,12 @@
 // Run: tsx src/__tests__/settings-preapprove-managed.test.ts
 //
-// Task 231 — managed-path pre-approval settings surface (source guards):
-// the render-table entry exists (81/123 lost-save lesson), the detail card
-// carries the master switch + four independent checkboxes + the visible risk
-// line, the bridge setter takes all five values in one write, and all three
-// locales ship the same key set.
+// Task 231 — managed-path pre-approval settings surface (source guards)
+// → tl1741 换代（用户 20261121 三拍：autopilot 稳定卡随「稳定档不再提供开关」
+// 移除——卡内 autopilot-preapprove-subblock 随宿主 pane 退役；preapprove_*
+// 五值 setter/bridge 接口/三语九键/CSS 契约全部保留——语义面零改动）：
+//  ① 子块不在实验室面板渲染（随 autopilot pane 移除）；
+//  ② bridge 五值 setter 接口仍在（活键，config 手写可调）；
+//  ③ 三语九键契约与 CSS 形态契约不变（退役不删，重挂位可复用）。
 
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -36,24 +38,10 @@ const en = readFileSync(join(root, "locales/en.ts"), "utf8");
 const zh = readFileSync(join(root, "locales/zh.ts"), "utf8");
 const zhTW = readFileSync(join(root, "locales/zh-TW.ts"), "utf8");
 
-// ── render table: since task 364 the block lives INSIDE the autopilot card
-//    as a named sub-block with no rail entry of its own (single entry).
+// ── tl1741: the sub-block retired with the autopilot pane ──────────────────
 ok(!panel.includes('{ id: "preapproveManagedPaths", group:'),
-  "render table has no preapprove rail entry (task 364 folded it into the autopilot card)");
-ok(panel.includes("autopilot-preapprove-subblock"), "the pre-approval sub-block renders inside the autopilot card");
-ok(panel.includes('| "preapproveManagedPaths"'), "the detail-card union includes the id");
-
-// ── detail card: master switch + four independent checkboxes + risk line ────
-ok(panel.includes('app.SetPreapproveManagedPaths('), "the card writes through the five-value setter");
-const checkboxFields = ["preapproveSkills", "preapproveHooks", "preapproveSessionStores", "preapproveBashEscape"];
-for (const field of checkboxFields) {
-  ok(panel.includes(`checked: Boolean(s.${field})`), `${field} renders as its own checked box`);
-}
-ok(panel.includes('type="checkbox"'), "the categories are real checkboxes (independent ticks)");
-ok(panel.includes("set-preapprove__warning") && panel.includes("settings.preapproveManagedPaths.warning"),
-  "the prompt-injection risk line is rendered visibly");
-ok(/disabled=\{busy\}[^}]*onChange/.test(panel) || panel.includes("disabled={busy}"),
-  "checkbox edits respect the busy gate");
+  "render table has no preapprove rail entry (still folded, tl1741 retired the host card)");
+ok(!panel.includes("autopilot-preapprove-subblock"), "the pre-approval sub-block left the lab panel with the autopilot pane (tl1741)");
 
 // ── bridge: one five-value write (no half-applied saves) ────────────────────
 ok(bridge.includes("SetPreapproveManagedPaths(enabled: boolean, skills: boolean, hooks: boolean, sessionStores: boolean, bashEscape: boolean): Promise<void>;"),
@@ -79,10 +67,7 @@ for (const key of keys) {
 ok(zh.includes("prompt injection") && zhTW.includes("prompt injection") && en.includes("prompt injection"),
   "the risk line names prompt injection in all three locales");
 
-// ── 任务461-P5 (2026-10-03 用户裁决，覆盖同日 B1 的垂直改法): header stays
-//    TWO-column (intro/title/hint left, on-off switch right); checkbox rows
-//    first, risk line last on its own row; narrow settings pages keep the
-//    shared single-column collapse. Simplified hooks copy stays. ──
+// ── CSS 形态契约（退役不删——重挂位可复用；任务461-P5 口径不变）──────────
 const styles = readFileSync(join(root, "styles.css"), "utf8").replace(/\n\s*/g, " ");
 ok(/\.autopilot-preapprove-subblock \.settings-field \{ grid-template-columns: minmax\(180px, 260px\) minmax\(320px, 1fr\);/.test(styles),
   "the pre-approval field keeps the two-column header (intro left, switch right)");
@@ -92,12 +77,6 @@ ok(/@container settings-page \(max-width: 680px\) \{ \.autopilot-preapprove-subb
   "narrow settings pages still collapse the field to one column");
 ok(/\.set-preapprove__row \{[^}]*display: flex;/.test(styles),
   "each category row is a block-level flex line (one category per line)");
-// P5 order: the risk line renders AFTER the checkbox rows (the panel source
-// is whitespace-collapsed into one string; first hit = the render site).
-const warningAt = panel.indexOf('className="set-preapprove__warning"');
-const rowsAt = panel.indexOf("<span>{row.label}</span>");
-ok(warningAt > rowsAt && rowsAt > 0,
-  "the risk line renders after the checkbox rows (checkboxes first, risk last)");
 for (const [name, text] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
   const hooks = text.match(/"settings\.preapproveManagedPaths\.hooks": "([^"]*)"/)?.[1] ?? "";
   const warn = text.match(/"settings\.preapproveManagedPaths\.warning": "([^"]*)"/)?.[1] ?? "";

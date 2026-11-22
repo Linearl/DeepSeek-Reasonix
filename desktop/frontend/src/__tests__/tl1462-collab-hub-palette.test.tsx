@@ -171,29 +171,17 @@ console.log("\ntl1462 collab hub palette: search hits + enter-to-open + lab gate
   ok(runCalls.n === 1, "Enter runs the collab hub open action");
   ok(closeCalls.n === closeBefore + 1, "Enter closes the palette");
 
-  // ── ② 开关关行为等价（铁律 2）────────────────────────────────────
-  // labFlags 默认 collabHub=false（802 零痕迹策略；与侧栏入口同一开关语义）。
+  // ── ② 常显单态（tl1741：开关撤除，门控双分支退化为常显）──────────
   applyLabFlags({});
-  ok(labFlagEnabled("collabHub") === false, "labFlags defaults collabHub to off");
-  applyLabFlags({ collabHub: true });
-  ok(labFlagEnabled("collabHub") === true, "applyLabFlags feeds the collabHub switch");
-  applyLabFlags({});
+  ok(labFlagEnabled("collabHub") === undefined, "labFlags no longer knows collabHub (tl1741)");
 
-  // 开关关 = 命令项不进 items（复现 App.tsx 条件展开的关分支）→ 搜「协作中心」
-  // 走 empty 态，面板回到既有 items 的行为。
-  const gatedOff = [trash, ...(false ? [collabHubItem({ n: 0 })] : [])];
-  await renderPalette(root, () => { closeCalls.n += 1; }, gatedOff);
-  await typeQuery("协作中心");
-  ok(Boolean(document.querySelector(".palette__empty")), "gate off: searching 协作中心 lands on the empty state (no entry)");
-  ok(document.querySelectorAll(".palette__chip").length === 0, "gate off: no collab hub chip renders");
-
-  // 开关开：同一门控表达式产出本项（插条语义 = cmd-goto-tab tl1175 同款）→
-  // 搜「协作中心」回到唯一命中。
-  const gatedOn = [trash, ...(true ? [collabHubItem({ n: 0 })] : [])];
-  await renderPalette(root, () => { closeCalls.n += 1; }, gatedOn);
+  // 入口常显：同一 items 形态产出本项（插条语义 = cmd-goto-tab tl1175 同款）→
+  // 搜「协作中心」唯一命中。
+  const alwaysOn = [trash, collabHubItem({ n: 0 })];
+  await renderPalette(root, () => { closeCalls.n += 1; }, alwaysOn);
   await typeQuery("协作中心");
   const onChips = document.querySelectorAll<HTMLElement>(".palette__chip .palette__chip-label");
-  ok(onChips.length === 1 && onChips[0]?.textContent === zh["palette.cmd.collabHub"], "gate on: searching 协作中心 surfaces the entry again");
+  ok(onChips.length === 1 && onChips[0]?.textContent === zh["palette.cmd.collabHub"], "always-on: searching 协作中心 surfaces the entry (tl1741)");
 
   await act(async () => { root.unmount(); });
   dom.window.close();
@@ -213,11 +201,9 @@ console.log("\ntl1462 collab hub palette: search hits + enter-to-open + lab gate
   const blockEnd = appTsx.indexOf("satisfies PaletteItem", at);
   const block = at > 0 && blockEnd > 0 ? appTsx.slice(at, blockEnd) : "";
 
-  // 同一开关：命令项挂 collabHubEntryEnabled 条件展开（与侧栏图标同一 state，
-  // App.tsx 951 行 labFlagEnabled("collabHub") 快照 + onLabFlagsChange 订阅）。
-  ok(appTsx.includes("...(collabHubEntryEnabled\n        ? ["), "palette entry rides the collabHubEntryEnabled conditional spread");
-  ok(appTsx.includes("{collabHubEntryEnabled && ("), "sidebar icon rides the same collabHubEntryEnabled gate");
-  ok(appTsx.includes('const [collabHubEntryEnabled, setCollabHubEntryEnabled] = useState(labFlagEnabled("collabHub"));'), "collabHubEntryEnabled derives from labFlagEnabled(collabHub)");
+  // tl1741：入口 lab 门控随撤开关删除——命令项与侧栏图标常显（无 state 可挂）。
+  ok(!appTsx.includes("collabHubEntryEnabled"), "no collabHubEntryEnabled state remains (tl1741)");
+  ok(!appTsx.includes('labFlagEnabled("collabHub")'), "App no longer reads the collabHub lab flag");
 
   // 同一打开函数：palette run 与侧栏 onClick 都调 setCollabHubOpen(true)
   // （CollabHubPanel 模块单例信号），不复制打开逻辑。
@@ -236,9 +222,9 @@ console.log("\ntl1462 collab hub palette: search hits + enter-to-open + lab gate
   }
   ok(!block.includes("協作"), "keywords follow the EN+simplified convention (traditional comes from the locale title)");
 
-  // deps 补 collabHubEntryEnabled（条件展开引用 state，缺 deps = 开关翻转换不来）。
+  // tl1741：deps 无 collabHubEntryEnabled 可补（state 已随门控删除）。
   const depsLine = appTsx.split("\n").find((l) => l.startsWith("  }, [t, paletteSessions") && l.includes("desktopPlatform]);"));
-  ok(Boolean(depsLine && depsLine.includes("collabHubEntryEnabled")), "useMemo deps include collabHubEntryEnabled");
+  ok(Boolean(depsLine) && !depsLine.includes("collabHubEntryEnabled"), "useMemo deps carry no retired state (tl1741)");
 
   // 三语键齐 + 值与侧栏 sidebar.collabHub 一致（同一面板同一叫法）。
   ok(zh["palette.cmd.collabHub"] === "协作中心" && zh["sidebar.collabHub"] === "协作中心", "zh palette key matches sidebar.collabHub");

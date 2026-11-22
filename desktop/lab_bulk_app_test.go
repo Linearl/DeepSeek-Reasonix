@@ -65,14 +65,10 @@ func TestLabBulkApplyWritesUserConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if !cfg.Desktop.ExperimentalSessionWall || !cfg.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/on must persist session_wall + session_collab, got wall=%v collab=%v",
-			cfg.Desktop.ExperimentalSessionWall, cfg.Agent.ExperimentalSessionCollab)
+	if !cfg.Desktop.ExperimentalSessionWall {
+		t.Fatalf("recommended/on must persist session_wall, got wall=%v", cfg.Desktop.ExperimentalSessionWall)
 	}
-	// 范围外（未稳定）不被误写。
-	if cfg.Desktop.ExperimentalCollabHub {
-		t.Fatalf("bulk must not touch unstable-tier keys")
-	}
+	// tl1741：session_collab/collab_hub 落盘断言随撤开关退役（键不存在）。
 
 	// 反向关。
 	vOff, err := app.LabBulkApply("recommended", false)
@@ -83,34 +79,17 @@ func TestLabBulkApplyWritesUserConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload config after off: %v", err)
 	}
-	// tl 1037：sessionCollab 已升「稳定」档（task 1005），批量关（devMode 恒
-	// false）被护栏②自动挡在 SkippedStable（原因 dev_mode_off），保持默认开
-	// —— 旧断言「recommended/off 必须清空 session_collab」与 1005 转档冲突，
-	// 改为「wall 必须关 + collab 必须保持 true」。
+	// tl 1037 → tl1741：可批量稳定集合已空（sessionCollab 撤开关退役），
+	// SkippedStable 恒空；wall 必须关；退役键不出现在任何 plan 面。
 	if cfg.Desktop.ExperimentalSessionWall {
 		t.Fatalf("recommended/off must clear session_wall on disk, got wall=%v", cfg.Desktop.ExperimentalSessionWall)
 	}
-	if !cfg.Agent.ExperimentalSessionCollab {
-		t.Fatalf("recommended/off must NOT clear stable sessionCollab (护栏② devMode off, stays default-on), got collab=%v", cfg.Agent.ExperimentalSessionCollab)
+	if len(vOff.SkippedStable) != 0 {
+		t.Fatalf("recommended/off must have no skippedStable after tl1741, got %v", vOff.SkippedStable)
 	}
-	// 护栏②提示可见：sessionCollab 出现在 skippedStable，reason=dev_mode_off
-	// 出现在 skipped（杜绝静默消失）。
-	skippedStableSeen := false
-	for _, id := range vOff.SkippedStable {
-		if id == "sessionCollab" {
-			skippedStableSeen = true
-		}
-	}
-	if !skippedStableSeen {
-		t.Fatalf("recommended/off must auto-skip sessionCollab (护栏②), got skippedStable=%v", vOff.SkippedStable)
-	}
-	skipReasonSeen := false
 	for _, s := range vOff.Skipped {
-		if s.ID == "sessionCollab" && s.Reason == "dev_mode_off" {
-			skipReasonSeen = true
+		if s.ID == "sessionCollab" || s.ID == "collabHub" {
+			t.Fatalf("retired id %s must not appear in skipped (键退役), got %+v", s.ID, vOff.Skipped)
 		}
-	}
-	if !skipReasonSeen {
-		t.Fatalf("sessionCollab must carry dev_mode_off reason in skipped (tl 1037 非静默), got skipped=%+v", vOff.Skipped)
 	}
 }

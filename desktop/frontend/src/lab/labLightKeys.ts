@@ -15,11 +15,9 @@ export type LabLightKey = keyof typeof LAB_LIGHT_KEYS;
 /** id → light predicate. Referenced by entry.onKeys in the layout data. */
 export const LAB_LIGHT_KEYS = {
   // ── plain boolean SettingsView fields（一字段一谓词）────────────
-  autopilot: (s: SettingsView) => Boolean(s.autopilot),
-  experimentalSessionCollab: (s: SettingsView) => Boolean(s.experimentalSessionCollab),
-  // 任务 815：cascade_approval 是 sessionCollab 卡内行级开关（Task 225 交付，
-  // 甄别确认非缺口）——补灯：审批回投开 = 卡亮。
-  experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval),
+  // tl1741：autopilot / experimentalSessionCollab / experimentalCascadeApproval
+  // 三谓词随撤开关摘除（宿主卡移除；cascade_approval 行级开关的 Task 225
+  // 字段与功能保留，仅失去实验室展示面）。
   experimentalFullAccess: (s: SettingsView) => Boolean(s.experimentalFullAccess),
   // tl1453：experimentalDream 谓词随 dream/distill 实验退役摘除。
   // 任务 801：决策模式自动提取+固化（默认关）。
@@ -59,9 +57,6 @@ export const LAB_LIGHT_KEYS = {
   experimentalQuickCommands: (s: SettingsView) => Boolean(s.experimentalQuickCommands),
   experimentalTraceAsState: (s: SettingsView) => Boolean(s.experimentalTraceAsState),
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),
-  experimentalCollabGroupView: (s: SettingsView) => Boolean(s.experimentalCollabGroupView),
-  // 任务 856 ③：协作中心入口灯（677 collabGroupView 迁移改名）。
-  experimentalCollabHub: (s: SettingsView) => Boolean(s.experimentalCollabHub),
   // tl1746：任务面板灯——实验开关开即亮（命令面板入口与实验室卡同源）。
   tasklistPanel: (s: SettingsView) => Boolean(s.experimentalTasklistPanel),
   experimentalTabCompress: (s: SettingsView) => Boolean(s.experimentalTabCompress),
@@ -83,10 +78,7 @@ export const LAB_LIGHT_KEYS = {
   experimentalTodoSidebar: (s: SettingsView) => Boolean(s.experimentalTodoSidebar),
   experimentalPromptHistoryPicker: (s: SettingsView) => Boolean(s.experimentalPromptHistoryPicker),
   experimentalSessionWall: (s: SettingsView) => Boolean(s.experimentalSessionWall),
-  // 任务 686：工作流可视化面板（默认关）。
-  experimentalWorkflowPanel: (s: SettingsView) => Boolean(s.experimentalWorkflowPanel),
-  // tl1454：工作流面板家族子键（用户自定义模板视图）。
-  experimentalWorkflowTemplates: (s: SettingsView) => Boolean(s.experimentalWorkflowTemplates),
+  // tl1741：experimentalWorkflowPanel / experimentalWorkflowTemplates 谓词随撤开关摘除。
   experimentalSubagentPanel: (s: SettingsView) => Boolean(s.experimentalSubagentPanel),
   experimentalSubagentDetail: (s: SettingsView) => Boolean(s.experimentalSubagentDetail),
   experimentalSubagentPolicy: (s: SettingsView) => Boolean(s.experimentalSubagentPolicy),
@@ -104,9 +96,8 @@ export const LAB_LIGHT_KEYS = {
   forkNotice: (s: SettingsView) => Boolean(s.forkNotice),
   experimentalSessionMonitor: (s: SettingsView) => Boolean(s.experimentalSessionMonitor),
   experimentalPerfMonitor: (s: SettingsView) => Boolean(s.experimentalPerfMonitor),
-  experimentalCDPDebugPort: (s: SettingsView) => Boolean(s.experimentalCDPDebugPort),
+  // tl1741：experimentalCDPDebugPort / experimentalRuntimeReuse 谓词随撤开关摘除。
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
-  experimentalRuntimeReuse: (s: SettingsView) => Boolean(s.experimentalRuntimeReuse),
   experimentalACPListen: (s: SettingsView) => Boolean(s.experimentalACPListen),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),
