@@ -370,7 +370,13 @@ func sanitizeWindowsBashPath(path string, exists func(string) bool) string {
 }
 
 // windowsPowerShellCandidates lists common PowerShell executables that are not
-// always present on PATH, especially PowerShell 7's default MSI install path.
+// always present on PATH: PowerShell 7's default MSI install path, the Store
+// edition's App Execution Alias under %LOCALAPPDATA%\Microsoft\WindowsApps
+// (tl1763: that directory is absent from many processes' PATH, so LookPath
+// never finds the alias, but os.Stat sees the AppExecLink reparse point and
+// CreateProcess executes it fine — measured working via the Go carrier), and
+// the inbox Windows PowerShell 5.1. MSI wins over Store; the inbox 5.1 stays
+// the last-resort fallback.
 func windowsPowerShellCandidates() []string {
 	var roots []string
 	for _, env := range []string{"ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"} {
@@ -381,6 +387,9 @@ func windowsPowerShellCandidates() []string {
 	var out []string
 	for _, r := range roots {
 		out = append(out, filepath.Join(r, "PowerShell", "7", "pwsh.exe"))
+	}
+	if v := os.Getenv("LOCALAPPDATA"); v != "" {
+		out = append(out, filepath.Join(v, "Microsoft", "WindowsApps", "pwsh.exe"))
 	}
 	if v := os.Getenv("SystemRoot"); v != "" {
 		out = append(out, filepath.Join(v, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"))
