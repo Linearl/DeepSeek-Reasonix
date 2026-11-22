@@ -79,7 +79,7 @@ func TestWindowsAppsAliasExcludedFromNonStandardDiscovery(t *testing.T) {
 
 	// The candidate builder applies the same exclusion, so an alias-shaped
 	// entry never reaches consumers of the inventory.
-	filtered, _ := windowsBashCandidateSources("auto", "", lookPath, func(p string) bool {
+	filtered, _ := windowsBashCandidateSources("auto", "", nil, lookPath, func(p string) bool {
 		return strings.EqualFold(p, alias) || strings.EqualFold(p, nonStd)
 	})
 	for _, p := range filtered {
