@@ -65,6 +65,12 @@ type Shell struct {
 // Discovery (candidate ordering, probing) is served by the process-wide shell
 // inventory snapshot, so repeated calls share one probe pass for 30 seconds.
 func ResolveShell(prefer, path string, warn io.Writer) Shell {
+	// Test-only short-circuit (nil in production): the golden baseline pins the
+	// resolved shell so the recorded surface cannot drift with probe outcomes
+	// under host load. See shell_testhook.go.
+	if sh, ok := pinnedResolveShell(); ok {
+		return sh
+	}
 	snap := defaultShellInventory.snapshot(runtime.GOOS, prefer, path)
 	return resolveShell(prefer, path, warn, snap.goos, snap.lookup, snap.exists, snap.bashCands, snap.psCands, snap.probe, snap.isWSL)
 }

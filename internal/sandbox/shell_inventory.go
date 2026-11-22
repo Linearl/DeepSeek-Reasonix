@@ -261,6 +261,11 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 		sources:      map[string]string{},
 		probeCache:   map[string]bool{},
 	}
+	// Test-only override (nil in production): lets tests replay a deterministic
+	// probe timeout/failure outcome across every candidate. See shell_testhook.go.
+	if probe := pinnedShellProbe(); probe != nil {
+		snap.probeFunc = probe
+	}
 	if goos == "windows" {
 		snap.bashCands, snap.sources = windowsBashCandidateSources(prefer, configPath, exec.LookPath, fileExists)
 		snap.psCands = windowsPowerShellCandidates()
