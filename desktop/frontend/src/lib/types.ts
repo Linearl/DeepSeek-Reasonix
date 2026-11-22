@@ -2903,6 +2903,8 @@ export interface DesktopStartupSettingsView {
   experimentalDraftRewrite?: boolean;
   /** tl1544: 运行中编辑历史消息回溯重发；默认关（off 时运行中编辑入口维持拒绝现状）。 */
   experimentalEditResend?: boolean;
+  /** tl1718: composer 工具组默认折叠；默认关（off = 折叠仍只由宽度驱动，与引入前逐字节一致）。 */
+  experimentalComposerToolsFold?: boolean;
   /** Task 979: capability-group disclosure layer (tasks 953/954/955 shared switch); off unless the user opts in. */
   experimentalCapabilityGroups?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
