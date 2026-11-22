@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -208,7 +209,7 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 		}
 	} else {
 		for _, id := range topicIDs {
-			if next := removeString(f.DeletedTopics, id); !sameStringList(next, f.DeletedTopics) {
+			if next := removeString(f.DeletedTopics, id); !slices.Equal(next, f.DeletedTopics) {
 				f.DeletedTopics = next
 				changed = true
 			}
@@ -229,7 +230,7 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 			return changed, nil
 		}
 		next := uniqueStrings(append(append([]string(nil), live...), f.GlobalTopics...))
-		if sameStringList(next, f.GlobalTopics) {
+		if slices.Equal(next, f.GlobalTopics) {
 			return changed, nil
 		}
 		f.GlobalTopics = next
@@ -248,7 +249,7 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 			continue
 		}
 		next := uniqueStrings(append(append([]string(nil), live...), p.Topics...))
-		if sameStringList(next, p.Topics) {
+		if slices.Equal(next, p.Topics) {
 			// 项目侧已登记也可能仍需收敛 global 侧残留（既有双注册存量），
 			// 不能提前返回 false 吞掉收敛写。
 			return changed || globalConverged, nil
@@ -281,11 +282,11 @@ func registerTopicPrependMutator(f *desktopProjectFile, workspaceRoot string, to
 func convergeGlobalRegistration(f *desktopProjectFile, topicIDs []string) bool {
 	changed := false
 	for _, topicID := range topicIDs {
-		if next := removeString(f.GlobalTopics, topicID); !sameStringList(next, f.GlobalTopics) {
+		if next := removeString(f.GlobalTopics, topicID); !slices.Equal(next, f.GlobalTopics) {
 			f.GlobalTopics = next
 			changed = true
 		}
-		if next := removeString(f.GlobalPinnedTopics, topicID); !sameStringList(next, f.GlobalPinnedTopics) {
+		if next := removeString(f.GlobalPinnedTopics, topicID); !slices.Equal(next, f.GlobalPinnedTopics) {
 			f.GlobalPinnedTopics = next
 			changed = true
 		}
@@ -343,7 +344,7 @@ func registerTopicPinMutator(f *desktopProjectFile, workspaceRoot, topicID strin
 		if pinned {
 			next = prependUniqueString(f.Projects[i].PinnedTopics, topicID)
 		}
-		if sameStringList(next, f.Projects[i].PinnedTopics) {
+		if slices.Equal(next, f.Projects[i].PinnedTopics) {
 			return false, nil
 		}
 		f.Projects[i].PinnedTopics = next
@@ -357,7 +358,7 @@ func registerTopicPinMutator(f *desktopProjectFile, workspaceRoot, topicID strin
 	if pinned {
 		next = prependUniqueString(f.GlobalPinnedTopics, topicID)
 	}
-	if sameStringList(next, f.GlobalPinnedTopics) {
+	if slices.Equal(next, f.GlobalPinnedTopics) {
 		return false, nil
 	}
 	f.GlobalPinnedTopics = next
@@ -395,11 +396,11 @@ func unregisterTopicMutator(f *desktopProjectFile, topicID string, opt topicUnre
 	}
 	changed := false
 	if inScope("global", "") {
-		if next := removeString(f.GlobalTopics, topicID); !sameStringList(next, f.GlobalTopics) {
+		if next := removeString(f.GlobalTopics, topicID); !slices.Equal(next, f.GlobalTopics) {
 			f.GlobalTopics = next
 			changed = true
 		}
-		if next := removeString(f.GlobalPinnedTopics, topicID); !sameStringList(next, f.GlobalPinnedTopics) {
+		if next := removeString(f.GlobalPinnedTopics, topicID); !slices.Equal(next, f.GlobalPinnedTopics) {
 			f.GlobalPinnedTopics = next
 			changed = true
 		}
@@ -410,7 +411,7 @@ func unregisterTopicMutator(f *desktopProjectFile, topicID string, opt topicUnre
 		}
 	}
 	if opt.tombstone {
-		if next := prependUniqueString(f.DeletedTopics, topicID); !sameStringList(next, f.DeletedTopics) {
+		if next := prependUniqueString(f.DeletedTopics, topicID); !slices.Equal(next, f.DeletedTopics) {
 			f.DeletedTopics = next
 			changed = true
 		}
@@ -419,11 +420,11 @@ func unregisterTopicMutator(f *desktopProjectFile, topicID string, opt topicUnre
 		if !inScope("project", p.Root) {
 			continue
 		}
-		if next := removeString(p.Topics, topicID); !sameStringList(next, p.Topics) {
+		if next := removeString(p.Topics, topicID); !slices.Equal(next, p.Topics) {
 			f.Projects[i].Topics = next
 			changed = true
 		}
-		if next := removeString(p.PinnedTopics, topicID); !sameStringList(next, p.PinnedTopics) {
+		if next := removeString(p.PinnedTopics, topicID); !slices.Equal(next, p.PinnedTopics) {
 			f.Projects[i].PinnedTopics = next
 			changed = true
 		}
@@ -446,7 +447,7 @@ func reorderTopicOrder(scope, workspaceRoot string, orderedTopicIDs []string) er
 			if orderErr != nil {
 				return false, orderErr
 			}
-			changed := !sameStringList(next, f.GlobalTopics) || !f.GlobalManualTopicOrder
+			changed := !slices.Equal(next, f.GlobalTopics) || !f.GlobalManualTopicOrder
 			f.GlobalTopics, f.GlobalManualTopicOrder = next, true
 			return changed, nil
 		}
@@ -458,7 +459,7 @@ func reorderTopicOrder(scope, workspaceRoot string, orderedTopicIDs []string) er
 		if orderErr != nil {
 			return false, orderErr
 		}
-		changed := !sameStringList(next, f.Projects[i].Topics) || !f.Projects[i].ManualTopicOrder
+		changed := !slices.Equal(next, f.Projects[i].Topics) || !f.Projects[i].ManualTopicOrder
 		f.Projects[i].Topics, f.Projects[i].ManualTopicOrder = next, true
 		return changed, nil
 	})

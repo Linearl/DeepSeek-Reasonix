@@ -115,23 +115,6 @@ func sessionTitleTranscript(users []string) string {
 	return strings.Join(parts, "\n\n")
 }
 
-func sessionPreviewForPath(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return ""
-	}
-	if meta, ok, err := agent.LoadBranchMeta(path); err == nil && ok {
-		if preview := strings.TrimSpace(meta.Preview); preview != "" {
-			return preview
-		}
-	}
-	preview, ok, err := agent.LoadSessionPreviewFromDisplayIndex(path)
-	if err != nil || !ok {
-		return ""
-	}
-	return preview
-}
-
 func topicSessionPreview(sessions []sessioncatalog.SessionRecord, path string) string {
 	// 任务 928：path 的 key 是循环不变量——原实现在循环内每次迭代都重新
 	// canonicalize，1440 条记录的主题一次渲染多付 1440 次 canonical 调用

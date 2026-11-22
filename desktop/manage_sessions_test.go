@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -160,7 +161,7 @@ func TestManageSessionsFlatLegacyMigrationLossless(t *testing.T) {
 	if len(f.GlobalGroups) != 1 || f.GlobalGroups[0].ID != "g1" || f.GlobalGroups[0].Parent != "" {
 		t.Fatalf("legacy groups = %#v", f.GlobalGroups)
 	}
-	if !sameStringList(f.GlobalTopics, []string{"topic-old"}) {
+	if !slices.Equal(f.GlobalTopics, []string{"topic-old"}) {
 		t.Fatalf("legacy topics = %#v", f.GlobalTopics)
 	}
 	out := manageDispatch(t, app, "list", map[string]any{})
@@ -248,7 +249,7 @@ func TestManageSessionsMoveAction(t *testing.T) {
 	}
 	// The session ends up in exactly one group; the emptied old group stays
 	// (existing MoveTopicToGroup contract — groups are not auto-pruned).
-	if !sameStringList(byID["collab-team"].TopicIDs, []string{"topic-a"}) {
+	if !slices.Equal(byID["collab-team"].TopicIDs, []string{"topic-a"}) {
 		t.Fatalf("groups after move = %#v", groups)
 	}
 	if groupContainsTopic(byID["grp-old"], "topic-a") {
@@ -295,7 +296,7 @@ func TestManageSessionsMoveAtomicOnSaveFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, group := range groups {
-		if group.ID == "grp-old" && !sameStringList(group.TopicIDs, []string{"topic-a"}) {
+		if group.ID == "grp-old" && !slices.Equal(group.TopicIDs, []string{"topic-a"}) {
 			t.Fatalf("topic lost from old group after failed move: %#v", groups)
 		}
 		if group.ID == "collab-team" {
@@ -320,7 +321,7 @@ func TestManageSessionsReorderAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameStringList(groups[0].TopicIDs, []string{"b", "c", "a"}) {
+	if !slices.Equal(groups[0].TopicIDs, []string{"b", "c", "a"}) {
 		t.Fatalf("order after reorder = %#v", groups[0].TopicIDs)
 	}
 	// 未入组 topic 拒绝 reorder。
@@ -373,10 +374,10 @@ func TestManageSessionsGroupDeletePromotesChildrenByDefault(t *testing.T) {
 	if proposal.Applied || proposal.Plan == nil {
 		t.Fatalf("proposal = %#v, want plan-only", proposal)
 	}
-	if !sameStringList(proposal.Plan.Deleted, []string{"b"}) || !sameStringList(proposal.Plan.Promoted, []string{"c"}) {
+	if !slices.Equal(proposal.Plan.Deleted, []string{"b"}) || !slices.Equal(proposal.Plan.Promoted, []string{"c"}) {
 		t.Fatalf("plan = %#v", proposal.Plan)
 	}
-	if !sameStringList(proposal.Plan.UnfiledTopics, []string{"t-b"}) {
+	if !slices.Equal(proposal.Plan.UnfiledTopics, []string{"t-b"}) {
 		t.Fatalf("plan unfiled = %#v", proposal.Plan.UnfiledTopics)
 	}
 	groups, err := app.ListProjectGroups("global", "")
@@ -403,7 +404,7 @@ func TestManageSessionsGroupDeletePromotesChildrenByDefault(t *testing.T) {
 	if byID["c"].Parent != "a" {
 		t.Fatalf("c not promoted to a: %#v", byID["c"])
 	}
-	if !sameStringList(byID["c"].TopicIDs, []string{"t-c"}) {
+	if !slices.Equal(byID["c"].TopicIDs, []string{"t-c"}) {
 		t.Fatalf("c membership changed: %#v", byID["c"])
 	}
 }
@@ -426,7 +427,7 @@ func TestManageSessionsGroupDeleteCascadeSubtree(t *testing.T) {
 	if err := json.Unmarshal(out, &result); err != nil {
 		t.Fatalf("decode result: %v", err)
 	}
-	if !result.Applied || !sameStringList(result.Plan.Deleted, []string{"b", "c", "d"}) {
+	if !result.Applied || !slices.Equal(result.Plan.Deleted, []string{"b", "c", "d"}) {
 		t.Fatalf("cascade result = %#v", result)
 	}
 	groups, err := app.ListProjectGroups("global", "")

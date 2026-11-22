@@ -35,6 +35,7 @@ import (
 	"reasonix/internal/filelock"
 	"reasonix/internal/fileutil"
 	"reasonix/internal/sessioncollab"
+	"reasonix/internal/textutil"
 )
 
 // Buckets — the five views of the unified mail table (task 320 d).
@@ -587,7 +588,7 @@ func (s *Store) buildIndex(ctx context.Context) (*foldIndex, error) {
 			To:           m.To,
 			ToTitle:      m.ToTitle,
 			At:           m.At,
-			ThreadID:     firstNonEmpty(m.ThreadID, m.ID),
+			ThreadID:     textutil.First(m.ThreadID, m.ID),
 			Hop:          m.Hop,
 			CardID:       m.CardID,
 			Approver:     m.Approver,
@@ -1526,11 +1527,3 @@ func previewOf(body string) string {
 	return line
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}

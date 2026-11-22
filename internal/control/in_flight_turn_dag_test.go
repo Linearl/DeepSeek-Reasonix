@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"reasonix/internal/agent"
@@ -13,21 +12,6 @@ import (
 	"reasonix/internal/store"
 	"reasonix/internal/tool"
 )
-
-func dagLogEntryTypes(t *testing.T, path string) []string {
-	t.Helper()
-	b, err := os.ReadFile(store.SessionEventLog(path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var types []string
-	for line := range strings.SplitSeq(strings.TrimSpace(string(b)), "\n") {
-		_, rest, _ := strings.Cut(line, `"type":"`)
-		typ, _, _ := strings.Cut(rest, `"`)
-		types = append(types, typ)
-	}
-	return types
-}
 
 // TestInterruptedTurnRecoveryUsesSidecarMarker pins the crash contract now
 // that the schema-2 log markers left with the write-path slow lane (tl1280):

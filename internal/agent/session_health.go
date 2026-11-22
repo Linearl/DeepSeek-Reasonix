@@ -2,7 +2,6 @@ package agent
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -247,8 +246,4 @@ func projectionImageBytes(msgs []provider.Message) int {
 		}
 	}
 	return n
-}
-
-func isDeadline(err error) bool {
-	return errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled)
 }

@@ -126,18 +126,20 @@ func (b *Broadcaster) ledgerLocked(path string) *billing.Ledger {
 	return ledger
 }
 
-// Emit marshals the event to JSON and delivers it to every subscriber. Drops to
-// a subscriber whose buffer is full rather than blocking. A marshal failure is
-// dropped silently — one bad event shouldn't stall the stream.
-func (b *Broadcaster) Emit(e event.Event) {
-	if e.SessionPath != "" {
-		e.SessionPath = agent.CanonicalSessionPath(e.SessionPath)
+// marshalForDelivery is the shared emit face of Emit/EmitTo/EmitWire (tl1754):
+// canonicalize the session path, stamp SessionCurrent under the double-check
+// against current-session flips between the read and the marshal, then invoke
+// deliver once with the final frame while Broadcaster.mu is held. deliver must
+// not re-lock b.mu. A marshal failure is dropped silently — one bad event
+// shouldn't stall the stream.
+func (b *Broadcaster) marshalForDelivery(wired *eventwire.Event, deliver func(data []byte)) {
+	if wired.SessionPath != "" {
+		wired.SessionPath = agent.CanonicalSessionPath(wired.SessionPath)
 	}
-	wired := eventwire.ToWire(e)
 	b.mu.Lock()
 	observedCurrent := b.current
 	b.mu.Unlock()
-	wired.SessionCurrent = e.SessionPath != "" && e.SessionPath == observedCurrent
+	wired.SessionCurrent = wired.SessionPath != "" && wired.SessionPath == observedCurrent
 	data, err := json.Marshal(wired)
 	if err != nil {
 		return
@@ -145,26 +147,36 @@ func (b *Broadcaster) Emit(e event.Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.current != observedCurrent {
-		wired.SessionCurrent = e.SessionPath != "" && e.SessionPath == b.current
+		wired.SessionCurrent = wired.SessionPath != "" && wired.SessionPath == b.current
 		data, err = json.Marshal(wired)
 		if err != nil {
 			return
 		}
 	}
-	if e.Kind == event.Usage && e.Usage != nil && e.CostQuote != nil {
-		b.ledgerLocked(e.SessionPath).Add(*e.CostQuote, billing.UsageTokens{
-			PromptTokens: e.Usage.PromptTokens, CompletionTokens: e.Usage.CompletionTokens,
-			CacheHitTokens: e.Usage.CacheHitTokens, CacheMissTokens: e.Usage.CacheMissTokens,
-			CacheWriteTokens: e.Usage.CacheWriteTokens, CacheWriteBilledTokens: e.Usage.CacheWriteBilledTokens,
-			Estimated: e.Usage.Estimated,
-		}, time.Now().UTC())
-	}
-	for ch, sub := range b.subs {
-		if !sub.all && e.SessionPath != "" && e.SessionPath != b.current {
-			continue
+	deliver(data)
+}
+
+// Emit marshals the event to JSON and delivers it to every subscriber. Drops to
+// a subscriber whose buffer is full rather than blocking. Usage events are
+// accounted into the session ledger on delivery.
+func (b *Broadcaster) Emit(e event.Event) {
+	wired := eventwire.ToWire(e)
+	b.marshalForDelivery(&wired, func(data []byte) {
+		if e.Kind == event.Usage && e.Usage != nil && e.CostQuote != nil {
+			b.ledgerLocked(wired.SessionPath).Add(*e.CostQuote, billing.UsageTokens{
+				PromptTokens: e.Usage.PromptTokens, CompletionTokens: e.Usage.CompletionTokens,
+				CacheHitTokens: e.Usage.CacheHitTokens, CacheMissTokens: e.Usage.CacheMissTokens,
+				CacheWriteTokens: e.Usage.CacheWriteTokens, CacheWriteBilledTokens: e.Usage.CacheWriteBilledTokens,
+				Estimated: e.Usage.Estimated,
+			}, time.Now().UTC())
 		}
-		enqueueSubscriberFrame(ch, data, e.Kind)
-	}
+		for ch, sub := range b.subs {
+			if !sub.all && wired.SessionPath != "" && wired.SessionPath != b.current {
+				continue
+			}
+			enqueueSubscriberTypedFrame(ch, data, e.Kind)
+		}
+	})
 }
 
 // EmitTo delivers an event only to the supplied subscriber. It is used for
@@ -172,37 +184,19 @@ func (b *Broadcaster) Emit(e event.Event) {
 // that attached after the original event was emitted. Normal runtime events
 // should continue to use Emit so every subscriber receives them.
 func (b *Broadcaster) EmitTo(target <-chan []byte, e event.Event) {
-	if e.SessionPath != "" {
-		e.SessionPath = agent.CanonicalSessionPath(e.SessionPath)
-	}
 	wired := eventwire.ToWire(e)
-	b.mu.Lock()
-	observedCurrent := b.current
-	b.mu.Unlock()
-	wired.SessionCurrent = e.SessionPath != "" && e.SessionPath == observedCurrent
-	data, err := json.Marshal(wired)
-	if err != nil {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.current != observedCurrent {
-		wired.SessionCurrent = e.SessionPath != "" && e.SessionPath == b.current
-		data, err = json.Marshal(wired)
-		if err != nil {
+	b.marshalForDelivery(&wired, func(data []byte) {
+		for ch, sub := range b.subs {
+			if (<-chan []byte)(ch) != target {
+				continue
+			}
+			if !sub.all && wired.SessionPath != "" && wired.SessionPath != b.current {
+				return
+			}
+			enqueueSubscriberTypedFrame(ch, data, e.Kind)
 			return
 		}
-	}
-	for ch, sub := range b.subs {
-		if (<-chan []byte)(ch) != target {
-			continue
-		}
-		if !sub.all && e.SessionPath != "" && e.SessionPath != b.current {
-			return
-		}
-		enqueueSubscriberFrame(ch, data, e.Kind)
-		return
-	}
+	})
 }
 
 // eventIsPriority keeps lifecycle and terminal frames out of the high-volume
@@ -232,8 +226,12 @@ func eventMustReachSubscriber(kind event.Kind, data []byte) bool {
 	}
 }
 
-func enqueueSubscriberFrame(ch chan []byte, data []byte, kind event.Kind) {
-	priority := eventIsPriority(kind)
+// enqueueSubscriberFrame is the single queueing body for typed and wire
+// frames (tl1754): honor the delta priority reserve, and on saturation let a
+// must-reach frame evict a recoverable queued frame. The typed and wire
+// callers differ only in how priority and must-reach are derived from their
+// kind representations, so those arrive as parameters.
+func enqueueSubscriberFrame(ch chan []byte, data []byte, priority bool, frameMustReach func(data []byte) bool) {
 	if !priority && len(ch) >= cap(ch)-subscriberPriorityReserve {
 		return
 	}
@@ -244,7 +242,7 @@ func enqueueSubscriberFrame(ch chan []byte, data []byte, kind event.Kind) {
 		// A slow subscriber exhausted even the priority reserve. Ordinary
 		// priority events remain lossy, but lifecycle truth gets one slot by
 		// evicting an older frame while Broadcaster.mu serializes producers.
-		if !eventMustReachSubscriber(kind, data) || !evictRecoverableSubscriberFrame(ch) {
+		if !frameMustReach(data) || !evictRecoverableSubscriberFrame(ch) {
 			return
 		}
 	}
@@ -252,6 +250,14 @@ func enqueueSubscriberFrame(ch chan []byte, data []byte, kind event.Kind) {
 	// slot. A concurrent consumer can only create more capacity, so this send is
 	// bounded while guaranteeing the terminal frame is retained.
 	ch <- data
+}
+
+// enqueueSubscriberTypedFrame derives priority/must-reach from a typed
+// event.Kind and delegates to the shared queueing body.
+func enqueueSubscriberTypedFrame(ch chan []byte, data []byte, kind event.Kind) {
+	enqueueSubscriberFrame(ch, data, eventIsPriority(kind), func(d []byte) bool {
+		return eventMustReachSubscriber(kind, d)
+	})
 }
 
 func evictRecoverableSubscriberFrame(ch chan []byte) bool {
@@ -303,29 +309,11 @@ func wireFrameMustReachSubscriber(data []byte) bool {
 // Serve so the remote tab keeps rendering the conversation live without any
 // change to its own pipeline.
 func (b *Broadcaster) EmitWire(wired eventwire.Event) {
-	if wired.SessionPath != "" {
-		wired.SessionPath = agent.CanonicalSessionPath(wired.SessionPath)
-	}
-	b.mu.Lock()
-	observedCurrent := b.current
-	b.mu.Unlock()
-	wired.SessionCurrent = wired.SessionPath != "" && wired.SessionPath == observedCurrent
-	data, err := json.Marshal(wired)
-	if err != nil {
-		return
-	}
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if b.current != observedCurrent {
-		wired.SessionCurrent = wired.SessionPath != "" && wired.SessionPath == b.current
-		data, err = json.Marshal(wired)
-		if err != nil {
-			return
+	b.marshalForDelivery(&wired, func(data []byte) {
+		for ch := range b.subs {
+			enqueueSubscriberWireFrame(ch, data, wired.Kind)
 		}
-	}
-	for ch := range b.subs {
-		enqueueSubscriberWireFrame(ch, data, wired.Kind)
-	}
+	})
 }
 
 // wireKindIsPriority mirrors eventIsPriority for externally supplied frames,
@@ -334,20 +322,10 @@ func wireKindIsPriority(kind string) bool {
 	return !eventwire.WireKindIsRecoverable(kind)
 }
 
+// enqueueSubscriberWireFrame derives priority/must-reach from a wire kind
+// string and delegates to the shared queueing body.
 func enqueueSubscriberWireFrame(ch chan []byte, data []byte, kind string) {
-	priority := wireKindIsPriority(kind)
-	if !priority && len(ch) >= cap(ch)-subscriberPriorityReserve {
-		return
-	}
-	select {
-	case ch <- data:
-		return
-	default:
-		if !wireFrameMustReachSubscriber(data) || !evictRecoverableSubscriberFrame(ch) {
-			return
-		}
-	}
-	ch <- data
+	enqueueSubscriberFrame(ch, data, wireKindIsPriority(kind), wireFrameMustReachSubscriber)
 }
 
 // Subscribe registers a new SSE client and returns its channel plus an

@@ -80,10 +80,6 @@ func Is(err error, code Code) bool {
 	return false
 }
 
-func canceledError(err error) Error {
-	return Error{Code: CodeCanceled, Message: "was canceled", Cause: err, Retry: true}
-}
-
 func defaultDetail(code Code) string {
 	switch code {
 	case CodeMissing:

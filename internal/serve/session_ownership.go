@@ -954,31 +954,18 @@ func (s *Server) statusViewForPath(path string, held bool) map[string]any {
 
 // externalStatusView renders the status payload for a session a local runtime
 // owns (mirrored or foreign-held): nothing here can run, ownership is external,
-// and the surface must render read-only.
+// and the surface must render read-only. tl1754: the two status shapes were
+// field-identical, so this is an unconditional delegation to
+// mirrorStatusView — non-mirrored sessions simply take the ok=false branch
+// (same 12 keys, no reclaimRequested).
 func (s *Server) externalStatusView(path string) map[string]any {
-	if _, ok := s.mirroredEntry(path); ok {
-		return s.mirrorStatusView(path)
-	}
-	sess := map[string]any{
-		"label":            s.ctl().Label(),
-		"running":          false,
-		"plan":             false,
-		"autoApproveTools": false,
-		"bypass":           false,
-		"toolApprovalMode": "ask",
-		"cwd":              s.ctl().SessionDir(),
-		"pendingPrompt":    false,
-		"backgroundJobs":   0,
-		"takenOver":        true,
-		"sessionName":      strings.TrimSuffix(filepath.Base(path), ".jsonl"),
-		"sessionPath":      agent.CanonicalSessionPath(path),
-	}
-	return sess
+	return s.mirrorStatusView(path)
 }
 
 // mirrorStatusView renders the status payload for a mirrored session selected
 // via ?session=: nothing can run here, ownership is external, and the surface
-// must render read-only.
+// must render read-only. Also serves externalStatusView for foreign-held
+// sessions, which differ only by the mirrored-entry reclaimRequested field.
 func (s *Server) mirrorStatusView(path string) map[string]any {
 	m, ok := s.mirroredEntry(path)
 	sess := map[string]any{

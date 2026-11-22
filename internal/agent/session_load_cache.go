@@ -1,11 +1,8 @@
 package agent
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"log/slog"
 	"os"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -183,34 +180,4 @@ func logTailWhitespaceOnly(logPath string, from, to int64) bool {
 		}
 	}
 	return true
-}
-
-// sessionLogIdentity is a cheap identity for "have this session's event-log
-// bytes changed", used by the P18-R2 guards: the log's size plus a digest of
-// its bounded head window. Hashing a multi-hundred-MB log whole would
-// reintroduce the decode the guards exist to avoid; append-only logs change
-// size on every write, and same-size rewrites rotate the header generation —
-// the pair (size, head window) catches both cheaply.
-type sessionLogIdentity struct {
-	Size       int64
-	HeadDigest string
-}
-
-func readSessionLogIdentity(logPath string) (sessionLogIdentity, bool) {
-	info, err := os.Stat(logPath)
-	if err != nil || info.IsDir() {
-		return sessionLogIdentity{}, false
-	}
-	f, err := os.Open(logPath)
-	if err != nil {
-		return sessionLogIdentity{}, false
-	}
-	defer f.Close()
-	head := make([]byte, 4096)
-	n, _ := f.Read(head)
-	sum := sha256.Sum256(head[:n])
-	return sessionLogIdentity{
-		Size:       info.Size(),
-		HeadDigest: hex.EncodeToString(sum[:8]) + ":" + strconv.FormatInt(info.Size(), 10),
-	}, true
 }

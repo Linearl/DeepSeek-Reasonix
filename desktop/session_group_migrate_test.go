@@ -31,6 +31,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -202,7 +203,7 @@ func TestMigrateSessionGroupMovesRosterMembersAndMeta(t *testing.T) {
 	if len(target.Groups) != 1 || target.Groups[0].ID != "g-1" {
 		t.Fatalf("target roster missing migrated group: %+v", target.Groups)
 	}
-	if !sameStringList(target.Groups[0].TopicIDs, []string{"topic-a", "topic-b"}) {
+	if !slices.Equal(target.Groups[0].TopicIDs, []string{"topic-a", "topic-b"}) {
 		t.Fatalf("target group members = %v, want [topic-a topic-b]", target.Groups[0].TopicIDs)
 	}
 	if target.Revision != 1 {
@@ -456,7 +457,7 @@ func TestMigrateSessionGroupBetweenProjectsRewritesIdentities(t *testing.T) {
 	if err != nil || len(dst.Groups) != 1 || dst.Groups[0].ID != "g-2" {
 		t.Fatalf("target roster missing migrated group: %+v err=%v", dst.Groups, err)
 	}
-	if !sameStringList(dst.Groups[0].TopicIDs, []string{"topic-p", "topic-q"}) {
+	if !slices.Equal(dst.Groups[0].TopicIDs, []string{"topic-p", "topic-q"}) {
 		t.Fatalf("target members = %v", dst.Groups[0].TopicIDs)
 	}
 
@@ -591,16 +592,16 @@ func TestMigrateSessionGroupLeavesForeignMemberBehind(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if !sameStringList(result.MigratedTopics, []string{"topic-a"}) {
+	if !slices.Equal(result.MigratedTopics, []string{"topic-a"}) {
 		t.Fatalf("migratedTopics = %v, want [topic-a]", result.MigratedTopics)
 	}
-	if !sameStringList(result.SkippedTopics, []string{"topic-x"}) {
+	if !slices.Equal(result.SkippedTopics, []string{"topic-x"}) {
 		t.Fatalf("skippedTopics = %v, want [topic-x]", result.SkippedTopics)
 	}
 
 	// 目标组只含迁移名册成员。
 	target, err := app.GetProjectGroups("project", projectRoot)
-	if err != nil || len(target.Groups) != 1 || !sameStringList(target.Groups[0].TopicIDs, []string{"topic-a"}) {
+	if err != nil || len(target.Groups) != 1 || !slices.Equal(target.Groups[0].TopicIDs, []string{"topic-a"}) {
 		t.Fatalf("target group members = %+v, want [topic-a] only", target.Groups)
 	}
 	// 迷路成员注册原地（global），其文件原地未动。

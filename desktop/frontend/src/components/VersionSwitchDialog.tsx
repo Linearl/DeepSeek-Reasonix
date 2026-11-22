@@ -1,6 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useId, useState } from "react";
 import { useI18n } from "../lib/i18n";
+import type { VersionEntry } from "../lib/bridge";
 
 // VersionSwitchDialog (task 210): the version picker behind the status-bar
 // "快速切换版本" button. Lists the versions already published under
@@ -16,11 +17,10 @@ import { useI18n } from "../lib/i18n";
 // entry at all: the Go binding refuses the current.json target anyway, so the
 // UI simply never offers it.
 
-export type VersionEntry = {
-  version: string;
-  active: boolean;
-  modTimeUnix: number;
-};
+// tl1754: the local VersionEntry twin (field-identical to lib/bridge's) is
+// gone; bridge is the single source of truth and this re-export keeps the
+// existing `from "./components/VersionSwitchDialog"` import surface stable.
+export type { VersionEntry };
 
 type VersionSwitchDialogProps = {
   open: boolean;

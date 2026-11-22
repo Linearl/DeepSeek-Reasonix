@@ -1,6 +1,7 @@
 package imageinput
 
 import (
+	"slices"
 	"strings"
 
 	"reasonix/internal/provider"
@@ -22,7 +23,7 @@ func (s *Service) lookup(target string, images []string, history func() []provid
 		}
 	}
 	match := func(v *provider.VisionSummary) bool {
-		return v != nil && v.Version == visionSummaryVersion && v.PromptVersion == visionSummaryPromptVersion && v.ModelRef == target && sameImageDigests(v.ImageDigests, digests) && strings.TrimSpace(v.Summary) != ""
+		return v != nil && v.Version == visionSummaryVersion && v.PromptVersion == visionSummaryPromptVersion && v.ModelRef == target && slices.Equal(v.ImageDigests, digests) && strings.TrimSpace(v.Summary) != ""
 	}
 	key := target + "|" + strings.Join(digests, "|")
 	if cacheable {

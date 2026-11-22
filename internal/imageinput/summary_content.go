@@ -40,18 +40,6 @@ func AppendSummary(input string, summary *provider.VisionSummary) string {
 	return strings.TrimRight(input, "\n") + "\n\n" + block
 }
 
-func sameImageDigests(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
-}
-
 func boundedVisionSummary(text string) string {
 	text = strings.TrimSpace(text)
 	if len(text) <= visionSummaryMaxBytes {

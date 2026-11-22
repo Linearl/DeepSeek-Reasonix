@@ -407,7 +407,7 @@ func (a *App) MigrateSessionGroup(scope, sourceRoot, groupID, targetWorkspaceRoo
 			} else {
 				roster = f.GlobalGroups[ri]
 			}
-			if !sameStringList(roster.TopicIDs, members) {
+			if !slices.Equal(roster.TopicIDs, members) {
 				return false, fmt.Errorf("group %q membership changed during migration; retry", group.ID)
 			}
 		}

@@ -10,7 +10,12 @@
 
 import type { WorkflowDag } from "./workflowDag";
 
-export type WorkflowNodeState = "queued" | "running" | "done" | "unconfirmed" | "failed";
+// tl1754: renamed from WorkflowNodeState (which collided field-for-name with
+// workflowTypes' wire-domain WorkflowNodeState while carrying a DIFFERENT
+// value set: "done" vs "completed"+"gate_passed"). The panel-store domain
+// keeps its own five states; the Panel suffix kills the same-name import
+// hazard workflowRunFeed lived with (both domains imported side by side).
+export type WorkflowPanelNodeState = "queued" | "running" | "done" | "unconfirmed" | "failed";
 export type WorkflowRunState = "planned" | "running" | "completed" | "errored" | "stopped";
 
 /** 节点的下钻详情（点击节点看的四类信息 + 耗时/tokens）。 */
@@ -36,11 +41,11 @@ export interface WorkflowNodeDetail {
 
 export type WorkflowEvent =
   | { type: "run-state"; state: WorkflowRunState; at: number; err?: string }
-  | { type: "node-state"; nodeId: string; state: WorkflowNodeState; at: number }
+  | { type: "node-state"; nodeId: string; state: WorkflowPanelNodeState; at: number }
   | { type: "node-detail"; nodeId: string; at: number; detail: WorkflowNodeDetail };
 
 export interface WorkflowNodeRun {
-  state: WorkflowNodeState;
+  state: WorkflowPanelNodeState;
   /** 最近一次状态变迁时刻（unix ms）。 */
   changedAt?: number;
   detail?: WorkflowNodeDetail;

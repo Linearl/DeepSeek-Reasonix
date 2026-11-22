@@ -3,10 +3,12 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode/utf8"
 
+	"reasonix/internal/textutil"
 	"reasonix/internal/topicregistry"
 )
 
@@ -696,7 +698,7 @@ func (a *App) AddTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitle
 			return nil
 		}
 	}
-	return fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+	return fmt.Errorf("session group %q: config changed concurrently, retry", textutil.First(groupID, groupTitle))
 }
 
 // MoveTopicToGroup files a topic into a group AND removes it from every other
@@ -783,7 +785,7 @@ func (a *App) MoveTopicToGroup(scope, workspaceRoot, topicID, groupID, groupTitl
 			return moved, removed, alreadyFiled, nil
 		}
 	}
-	return desktopGroup{}, nil, false, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+	return desktopGroup{}, nil, false, fmt.Errorf("session group %q: config changed concurrently, retry", textutil.First(groupID, groupTitle))
 }
 
 type desktopBatchMoveToGroupItem struct {
@@ -903,7 +905,7 @@ func (a *App) BatchMoveToGroup(scope, workspaceRoot string, topicIDs []string, g
 			result.Items[idx] = desktopBatchMoveToGroupItem{TopicID: result.Items[idx].TopicID}
 		}
 	}
-	return result, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmptyString(groupID, groupTitle))
+	return result, fmt.Errorf("session group %q: config changed concurrently, retry", textutil.First(groupID, groupTitle))
 }
 
 // finalizeBatchMoveResult recomputes the batch counters from the per-topic
@@ -1032,7 +1034,7 @@ func equalGroups(left, right []desktopGroup) bool {
 		return false
 	}
 	for i := range left {
-		if left[i].ID != right[i].ID || left[i].Title != right[i].Title || left[i].Parent != right[i].Parent || !sameStringList(left[i].TopicIDs, right[i].TopicIDs) {
+		if left[i].ID != right[i].ID || left[i].Title != right[i].Title || left[i].Parent != right[i].Parent || !slices.Equal(left[i].TopicIDs, right[i].TopicIDs) {
 			return false
 		}
 	}
@@ -1045,7 +1047,7 @@ func groupsWithoutTopic(groups []desktopGroup, topicID string) ([]desktopGroup, 
 	for i, group := range groups {
 		next[i] = group
 		next[i].TopicIDs = removeString(group.TopicIDs, topicID)
-		changed = changed || !sameStringList(next[i].TopicIDs, group.TopicIDs)
+		changed = changed || !slices.Equal(next[i].TopicIDs, group.TopicIDs)
 	}
 	return next, changed
 }

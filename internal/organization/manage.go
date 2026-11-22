@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"reasonix/internal/textutil"
 )
 
 // Task 911: the manage-groups surface GC drives over the serve gateway. The
@@ -553,16 +555,7 @@ func FileTopic(scope, workspaceRoot, topicID, groupID, groupTitle string) (Group
 			return result, nil
 		}
 	}
-	return result, fmt.Errorf("session group %q: config changed concurrently, retry", firstNonEmpty(groupID, groupTitle))
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
+	return result, fmt.Errorf("session group %q: config changed concurrently, retry", textutil.First(groupID, groupTitle))
 }
 
 // ── project-group catalog operations ────────────────────────────────────────

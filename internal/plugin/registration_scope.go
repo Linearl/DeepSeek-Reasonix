@@ -67,7 +67,7 @@ func (h *Host) BeginRegistrationScope() *RegistrationScope {
 }
 
 // ContextWithRegistrationScope attaches scope to ctx for EnsureConnected /
-// LazyToolset / ReplaceServerBackend ownership attribution.
+// LazyToolset ownership attribution.
 func ContextWithRegistrationScope(ctx context.Context, scope *RegistrationScope) context.Context {
 	if ctx == nil {
 		ctx = context.Background()

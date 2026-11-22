@@ -35,6 +35,7 @@ import (
 
 	"reasonix/internal/provider"
 	"reasonix/internal/store"
+	"reasonix/internal/textutil"
 )
 
 // V5ImportBackup is the record of the pre-import backup.
@@ -394,7 +395,7 @@ func buildV5ImportStaged(ctx context.Context, plan *V5Plan, entry V5PlanEntry, s
 	}
 	meta := v5ImportMeta{
 		ID:            entry.SessionID,
-		Name:          firstNonEmpty(transcript.Title, entry.Title),
+		Name:          textutil.FirstTrimmed(transcript.Title, entry.Title),
 		CreatedAt:     session.Manifest.CreatedAt,
 		UpdatedAt:     session.UpdatedAt(),
 		Scope:         scope,
@@ -476,11 +477,3 @@ func verifyV5ImportLegacyFile(entry V5PlanEntry) error {
 	return nil
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}

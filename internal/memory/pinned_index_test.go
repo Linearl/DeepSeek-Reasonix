@@ -245,11 +245,3 @@ func TestPinnedIndexBlockDeterministic(t *testing.T) {
 		t.Fatalf("pinned index must keep UpdatedAt-descending order (beta newer):\n%s", b)
 	}
 }
-
-func fmtSprintf(format string, n int) string {
-	return strings.ReplaceAll(format, "%02d", pad2(n))
-}
-
-func pad2(n int) string {
-	return string([]byte{byte('0' + n/10), byte('0' + n%10)})
-}

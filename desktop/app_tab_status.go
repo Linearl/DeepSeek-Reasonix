@@ -10,6 +10,7 @@ import (
 	"reasonix/internal/config"
 	"reasonix/internal/control"
 	"reasonix/internal/evidence"
+	"reasonix/internal/textutil"
 )
 
 // tabAndCtrlForUsage resolves the tab/controller pair for the gauge reads.
@@ -132,7 +133,7 @@ func (a *App) BalanceForTab(tabID string) BalanceInfo {
 		Complete:            true,
 		Currencies:          currencies,
 		PrimaryCurrency:     primary,
-		CostDisplayCurrency: firstNonEmptyString(currency, primary),
+		CostDisplayCurrency: textutil.First(currency, primary),
 		MultiCurrency:       len(currencies) > 1,
 	}
 }
@@ -150,15 +151,6 @@ func balanceDetail(b *billing.Balance) string {
 		parts = append(parts, cur+" "+strings.TrimSpace(info.TotalBalance))
 	}
 	return strings.Join(parts, "\n")
-}
-
-func firstNonEmptyString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }
 
 // balanceDisplayCurrency resolves only an explicit global display currency.
