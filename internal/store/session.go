@@ -54,6 +54,13 @@ const (
 	// JSON，让归因跨进程可查；与 repairlog 同纪律：追加式审计侧车，不进
 	// 会话列表，删除会话时一并清掉。
 	SessionRewriteAttributionLogSuffix = ".rewritelog.jsonl"
+	// SessionConflictPreserveLogSuffix 是分叉接管保全日志（tl1748：
+	// <stem>.conflict-preserved.jsonl）。rev-lag takeover 用快照 rewrite 覆盖
+	// 磁盘前，被弃侧（disk 侧）相对活跃线独有的消息先落一份完整副本到这里，
+	// 用户消息随后以 origin=host 中继进活跃 turn——覆盖不再是销毁。与
+	// repairlog 同纪律：追加式审计侧车，每会话一个文件、一次接管追加一行，
+	// 不进会话列表（IsSessionTranscriptName 显式排除），删除会话时一并清掉。
+	SessionConflictPreserveLogSuffix = ".conflict-preserved.jsonl"
 	SessionEventIndexSuffix            = ".event-index.json"
 	SessionDisplayIndexSuffix          = ".display-index.json"
 	// SessionGuardianTranscriptSuffix 是 guardian 伴随转录的尾缀
@@ -82,6 +89,7 @@ func IsSessionTranscriptName(name string) bool {
 		!strings.HasSuffix(name, SessionConflictLogSuffix) &&
 		!strings.HasSuffix(name, SessionRepairLogSuffix) &&
 		!strings.HasSuffix(name, SessionRewriteAttributionLogSuffix) &&
+		!strings.HasSuffix(name, SessionConflictPreserveLogSuffix) &&
 		!strings.HasSuffix(name, SessionGuardianTranscriptSuffix)
 }
 
@@ -406,6 +414,19 @@ func SessionRewriteAttributionLog(sessionPath string) string {
 		return ""
 	}
 	return sessionStem(sessionPath) + SessionRewriteAttributionLogSuffix
+}
+
+// SessionConflictPreserveLog is the fork-takeover preservation log of a
+// session (tl1748: <stem>.conflict-preserved.jsonl). Before a rev-lag takeover
+// rewrites the transcript, the abandoned disk side's messages that the live
+// line does not already contain land here in full, so the overwrite is never a
+// silent destruction. It stays beside the transcript like every other sidecar
+// so deleting the session removes the preserved copies too.
+func SessionConflictPreserveLog(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionConflictPreserveLogSuffix
 }
 
 // SessionLockFile is the advisory save lock (<id>.jsonl.lock).

@@ -162,6 +162,13 @@ func (c *Controller) healDivergedSnapshotConflict(conflict *agent.SessionSnapsho
 	if session == nil {
 		return false
 	}
+	// tl1748: same obligation as the ladder-side takeover — capture the disk
+	// side before the rewrite, then preserve + relay + log what the abandoned
+	// line held. This admission twin is the path the 2026-11-21 22:59 field
+	// case actually retried ("persist turn admission"), so the fork-line
+	// messages must not escape through it. Capture is best-effort; a declined
+	// takeover persists nothing.
+	captured := captureTakeoverDiskSide(path)
 	if err := session.SaveAdoptOverStaleDisk(path, conflict); err != nil {
 		slog.Warn("controller: diverged admission self-heal declined",
 			"err", err, "path", path,
@@ -171,16 +178,16 @@ func (c *Controller) healDivergedSnapshotConflict(conflict *agent.SessionSnapsho
 	c.turnEvents.mu.Lock()
 	c.turnEvents.err = nil
 	c.turnEvents.mu.Unlock()
-	appendSnapshotConflictDiagnostic(path, "admission", "diverged_takeover_committed", &agent.SessionSnapshotConflictError{
-		Path:             path,
-		Kind:             agent.SessionSnapshotConflictDiverged,
-		ExistingMessages: conflict.ExistingMessages,
-		SnapshotMessages: conflict.SnapshotMessages,
-		BaseRevision:     conflict.BaseRevision,
-		DiskRevision:     conflict.DiskRevision,
-	}, "", true)
+	// A traced record (not the untraced form) so the conflicts.jsonl line
+	// carries the tl1748 preservation/relay accounting alongside the decision.
+	trace := newForkTrace(path, "admission", conflict)
+	trace.decide(forkDecisionRewrite, forkReasonRevLagTakeover)
+	c.settleTakeoverDiskSide(trace, path, "admission", session, captured, conflict)
+	appendTracedConflictDiagnostic(trace, path, "admission", "diverged_takeover_committed", conflict, "", true)
 	slog.Warn("controller: diverged turn admission self-healed by takeover",
-		"path", path, "base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision)
+		"path", path, "base_revision", conflict.BaseRevision, "disk_revision", conflict.DiskRevision,
+		"rev_lag", conflict.DiskRevision-conflict.BaseRevision,
+		"disk_messages", conflict.ExistingMessages, "snapshot_messages", conflict.SnapshotMessages)
 	return true
 }
 

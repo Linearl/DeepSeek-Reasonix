@@ -145,6 +145,7 @@ func TestSessionPathSuffixArgsFromKnownSet(t *testing.T) {
 		"SessionConflictLogSuffix":           "conflict-log classification",
 		"SessionRepairLogSuffix":             "self-heal repair-log classification (task 1071: excluded from transcript-name classification so it never derives its own sidecars)",
 		"SessionRewriteAttributionLogSuffix": "tl1652: rewrite-attribution journal classification tail (IsSessionTranscriptName exclusion — the journal must never classify as a transcript)",
+		"SessionConflictPreserveLogSuffix":   "tl1748: fork-takeover preservation log classification tail (IsSessionTranscriptName exclusion — the preserved abandoned-line copy must never classify as a transcript)",
 		"SessionGuardianTranscriptSuffix":    "guardian companion transcript classification tail (tl1424: IsGuardianTranscriptName and the IsSessionTranscriptName exclusion)",
 		"SessionEventLogZstSuffix":           "events-archive exclusion tail in IsSessionTranscriptZstName (tl 1172: <id>.events.jsonl.zst must not classify as a transcript archive)",
 		"SessionTranscriptZstSuffix":         "transcript-archive classification tail (tl 1174: <id>.jsonl.zst is the archived primary transcript)",

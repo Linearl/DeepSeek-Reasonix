@@ -61,6 +61,19 @@ type snapshotConflictDiagnostic struct {
 	SinceLastForkMs  int64  `json:"since_last_fork_ms,omitempty"`
 	RewritePending   bool   `json:"rewrite_pending,omitempty"`
 	Fallthrough      string `json:"fallthrough,omitempty"`
+	// tl1748: what the committed rev-lag takeover did with the abandoned disk
+	// side — how many captured messages the live line did not contain, how
+	// many of those were user-authored, where the full copy is recoverable
+	// (bare sidecar filename beside the session), and whether the user
+	// messages were relayed into the live transcript. Counts and a filename
+	// only; message text never enters the diagnostic.
+	TakeoverDiskOnly     int    `json:"takeover_disk_only,omitempty"`
+	TakeoverDiskOnlyUser int    `json:"takeover_disk_only_user,omitempty"`
+	TakeoverPreserved    int    `json:"takeover_preserved,omitempty"`
+	TakeoverPreserveRef  string `json:"takeover_preserve_ref,omitempty"`
+	TakeoverPreserveErr  string `json:"takeover_preserve_err,omitempty"`
+	TakeoverInjected     bool   `json:"takeover_injected,omitempty"`
+	TakeoverInjectErr    string `json:"takeover_inject_err,omitempty"`
 }
 
 // conflictDiagDedup bounds repeated conflict event log lines for the same
