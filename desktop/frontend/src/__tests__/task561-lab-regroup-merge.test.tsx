@@ -79,8 +79,7 @@ console.log("\ntask 561 lab regroup + merged cards");
     "built-in default layout mirrors the same group order (fallback = same face)");
 }
 
-// ① rail census（任务 783 修订）：恰好 35 个 rail 入口，组分布
-// 5/8/9/2/1/3/6/1（783：可观测性组增「用量监测」卡——GLM Plan 用量 +
+// ① rail census（任务 783 修订）：恰好 35 个 rail 入口，组分布// 5/8/9/2/1/3/6/1（783：可观测性组增「用量监测」卡——GLM Plan 用量 +
 // OpenCode Go 用量，opencodeGoUsage 独立 pane 退役为成员行；782：界面组
 // promptHistoryPicker+questionSearch+autoLoadOlder 并为 searchHistory、
 // draftPersistence+selectionActions 并为 inputSelection、splitView+
@@ -124,7 +123,10 @@ console.log("\ntask 561 lab regroup + merged cards");
   // → 31−4+1=28。
   // tl1487 七组③：pathRules 整卡移除 → 28→27。
   // tl1733：记忆注入瘦身卡入提效组 → 27→28。
-  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (tl1733 memoryIndexSlim added; got ${defEntries.length})`);
+  // tl1741（包108）：四卡整撤 → 28→24？否——infra 同步拆五散条（-1 卡+5 散
+  // 条）→ 28→29。tl1741r2 打回返修：四卡体回归（散条回收）→ 29→28（回到
+  // tl1733 口径；组分布亦同回 4/6/8/3/1/3/2/1；M8 语义换代=无主开关 stable 卡）。
+  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (tl1733 memoryIndexSlim added; tl1741r2 card bodies restored; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -201,11 +203,11 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     { label: "M4 subagentTps", field: "s.experimentalSubagentTps", setter: "app.SetExperimentalSubagentTps(on)" },
   ] },
   // tl-1048：zcodeTaskBus pane 随 8787 任务总线退役——devDebug 的 endMarker
-  // 随迁到物理下一个卡 acpListen（旧 marker 不存在会让 cardSlice 返回空、
-  // 测试假红/假绿）。tl1309 卡③：acpListen pane 退役入「资源治理」卡——
-  // endMarker 再随迁到 resourceGovernance。
-  { id: "devDebug", endMarker: '{selected === "resourceGovernance" && (', members: [
-    { label: "M5 cdpDebugPort", field: "s.experimentalCDPDebugPort", setter: "app.SetExperimentalCDPDebugPort(on)" },
+  // 随迁到物理下一个卡（旧 marker 不存在会让 cardSlice 返回空、测试假红/假
+  // 绿）。tl1741 返修：cdpDebugPort 成员行回归为无开关展示行（主键退役）——
+  // field 断言改钉展示行 hint，负钉 setter 不回归（见 M8 撤开关清单）。
+  { id: "devDebug", endMarker: '{selected === "toolOptimizations" && (', members: [
+    { label: "M5 cdpDebugPort (read-only row)", field: "settings.cdpDebugPortHint", setter: "" },
     { label: "M5 lifecycleNoiseGate", field: "s.experimentalLifecycleNoiseGate", setter: "app.SetExperimentalLifecycleNoiseGate(on)" },
   ] },
   // 任务 785：S1 常驻底座开关详情卡退役——endMarker 随迁到物理下一个卡
@@ -222,8 +224,10 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // tl1309 卡③：「资源治理」合并卡（复用池/孤儿回收/闲置释放/GC/ACP 监听/
   // 本地服务六成员）——四散条 + 两参数卡（自存储组迁入）随迁本卡；参数行经
   // labParamFields 注册表绑定读写（值语义单源），field 断言钉绑定引用。
-  { id: "resourceGovernance", endMarker: '{selected === "toolOptimizations" && (', members: [
-    { label: "tl1309 runtimeReuse", field: "s.experimentalRuntimeReuse", setter: "app.SetExperimentalRuntimeReuse(on)" },
+  // tl1741 返修：卡体回归 rail（无主开关卡）——runtimeReuse 主键退役，成员行
+  // 回归为无开关展示行（field 改钉展示行 hint，setter 负钉见 M8 清单）。
+  { id: "resourceGovernance", endMarker: '{selected === "logManagement" && (', members: [
+    { label: "tl1309 runtimeReuse (read-only row)", field: "settings.runtimeReuseHint", setter: "" },
     { label: "tl1309 orphanHandling", field: "s.experimentalOrphanHandling", setter: "app.SetExperimentalOrphanHandling(on)" },
     { label: "tl1309 idleReleaseMinutes", field: "LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write", setter: "" },
     { label: "tl1309 gcPercent", field: "LAB_PARAM_FIELDS.gcPercent.write", setter: "" },
@@ -334,17 +338,40 @@ for (const family of families) {
 // tl1309 卡①：optimisticParallel 自 M8 清单并入 contextGovernance 卡
 // （任务书①，961 先例——独立 rail 入口/pane 分支退役为成员行）。
 // tl1309 卡②：monitoring 同款并入 runtimeObservability 卡。
+// tl1741 打回返修（20261122 用户裁定「stable 清主选项（常开）、子选项保留
+// 配置」）：M8 清单语义 = 「无主开关的 stable 卡」清单而非「撤卡」清单——
+// autopilot/sessionCollab/collabHub/resourceGovernance 四卡回归 rail（无主
+// 开关行），fullAccess 仍是唯一带主开关的 stable 主卡；七 retired 主键
+// setter 全仓负钉（撤开关语义不随卡体回归）。
 {
   const { LAB_LAYOUT_DEFAULT_DATA } = await import("../lab/labLayoutDefault");
   const entryIds = new Set(LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g: { entries: Array<{ id: string }> }) => g.entries.map((e) => e.id)));
   for (const [id, pane] of [
     ["autopilot", '{selected === "autopilot" && ('],
     ["sessionCollab", '{selected === "sessionCollab" && ('],
+    ["collabHub", '{selected === "collabHub" && ('],
+    ["resourceGovernance", '{selected === "resourceGovernance" && ('],
     ["fullAccess", '{selected === "fullAccess" && ('],
   ] as const) {
-    ok(entryIds.has(id), `M8 ${id} keeps its own rail entry`);
+    ok(entryIds.has(id), `M8 ${id} keeps its own rail entry (card body restored, no master switch)`);
     ok(panel.includes(pane), `M8 ${id} keeps its own pane branch`);
   }
+  // 无主开关语义：四张回归卡的 pane 不含任何 retired 主键开关接线。
+  for (const retired of [
+    "app.SetDesktopAutopilot(",
+    "app.SetExperimentalSessionCollab(",
+    "app.SetExperimentalCollabHub(",
+    "app.SetExperimentalRuntimeReuse(",
+    "app.SetExperimentalCDPDebugPort(",
+    "app.SetExperimentalWorkflowPanel(",
+    "app.SetExperimentalWorkflowTemplates(",
+  ]) {
+    ok(!panel.includes(retired), `retired master-switch setter stays gone: ${retired}`);
+  }
+  // fullAccess：唯一带主开关的 stable 主卡（开关+setter 原样）。
+  const fullAccess = cardSlice('{selected === "fullAccess" && (', '{selected === "updateFeedback" && (');
+  ok(fullAccess.includes("labStableLocked(\"fullAccess\")") && fullAccess.includes("app.SetExperimentalFullAccess("),
+    "fullAccess remains the ONLY stable card with a master switch");
 }
 
 // ④ folded member ids are gone from union + features array + pane branches.
@@ -434,7 +461,8 @@ for (const setter of [
   "app.SetExperimentalSubagentDetail(on)",
   "app.SetExperimentalSubagentPolicy(on)",
   "app.SetExperimentalSubagentTps(on)",
-  "app.SetExperimentalCDPDebugPort(on)",
+  // tl1741 返修：SetExperimentalCDPDebugPort 随主键退役撤出清单（cdpDebugPort
+  // 成员行=无开关展示行；负钉在 M8 撤开关清单）。
   "app.SetExperimentalLifecycleNoiseGate(on)",
   "app.SetExperimentalRestartUpdate(on)",
   "app.SetExperimentalFeedback(on)",
