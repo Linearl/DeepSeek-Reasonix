@@ -15,6 +15,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"regexp"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -54,8 +57,101 @@ func warnLineMatchesAny(w *warnLine, patterns []string) bool {
 	return false
 }
 
+// slowSwitchStageNextKey 匹配 detail 里下一个「空白+key=」边界：slow switch
+// stage 行的 stage 值可含空格（实录：stage=switch-tab:ancillary effort），
+// 不能用 parseKVList 的空白切分——会在 "effort" 处断开并吞掉后续 ms/seq。
+var slowSwitchStageNextKey = regexp.MustCompile(`\s+[A-Za-z_][\w:./-]*=`)
+
+// slowSwitchMSRe 从 detail 里取 ms= 数值。
+var slowSwitchMSRe = regexp.MustCompile(`(?:^|\s)ms=(\d+)`)
+
+// parseSlowSwitchDetail 从 slow switch stage WARN 行的 detail
+// （实录形态：tab=tab_x stage=switch-tab:ancillary effort ms=1359 seq=56）
+// 取 stage 与 ms。stage= 之后到下一个「空白+key=」边界之间为值（可含空格）。
+// 无 stage= 或值空白返回 ok=false。
+func parseSlowSwitchDetail(detail string) (stage string, ms int64, ok bool) {
+	const key = "stage="
+	i := strings.Index(detail, key)
+	if i < 0 {
+		return "", 0, false
+	}
+	rest := detail[i+len(key):]
+	stage = strings.TrimSpace(rest)
+	if loc := slowSwitchStageNextKey.FindStringIndex(rest); loc != nil {
+		stage = strings.TrimSpace(rest[:loc[0]])
+	}
+	if stage == "" {
+		return "", 0, false
+	}
+	if m := slowSwitchMSRe.FindStringSubmatch(detail); m != nil {
+		if v, err := strconv.ParseInt(m[1], 10, 64); err == nil {
+			ms = v
+		}
+	}
+	return stage, ms, true
+}
+
+// warnSlowSwitchBreakdown 把巡检池里的 slow switch stage 行按 stage 细分
+// （tl1685 ③，观测归因辅助）：第 6 期 83 条（上期 45，+38）只有总量，
+// 归因要靠「哪些 stage 在涨」。解析失败的行（老版本无 stage= 字段）归
+// "(no-stage)" 桶，不静默丢。无任何 slow switch stage 行时不产生本行
+// （总量行=M9 巡检行，门在那里；本行只做细分观测）。
+func warnSlowSwitchBreakdown(col *logCollect) (metricResult, bool) {
+	byStage := map[string][]int64{}
+	total := 0
+	for i := range col.Warns {
+		w := &col.Warns[i]
+		if !strings.Contains(w.Msg, "slow switch stage") {
+			continue
+		}
+		stage := w.Stage
+		if stage == "" {
+			stage = "(no-stage)"
+		}
+		byStage[stage] = append(byStage[stage], w.MS)
+		total++
+	}
+	if total == 0 {
+		return metricResult{}, false
+	}
+	stages := make([]string, 0, len(byStage))
+	for s := range byStage {
+		stages = append(stages, s)
+	}
+	// 条数多者在前（同名按字典序），注记只列前 8 个防止 note 无界。
+	sort.Slice(stages, func(i, j int) bool {
+		if len(byStage[stages[i]]) != len(byStage[stages[j]]) {
+			return len(byStage[stages[i]]) > len(byStage[stages[j]])
+		}
+		return stages[i] < stages[j]
+	})
+	var b strings.Builder
+	const maxStages = 8
+	for i, s := range stages {
+		if i == maxStages {
+			fmt.Fprintf(&b, "…（共 %d 个 stage）", len(stages))
+			break
+		}
+		vals := byStage[s]
+		sort.Slice(vals, func(x, y int) bool { return vals[x] < vals[y] })
+		fmt.Fprintf(&b, "%s×%d(P50=%dms,Max=%dms) ", s, len(vals),
+			percentileInt64(vals, 0.50), vals[len(vals)-1])
+	}
+	row := metricResult{
+		Bench:     "warn-patrol",
+		Metric:    "WARN slow switch stage 按 stage 细分（观测）",
+		Source:    "desktop.log level=WARN「desktop: frontend slow switch stage」detail 的 stage= 字段",
+		Threshold: "—（观测归因；门=M9 巡检行本身，本行只回答「涨在哪些 stage」）",
+		Ref:       "task 196 / tl1685 ③（第6期候选③：83 条=上期 45+38，观测归因辅助）",
+		N:         total, Verdict: verdictObserve,
+		Note: strings.TrimSpace(b.String()),
+	}
+	return row, true
+}
+
 // benchWarnPatrol：每个模式一行计数判定——条数 ≤ -warn-max-count（默认 0）
 // 为 PASS，超出即 FAIL；日志目录缺失时整行 N/A（明示不算过也不算挂）；
+// 池里有 slow switch stage 行时追加按 stage 细分的观测行（tl1685 ③）；
 // 巡检池发生过截断（WarnTruncated）追加 FAIL 行显式化「读数不完整」。
 func benchWarnPatrol(col *logCollect, o options) []metricResult {
 	patterns := parseWarnPatterns(o.warnPatterns)
@@ -93,6 +189,9 @@ func benchWarnPatrol(col *logCollect, o options) []metricResult {
 			r.Note = fmt.Sprintf("%d 条（在门内）", n)
 		}
 		out = append(out, r)
+	}
+	if row, ok := warnSlowSwitchBreakdown(col); ok {
+		out = append(out, row)
 	}
 	if col.WarnTruncated {
 		out = append(out, metricResult{

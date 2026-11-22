@@ -46,10 +46,12 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 
 	o := options{warnPatterns: defaultWarnPatterns, warnMaxCount: 0}
 	rows := benchWarnPatrol(col, o)
-	if len(rows) != 2 {
-		t.Fatalf("默认两模式应出 2 行，实际 %d", len(rows))
+	// tl1685 ③：两模式行之外追加 1 行 slow switch stage 按 stage 细分
+	//（池内有 1 条 slow switch 行且 stage 可解析）。
+	if len(rows) != 3 {
+		t.Fatalf("默认两模式 + stage 细分行应出 3 行，实际 %d：%+v", len(rows), rows)
 	}
-	for _, r := range rows {
+	for _, r := range rows[:2] {
 		if r.N != 1 {
 			t.Fatalf("%s 计数 = %d，应为 1：%+v", r.Metric, r.N, r)
 		}
@@ -61,9 +63,10 @@ func TestWarnPatrolCollectAndVerdict(t *testing.T) {
 		}
 	}
 
-	// 门可配：max≥1 时同读数转 PASS。
+	// 门可配：max≥1 时同读数转 PASS（tl1685 ③ 起第 3 行是细分观测行，
+	// 不在门判定遍历范围内）。
 	rows = benchWarnPatrol(col, options{warnPatterns: defaultWarnPatterns, warnMaxCount: 1})
-	for _, r := range rows {
+	for _, r := range rows[:2] {
 		if r.Verdict != verdictPass {
 			t.Fatalf("max=1、n=1 应 PASS：%+v", r)
 		}
