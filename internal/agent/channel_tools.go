@@ -313,3 +313,82 @@ func (t channelCancelTool) Execute(_ context.Context, args json.RawMessage) (str
 	})
 	return string(out), nil
 }
+
+// ── channel_invite (拉人进群, tl1721) ─────────────────────────────────────
+
+type channelInviteTool struct{ cfg SessionCollabConfig }
+
+// NewChannelInviteTool builds the membership-grow half (任务 856 ⑤ 的工具面
+// 缺口): desktop 桥 ChannelInvite 与本工具走同一个 Store.Invite → requireManager
+// 判断（owner OR deputy）——ChannelInvite 权限同源，desktop 有而 agent 无
+// 的载体缺口由本工具补齐（有权限无工具 → 权限+工具两面齐）。
+func NewChannelInviteTool(cfg SessionCollabConfig) tool.Tool { return channelInviteTool{cfg: cfg} }
+
+func (channelInviteTool) Name() string { return "channel_invite" }
+
+func (channelInviteTool) Description() string {
+	return "Invite one or more sessions into a chat channel (tl1721, the agent-side half of the desktop invite). Permission is the same ChannelInvite the desktop uses: only the channel OWNER or the appointed DEPUTY manager may invite — an ordinary member is refused (ErrNotOwner). Contacts are session contact ids as shown by channel_list memberDetails; inviting the human is not possible here (the human joins from the desktop UI). Idempotent per contact: members already in the channel stay. Returns the updated channel roster. Experimental."
+}
+
+func (channelInviteTool) Schema() json.RawMessage {
+	return json.RawMessage(`{"type":"object","properties":{"channel":{"type":"string","description":"Channel name or id."},"contacts":{"type":"array","items":{"type":"string"},"description":"Session contact ids to invite (see channel_list memberDetails)."}},"required":["channel","contacts"]}`)
+}
+
+func (channelInviteTool) ReadOnly() bool { return false }
+
+func (t channelInviteTool) Execute(_ context.Context, args json.RawMessage) (string, error) {
+	var p struct {
+		Channel  string   `json:"channel"`
+		Contacts []string `json:"contacts"`
+	}
+	if err := json.Unmarshal(args, &p); err != nil {
+		return "", fmt.Errorf("invalid args: %w", err)
+	}
+	if strings.TrimSpace(p.Channel) == "" {
+		return "", fmt.Errorf("channel_invite: channel is required")
+	}
+	trimmed := make([]string, 0, len(p.Contacts))
+	for _, c := range p.Contacts {
+		if c = strings.TrimSpace(c); c != "" {
+			trimmed = append(trimmed, c)
+		}
+	}
+	if len(trimmed) == 0 {
+		return "", fmt.Errorf("channel_invite: contacts is required (session contact ids)")
+	}
+	caller := t.cfg.currentContactID()
+	if caller == "" {
+		return "", fmt.Errorf("channel_invite: no session identity — call from a registered session")
+	}
+	// 副管理员拉人先例（856 ⑤）同样只拉会话：human:local 的行类型是 human，
+	// 本工具按 MemberTypeSession 插行，把 human 拉成会话是类型污染——拒绝并
+	// 指明正确入口（错误文案给的下一步已存在：human 从桌面 UI 入群）。
+	for _, c := range trimmed {
+		if c == collabchannel.HumanLocal {
+			return "", fmt.Errorf("channel_invite: %s is the human — the human joins channels from the desktop UI, not through this tool", collabchannel.HumanLocal)
+		}
+	}
+	store, err := channelStore(t.cfg)
+	if err != nil {
+		return "", err
+	}
+	defer store.Close()
+	// 权限同源：Store.Invite 内 requireManager（owner OR deputy）——与 desktop
+	// 桥 ChannelInvite 完全同一判断面，普通成员在这里被 ErrNotOwner 拒绝。
+	if err := store.Invite(p.Channel, caller, trimmed...); err != nil {
+		return "", err
+	}
+	updated, err := store.Channel(p.Channel)
+	if err != nil {
+		return "", err
+	}
+	out, _ := json.Marshal(map[string]any{
+		"channel":  updated.ID,
+		"name":     updated.Name,
+		"invited":  trimmed,
+		"members":  updated.Members,
+		"deputyId": updated.DeputyID,
+		"note":     "invited as session members (idempotent); permission = ChannelInvite (owner or deputy, same check as the desktop panel)",
+	})
+	return string(out), nil
+}
