@@ -170,6 +170,12 @@ var labFeatureTiers = []labFeatureTier{
 	// composer 发送目标区与引入前逐字节一致（铁律 2，默认关）。
 	// tl1487 二组③：开启态下拉框位置改分栏下方（渲染面 Composer.tsx）。
 	{"sendTargetSelect", LabTierOptional, []string{"experimental_send_target_select"}},
+	// tl1718：composer 工具组默认折叠（宽窗口同样折叠为单图标，工具全集在
+	// 既有「⋯ 工具」二级菜单查看——复用窄宽折叠形态与入口，菜单本体零改动）。
+	// 推荐档（工具栏常态占宽是 composer 宽度痛点，关闭即缺口持续存在）；
+	// 默认关=宽度驱动的折叠行为与引入前逐字节一致（铁律 2）。纯前端门，
+	// 设置保存即换态免重启。
+	{"composerToolsFold", LabTierRecommended, []string{"experimental_composer_tools_fold"}},
 	// tl 1132：启动遮罩（DSH 式启动画面，logo+副文案+点动画，核心 UI 挂载
 	// 完成后淡出）。展示类开关按 550 口径定档可选——默认关（用户 2026-10-24
 	// steer：做成实验特性允许开关方便 A/B 对比），关闭时 splash 不渲染、
@@ -646,6 +652,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off keeps every streaming tail write byte-for-byte (铁律 2).
 		fmt.Fprintf(&b, "experimental_smooth_scroll_follow = %v   # desktop: smooth streaming scroll follow — off (default) = instant per-write tail positioning exactly as before, on = native smooth scrollTo behind the DSH ScrollFollow guards (outstanding-target gate, reader-gesture cancel, reduced-motion instant fallback) (tl 1165; settings save re-applies, no restart)\n", c.Desktop.ExperimentalSmoothScrollFollow)
+		// tl1718: same fixed-key-set rule — an unlisted key is dropped on
+		// every save and the switch would flip itself back off (81/123
+		// lesson). Off keeps the width-driven fold byte-for-byte (铁律 2).
+		fmt.Fprintf(&b, "experimental_composer_tools_fold = %v   # desktop: composer tools fold as the default state — off (default) = fold driven by width only (narrow ≤559px folds, wide never folds), on = the four buttons (emoji/screenshot/history/rewrite) stay folded into the existing ⋯ menu at any width, same entry and items (tl1718; settings save re-applies, no restart)\n", c.Desktop.ExperimentalComposerToolsFold)
 		// tl 1132: same fixed-key-set rule — an unlisted key is dropped on
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off never renders the startup splash (铁律 2 zero regression).

@@ -1199,6 +1199,18 @@ func (c *Config) SetExperimentalSmoothScrollFollow(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalComposerToolsFold toggles the tl1718 lab switch: the
+// composer "⋯ 工具" fold becomes the default state regardless of width, so
+// the emoji/screenshot/history/rewrite buttons stay folded into the existing
+// overflow menu even on wide windows (same single-icon shape and entry as the
+// narrow-width fold; the menu itself is untouched). Pure frontend gate riding
+// the boot snapshot — the settings save re-applies it, so a flip shows without
+// a restart; off = the width-driven fold byte-for-byte unchanged (铁律 2).
+func (c *Config) SetExperimentalComposerToolsFold(enabled bool) error {
+	c.Desktop.ExperimentalComposerToolsFold = enabled
+	return nil
+}
+
 // SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
 // (tl 1132): off (default) never renders the splash — startup keeps the exact
 // pre-gate behaviour; on shows the centred logo overlay until the core UI is

@@ -271,6 +271,16 @@ type DesktopConfig struct {
 	// fallback to instant, near-bottom immediate positioning). Pure frontend
 	// gate: the settings save re-applies the boot snapshot, no restart.
 	ExperimentalSmoothScrollFollow bool `toml:"experimental_smooth_scroll_follow"`
+	// ExperimentalComposerToolsFold makes the composer "⋯ 工具" fold the
+	// default state regardless of width (tl1718): with it on, the emoji /
+	// screenshot / history / rewrite buttons stay folded into the existing
+	// overflow menu even when the meta row is wide enough to show them, so the
+	// toolbar keeps the same single-icon shape as the narrow-width fold (the
+	// menu itself is untouched — same entry, same items). It ships off (铁律
+	// 2): the zero value leaves the width-driven fold byte-for-byte as before —
+	// narrow folds at ≤559px exactly as today, wide windows never fold. Pure
+	// frontend gate: the settings save re-applies the boot snapshot, no restart.
+	ExperimentalComposerToolsFold bool `toml:"experimental_composer_tools_fold"`
 	// ExperimentalStartupSplash gates the DSH-style startup splash (tl 1132):
 	// the centred logo + subtitle + pulse-dots overlay that covers the main
 	// region until the core UI (tab strip / draft / composer / transcript) is
