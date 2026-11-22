@@ -713,7 +713,16 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 	if dest == nil {
 		return "", usage, fmt.Errorf("summary unavailable")
 	}
-	ch, err := provider.StreamAuxiliary(provider.WithRecoverySleeper(ctx, recoverySleep), dest, req)
+	// 任务 556/tl1751: the live compaction readout rides the StreamAuxiliary
+	// progress bypass — chunks reach the meter as they ARRIVE on the wire, not
+	// after the atomicity buffer drains post-terminal (the 20261122 现场: a
+	// 130.8s compaction emitted 2 frames, the second draining 1884 tokens in
+	// 112ms = 16838 tps fake average). runSummaryRequestWithBudget is the
+	// single summary stream point shared by every summarizer shape (replay,
+	// slim transcript, chunked fragments and merges), so this one hook covers
+	// all compaction paths; with no active pass the meter no-ops.
+	ch, err := provider.StreamAuxiliary(provider.WithRecoverySleeper(
+		provider.WithStreamProgress(ctx, a.compactionLiveAddOutput), recoverySleep), dest, req)
 	if err != nil {
 		return "", usage, err
 	}
@@ -753,16 +762,12 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 			}
 			switch chunk.Type {
 			case provider.ChunkText:
+				// tl1751: no meter feed here — the text was already counted by
+				// the WithStreamProgress bypass at arrival (above); feeding at
+				// drain time too would double-count the readout.
 				b.WriteString(chunk.Text)
-				// 任务 556: feed the live compaction readout. runSummaryRequest
-				// is the single stream-consumption point shared by every
-				// summarizer shape (replay, slim transcript, chunked fragments
-				// and merges), so this one hook covers all compaction paths;
-				// with no active pass the meter no-ops.
-				a.compactionLiveAddOutput(chunk.Text)
 			case provider.ChunkReasoning:
 				reasoning.WriteString(chunk.Text)
-				a.compactionLiveAddOutput(chunk.Text)
 			case provider.ChunkToolCall, provider.ChunkToolCallStart:
 				toolCalls++
 			case provider.ChunkUsage:
