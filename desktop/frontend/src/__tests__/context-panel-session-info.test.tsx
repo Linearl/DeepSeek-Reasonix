@@ -211,26 +211,32 @@ ok(!bareText.includes("covered by a fuller version"), "identity-less panel hides
 // Case 4 (tl1386): partial_priced 0 元权威总额——会话费用格渲染 ¥0.00 而
 // 非「-」，且不再出现「incl. N unpriced (billed 0)」标注（tl1379 数据层
 // 口径不动，partialPricedCount 照常下发）。
-mainApp.ContextPanel = async () => ({
-  ...emptyPanelInfo(),
-  sessionCurrency: "CNY",
-  sessionCostComplete: true,
-  sessionCostQuote: {
-    original: { amount: "0", currency: "CNY" },
-    selected: { amount: "0", currency: "CNY" },
-    estimated: true,
-    costComplete: true,
-    displayComplete: true,
-    complete: true,
-    displayStatus: "partial_priced",
-    partialPricedCount: 8,
-  },
-} as ContextPanelInfo);
+// tl1729：费用读数走 runtime props 单源——quote 从 RPC mock 迁到 context
+// prop（与状态栏芯片同一分发链）；RPC mock 保持空费用快照。
+mainApp.ContextPanel = async () => emptyPanelInfo();
 
 await act(async () => {
   root.render(
     <LocaleProvider>
-      <ContextPanel tabId="tab-partial-zero" context={{ used: 10, window: 100 }} />
+      <ContextPanel
+        tabId="tab-partial-zero"
+        context={{
+          used: 10,
+          window: 100,
+          sessionCurrency: "CNY",
+          sessionCostComplete: true,
+          sessionCostQuote: {
+            original: { amount: "0", currency: "CNY" },
+            selected: { amount: "0", currency: "CNY" },
+            estimated: true,
+            costComplete: true,
+            displayComplete: true,
+            complete: true,
+            displayStatus: "partial_priced",
+            partialPricedCount: 8,
+          },
+        }}
+      />
     </LocaleProvider>,
   );
   await wait(20);

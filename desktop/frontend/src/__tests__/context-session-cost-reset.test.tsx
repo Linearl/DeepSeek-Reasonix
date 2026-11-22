@@ -81,6 +81,19 @@ const zeroQuote = {
 };
 const zeroInfo = { ...panelInfo, sessionCost: 0, sessionCostQuote: zeroQuote, sources: {} };
 
+// tl1729：会话费用读数走 runtime props 单源（与状态栏芯片同一分发链），
+// 面板不再从自取快照取费用值——本测试的费用 fixture 相应从 RPC mock 迁到
+// context/sessionCost props；RPC mock 继续供分来源明细等非费用面。
+const costContext = {
+  used: 1200, window: 8000, sessionTokens: 1200,
+  sessionCost: 1.234, sessionCurrency: "CNY", sessionCostComplete: true, sessionCostQuote: costQuote,
+};
+const zeroCostContext = {
+  used: 1200, window: 8000, sessionTokens: 1200,
+  sessionCost: 0, sessionCurrency: "CNY", sessionCostComplete: true, sessionCostQuote: zeroQuote,
+};
+let liveCostProps: Record<string, unknown> = { context: costContext, sessionCost: 1.234, sessionCurrency: "CNY" };
+
 (dom.window as unknown as { go?: unknown }).go = {
   main: {
     App: new Proxy({}, {
@@ -128,7 +141,7 @@ async function mountPanel(overrides: Record<string, unknown> = {}) {
   await act(async () => {
     root.render(
       <LocaleProvider>
-        <ContextPanel tabId="tab-1" refreshContextForTab={() => { callCounts.refreshContextForTab += 1; }} {...overrides} />
+        <ContextPanel tabId="tab-1" {...liveCostProps} refreshContextForTab={() => { callCounts.refreshContextForTab += 1; }} {...overrides} />
       </LocaleProvider>,
     );
     // zh 字典动态 preload 完成后 provider 会 bump dictionaryVersion 重渲染；
@@ -211,6 +224,17 @@ await act(async () => { confirmBtn?.click(); await sleep(30); });
 ok(callCounts.clearSessionCost === beforeClears + 1, "confirming calls ClearSessionCostForTab");
 ok(callCounts.contextPanel > panelCallsBefore, "confirming re-pulls the panel snapshot (metric card refresh)");
 ok(callCounts.refreshContextForTab === 1, "confirming drives the status-bar context refresh leg");
+// tl1729：归零上屏走 runtime props（模拟分发链推来的零值快照）；自取快照
+// 照常重拉但不喂费用格。
+liveCostProps = { context: zeroCostContext, sessionCost: 0, sessionCurrency: "CNY" };
+await act(async () => {
+  root.render(
+    <LocaleProvider>
+      <ContextPanel tabId="tab-1" {...liveCostProps} refreshContextForTab={() => { callCounts.refreshContextForTab += 1; }} />
+    </LocaleProvider>,
+  );
+  await sleep(30);
+});
 ok(costStat()?.textContent?.includes("0.00") === true, "the metric card renders the authoritative zero after reset");
 
 await act(async () => root.unmount());
