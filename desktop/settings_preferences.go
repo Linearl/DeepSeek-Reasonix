@@ -358,6 +358,21 @@ func (a *App) SetExperimentalSessionCollabAutoFold(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSessionCollabAutoFold(enabled) })
 }
 
+// SetExperimentalTasklistPanel toggles the embedded read-only tasklist panel
+// (tl1746 phase 1). Pure frontend gate: the palette entry and the lab card
+// re-appear on the next settings refresh — no restart. The panel's queries
+// open the DB mode=ro only, regardless of this switch.
+func (a *App) SetExperimentalTasklistPanel(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalTasklistPanel(enabled) })
+}
+
+// SetTasklistDBPath sets the tasklist database path override (tl1746 phase 1;
+// empty = the built-in default under the global workspace). The panel resolves
+// the path at query time, so a change applies without a restart.
+func (a *App) SetTasklistDBPath(path string) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetTasklistDBPath(path) })
+}
+
 // SetExperimentalTrajectoryView toggles the topicbar "transcript | trajectory"
 // view switch and the trajectory surface (task 704): off (default) keeps the
 // transcript as the only surface, exactly as before the feature existed.

@@ -226,6 +226,11 @@ var labFeatureTiers = []labFeatureTier{
 	// ── observability（可观测性，2 项）───────────────────────────
 	{"monitoring", LabTierRecommended, []string{"experimental_session_monitor", "experimental_perf_monitor", "experimental_heap_high_profile"}}, // heap_high_profile 为 task 501 家族子键（rides perf_monitor）
 	{"subagentTps", LabTierOptional, []string{"experimental_subagent_tps"}},
+	// tl1746：任务面板（桌面内嵌只读直读 tasklist.db；铁律 2 默认关=命令面
+	// 板/实验室两入口零渲染，tl serve/export/tl.py 三件套照常）。路径覆盖为
+	// 家族子键（decision_pattern_file_path 先例）；未稳定档——一期纯只读
+	// 无写路径，二期（项目分库+工具内嵌）候拍板。
+	{"tasklistPanel", LabTierUnstable, []string{"experimental_tasklist_panel", "tasklist_db_path"}},
 	// ── dev-debug（开发调试，2 项）───────────────────────────────
 	// tl1487 五组：CDP 调试端口未稳定→稳定（默认关语义不变，前端同步）。
 	{"cdpDebugPort", LabTierStable, []string{"experimental_cdp_debug_port"}},
@@ -597,6 +602,16 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 704: fixed-key-set rule (same as above) — the trajectory view
 		// switch must survive every settings save.
 		fmt.Fprintf(&b, "experimental_trajectory_view = %v   # desktop: topicbar transcript|trajectory view switch + trajectory surface (task 704; off = transcript only)\n", c.Desktop.ExperimentalTrajectoryView)
+		// tl1746: fixed-key-set rule — the tasklist-panel switch must survive
+		// every settings save. Off (default) renders no palette entry and no
+		// lab card; the panel's data channel is mode=ro only when on.
+		fmt.Fprintf(&b, "experimental_tasklist_panel = %v   # desktop: embedded read-only tasklist panel (tl1746 phase 1; off = no entries, tl serve/export/tl.py untouched)\n", c.Desktop.ExperimentalTasklistPanel)
+		// tl1746: conditionally rendered — written only once the override is
+		// set (staging_dir precedent); empty = the built-in default under the
+		// global workspace. Read-only consumption regardless of the value.
+		if p := c.Desktop.TasklistDBPath; p != "" {
+			fmt.Fprintf(&b, "tasklist_db_path = %q   # desktop: tasklist database the panel reads (tl1746 phase 1, read-only; empty = built-in default)\n", p)
+		}
 		fmt.Fprintf(&b, "experimental_feedback = %v   # desktop: agent submit_feedback tool + feedback inbox panel (task 121)\n", c.Desktop.ExperimentalFeedback)
 		// Task 172: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the touchpoint switch would flip itself back off.

@@ -417,8 +417,13 @@ type SettingsView struct {
 	// ExperimentalTrajectoryView gates the topicbar "transcript | trajectory"
 	// view switch (task 704); rendered in both views for the same
 	// permanently-off lesson.
-	ExperimentalTrajectoryView bool   `json:"experimentalTrajectoryView"`
-	SessionStorage             string `json:"sessionStorage"`
+	ExperimentalTrajectoryView bool `json:"experimentalTrajectoryView"`
+	// tl1746: tasklist-panel lab switch + db-path family key readback (the
+	// lab card's 数据库路径 sub-item; rendered in both views for the same
+	// permanently-off lesson).
+	ExperimentalTasklistPanel bool   `json:"experimentalTasklistPanel"`
+	TasklistDBPath            string `json:"tasklistDbPath"`
+	SessionStorage            string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -581,8 +586,8 @@ type SettingsView struct {
 	DecisionPatternFilePath      string `json:"decisionPatternFilePath"`
 	// tl1688: 实验室 UI 读面——后台任务完成时唤醒空闲会话续轮（默认关）。
 	BackgroundJobWakeIdleSession bool `json:"backgroundJobWakeIdleSession"`
-	DecisionPatternThreshold     int    `json:"decisionPatternThreshold"`
-	DecisionPatternAutoApprove   bool   `json:"decisionPatternAutoApprove"`
+	DecisionPatternThreshold     int  `json:"decisionPatternThreshold"`
+	DecisionPatternAutoApprove   bool `json:"decisionPatternAutoApprove"`
 	// tl1193b: plan-E pinned standing-tier index mode readback. Boot snapshot —
 	// boot resolves the saved switch into the memory gate before the first
 	// Load, so the desktop flip writes config and applies on restart.
@@ -797,8 +802,13 @@ type DesktopStartupSettingsView struct {
 	// ExperimentalTrajectoryView gates the topicbar "transcript | trajectory"
 	// view switch (task 704); rendered in both views for the same
 	// permanently-off lesson.
-	ExperimentalTrajectoryView bool   `json:"experimentalTrajectoryView"`
-	SessionStorage             string `json:"sessionStorage"`
+	ExperimentalTrajectoryView bool `json:"experimentalTrajectoryView"`
+	// tl1746: tasklist-panel lab switch + db-path family key readback (the
+	// lab card's 数据库路径 sub-item; rendered in both views for the same
+	// permanently-off lesson).
+	ExperimentalTasklistPanel bool   `json:"experimentalTasklistPanel"`
+	TasklistDBPath            string `json:"tasklistDbPath"`
+	SessionStorage            string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -1708,6 +1718,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalCollabGroupView = cfg.Desktop.ExperimentalCollabGroupView
 		// Task 856 ③: unified collaboration-hub entry readback (boot snapshot).
 		view.ExperimentalCollabHub = cfg.Desktop.ExperimentalCollabHub
+		// tl1746: tasklist-panel switch + db-path family key readback.
+		view.ExperimentalTasklistPanel = cfg.Desktop.ExperimentalTasklistPanel
+		view.TasklistDBPath = cfg.Desktop.TasklistDBPath
 		// Task 705: cross-session message auto-fold readback.
 		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
 		// Task 704: trajectory view switch readback (boot snapshot).
@@ -2013,6 +2026,8 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
 		ExperimentalCollabGroupView:  cfg.Desktop.ExperimentalCollabGroupView, // task 677 legacy group-chat entry (migration source)
 		ExperimentalCollabHub:        cfg.Desktop.ExperimentalCollabHub,       // task 856 ③ unified collaboration-hub entry
+		ExperimentalTasklistPanel:    cfg.Desktop.ExperimentalTasklistPanel,   // tl1746 tasklist panel switch
+		TasklistDBPath:               cfg.Desktop.TasklistDBPath,              // tl1746 db-path family key
 		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView,  // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the
