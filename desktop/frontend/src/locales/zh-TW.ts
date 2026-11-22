@@ -3916,6 +3916,7 @@ export const zhTW: Record<DictKey, string> = {
   "slash.skill": "skill",
   "slash.subagent": "子智能體",
   "slash.startOnly": "僅可在訊息開頭使用",
+  "slash.compactFocusHint": "可加聚焦詞，指定壓縮保留的重點",
   "slash.group.actions": "快速操作",
   "slash.group.management": "更多命令",
   "slash.group.subagents": "子智能體",

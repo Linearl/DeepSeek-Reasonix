@@ -324,7 +324,7 @@ var Chinese = Messages{
 	CmdNew:            "开启新会话并保存历史",
 	CmdClear:          "丢弃当前上下文",
 	CmdCls:            "清屏（保留 LLM 上下文）",
-	CmdCompact:        "压缩上下文",
+	CmdCompact:        "压缩上下文 [聚焦词]",
 	CmdExtract:        "提取要点到新会话",
 	CmdContinueChecks: "继续已暂停的任务收尾检查",
 	CmdContext:        "查看上下文窗口、阈值与上次维护结果",

@@ -5435,6 +5435,7 @@ export const zh: Record<DictKey, string> = {
   "slash.skill": "skill",
   "slash.subagent": "子智能体",
   "slash.startOnly": "仅可在消息开头使用",
+  "slash.compactFocusHint": "可加聚焦词，指定压缩保留的重点",
   "slash.group.actions": "快捷操作",
   "slash.group.management": "更多命令",
   "slash.group.subagents": "子智能体",
