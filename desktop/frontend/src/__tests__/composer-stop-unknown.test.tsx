@@ -197,19 +197,25 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
-// ④ synced + 明确不可取消：防误操作语义不回归。
+// ④ tl1765 语义换代：synced 投影 cancellable=false + 本地 running=true 正是
+// turn_done 断链的分叉现场（20261122 GC专员截图：按钮渲染但点击无声吞掉，
+// 三档 tooltip 正常却整体不可达）。投影否决只在「本地同样不在跑」的静止
+// 场景保留防误操作语义——而按钮的渲染条件（running && !finishing / settled
+// 定格）已把静止场景挡在外面（settled 另有独立禁用）。分叉态放行：Cancel
+// 对无活轮 controller 幂等无害（cancelTurnLocked 快进快出），停止三档
+// （点1 L1 / 点2 15s 强制 / 点3 立即）保持可达。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced", { cancellable: false }));
   runtimeStateStore.flush();
   const { root, calls } = await renderComposer({ running: true, tabId: "t510-stop" });
-  ok(stopButton() !== null, "fresh uncancellable state still renders the stop button");
-  eq(stopButton()?.disabled, true, "fresh cancellable=false disables the button as before");
+  ok(stopButton() !== null, "diverged state (local running, projection idle) still renders the stop button");
+  eq(stopButton()?.disabled, false, "diverged cancellable=false no longer disables the stop exit (tl1765)");
   await act(async () => {
     stopButton()?.click();
     await flushTimers();
   });
-  eq(calls.cancel, 0, "fresh uncancellable click does not fire onCancel");
+  eq(calls.cancel, 1, "diverged stop click fires onCancel (three-tier ladder stays reachable)");
   await act(async () => { root.unmount(); });
   dom.window.close();
 }
