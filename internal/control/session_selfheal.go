@@ -39,7 +39,17 @@ func sessionSelfHealActive() bool {
 // happened inside recoverInterruptedTurn's emitHeadEvents; this runs the
 // remaining criteria (projection diet) in the background so the repair never
 // delays the first paint, and emits its own notice when it acts.
+//
+// tl1735 (B2-1): the resume-side host state rebuild also lands here —
+// deliberately OUTSIDE the sessionSelfHealActive gate below. The refresh
+// semantics (架构方案 §六) are a standing guarantee, not part of the
+// self-heal experiment: with the gate off the diet is skipped but the memory
+// region of the leading system prompt must still track the latest on-disk
+// state. The rebuild is idempotent (unchanged content → SetLeading returns
+// false, nothing rewritten) and recovers internally, so it cannot break the
+// resume path.
 func (c *Controller) selfHealAfterResume(path string) {
+	c.rebuildHostState()
 	if !sessionSelfHealActive() || path == "" {
 		return
 	}
