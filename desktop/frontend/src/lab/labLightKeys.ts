@@ -15,9 +15,10 @@ export type LabLightKey = keyof typeof LAB_LIGHT_KEYS;
 /** id → light predicate. Referenced by entry.onKeys in the layout data. */
 export const LAB_LIGHT_KEYS = {
   // ── plain boolean SettingsView fields（一字段一谓词）────────────
-  // tl1741：autopilot / experimentalSessionCollab / experimentalCascadeApproval
-  // 三谓词随撤开关摘除（宿主卡移除；cascade_approval 行级开关的 Task 225
-  // 字段与功能保留，仅失去实验室展示面）。
+  // tl1741 返修（20261122 用户裁定「stable 清主选项、子选项保留配置」）：
+  // autopilot / experimentalSessionCollab 两主键谓词随撤开关摘除不回——
+  // 宿主卡回归为无主开关卡；experimentalCascadeApproval 谓词恢复（Task 225
+  // 审批回投行级开关键与功能保留，sessionCollab 卡灯=回投开即亮）。
   experimentalFullAccess: (s: SettingsView) => Boolean(s.experimentalFullAccess),
   // tl1453：experimentalDream 谓词随 dream/distill 实验退役摘除。
   // 任务 801：决策模式自动提取+固化（默认关）。
@@ -33,6 +34,9 @@ export const LAB_LIGHT_KEYS = {
   // 任务 1070：Standard 流续跑总闸（默认关）。
   standardContinuation: (s: SettingsView) => Boolean(s.standardContinuation),
   experimentalSafetyCostControl: (s: SettingsView) => Boolean(s.experimentalSafetyCostControl),
+  // 任务 815：cascade_approval 是 sessionCollab 卡内行级开关（Task 225 交付，
+  // 甄别确认非缺口）——补灯：审批回投开 = 卡亮（tl1741 返修随卡恢复）。
+  experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval),
   experimentalSessionCollabAutoFold: (s: SettingsView) => Boolean(s.experimentalSessionCollabAutoFold),
   experimentalCompactionParallel: (s: SettingsView) => Boolean(s.experimentalCompactionParallel),
   experimentalContextBudget: (s: SettingsView) => Boolean(s.experimentalContextBudget),

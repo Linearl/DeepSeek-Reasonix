@@ -76,9 +76,25 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "automation",
       labelKey: "settings.labGroup.automation",
       entries: [
-        // tl1741：autopilot / sessionCollab 两张稳定卡随「稳定档不再提供开关」
-        // 移除（用户 20261121 三拍，功能常开）；fullAccess 保留（外部目录访问
-        // 控制有真实需求）。
+        // tl1741 返修（20261122 用户裁定「stable 清主选项、子选项保留配置」）：
+        // autopilot / sessionCollab 两卡回归 rail，主开关行不回归（主键已退役，
+        // deprecated 清单承接手写残留）；fullAccess 保留（外部目录访问控制有
+        // 真实需求）。
+        // autopilot：无主开关卡——pane 子项（ask_timeout 族/authorize_* 授权族/
+        // askRoundLimit/preapprove 子块）在硬编码分支，键/setter 零变化；
+        // max_runtime/approval_grace 护栏键保留 config 手写。
+        { id: "autopilot", labelKey: "settings.autopilot", tier: "stable", onKeys: [] },
+        // sessionCollab：无主开关卡——卡灯=审批回投开（815 补灯口径延续）；
+        // 卡内 autoFold 成员行与 pane 子项恢复（722 点3）。
+        {
+          id: "sessionCollab",
+          labelKey: "settings.sessionCollab",
+          tier: "stable",
+          onKeys: ["experimentalCascadeApproval"],
+          members: [
+            { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "optional" },
+          ],
+        },
         { id: "fullAccess", labelKey: "settings.fullAccess", tier: "stable", onKeys: ["experimentalFullAccess"] },
         {
           // 任务 961：智能自动化（合并卡，742/782 条目级合并先例）——
@@ -202,8 +218,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "outputStyle", labelKey: "settings.outputStyle", tier: "recommended" },
           ],
         },
-        // tl1741：collabHub 稳定卡随「稳定档不再提供开关」移除（协作中心入口
-        // 常显；LAB_FEATURE_DEPS 依赖随双卡退役删除）。
+        // tl1741 返修：collabHub 卡回归（无主开关行——协作中心入口常显，主键
+        // experimental_collab_hub 已退役；LAB_FEATURE_DEPS 依赖不回归）。pane
+        // 为常开展示行（glmPlanUsage 无开关展示行先例）。
+        { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: [] },
         // tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认
         // 瘦身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪
         // 不落 IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留
@@ -294,11 +312,15 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "sessionTaskPanels",
           labelKey: "settings.sessionTaskPanels",
           tier: "recommended",
-          // tl1741：workflowPanel（含家族子键 workflowTemplates）成员行随「稳定
-          // 档不再提供开关」摘除——面板/模板常显（键退役）。
+          // tl1741 返修：workflowPanel 成员行回归为无开关展示行——面板/模板
+          // 常显（主键+家族子键 workflowTemplates 已退役）。
           onKeys: ["experimentalSessionWall", "experimentalCompletionSummary"],
           members: [
             { id: "sessionWall", labelKey: "settings.sessionWall", tier: "recommended" },
+            // 任务 686：工作流可视化面板（palette 入口开 DAG 流程图）。tl1741
+            // 返修：稳定档无主开关——成员行保留档位展示（tl1487 二组⑤稳定档），
+            // 面板/模板常开；workflowTemplates 为 pane 附属展示行。
+            { id: "workflowPanel", labelKey: "settings.workflowPanel", tier: "stable" },
             // 任务 782 验收⑤曾钉「保持独立」——tl1309 分析结论按面板面归卡。
             { id: "completionSummary", labelKey: "settings.completionSummary", tier: "recommended" },
           ],
@@ -430,10 +452,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         {
           id: "devDebug",
           labelKey: "settings.devDebug",
-          // tl1741：cdpDebugPort 成员行随「稳定档不再提供开关」摘除——CDP
-          // endpoint 无条件起（loopback-only 随机端口不变，键退役）。
+          // tl1741 返修：cdpDebugPort 成员行回归为无开关展示行——CDP endpoint
+          // 无条件起（主键已退役，loopback-only 随机端口不变）。
           onKeys: ["experimentalLifecycleNoiseGate"],
           members: [
+            // tl1487 五组：CDP 调试端口稳定档（tl1741 返修：档位展示行保留，
+            // 开关行不回归）。
+            { id: "cdpDebugPort", labelKey: "settings.cdpDebugPort", tier: "stable" },
             { id: "lifecycleNoiseGate", labelKey: "settings.lifecycleNoiseGate", tier: "unstable" },
           ],
         },
@@ -453,9 +478,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           // tl1309 卡②：eventsRotation（events 瘦身）迁出本卡成员表（入可
           // 观测性组「运行可观测」卡）；灯键随迁出。
           // tl1338：fork 已锁 v3（916），卡内余项皆迁移工具非实验能力。
-          // tl1741：sessionStorage 档位行随「稳定档不再提供开关」摘除；
-          // session_storage 键与四模式机制保留（916 宽容往返）。
+          // tl1741 返修：sessionStorage 档位成员行回归（无开关——916 面板锁
+          // 语义由迁移工具面延续）；session_storage 键与四模式机制保留（916
+          // 宽容往返）。
           onKeys: ["sessionStorageNonDefault"],
+          members: [
+            { id: "sessionStorage", labelKey: "settings.sessionStorage", tier: "stable" },
+          ],
         },
         // 任务 846：配置数据目录可更改（未稳定档，默认关）。独立卡——迁移
         // 向导有自己的 pane（HomePointerLabPane），不走 members 合并卡。
@@ -487,19 +516,38 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "infra",
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
-      // tl1741：资源治理合并卡（tl1309 卡③）随「稳定档不再提供开关」整卡移除
-      // ——runtimeReuse 撤开关（复用池常开，键退役），其余五成员回 tl1309 前
-      // 散条形态（键/setter/档位零变化，non-goals：不动推荐/可选/未稳定档）。
+      // tl1741 返修（20261122 用户裁定）：资源治理合并卡（tl1309 卡③）回归
+      // ——runtimeReuse 撤开关（复用池常开，主键退役，卡内为无开关展示行），
+      // 其余五成员随卡（键/setter/档位零变化，non-goals：不动推荐/可选/未
+      // 稳定档开关）。
       entries: [
-        { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended", onKeys: ["experimentalOrphanHandling"] },
-        // 后台会话闲置释放（kind:param 参数卡，775 首批；字段绑定在
-        // src/lab/labParamFields.ts）。
-        { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", kind: "param", tier: "recommended", onKeys: [], fields: [{ id: "detachedIdleReleaseMinutes", input: "number" }] },
-        // GC 策略旋钮（kind:param 参数卡，tl1286；显示层 gcPercentForView 已把
-        // 0=跟随默认渲染为等效 100）。
-        { id: "gcPercent", labelKey: "settings.gcPercent", kind: "param", tier: "recommended", onKeys: [], fields: [{ id: "gcPercent", input: "number" }] },
-        { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable", onKeys: ["experimentalACPListen"] },
-        { id: "localServer", labelKey: "settings.localServer", tier: "optional", onKeys: ["experimentalLocalServer"] },
+        // tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
+        // 复用池（无开关展示行）+ 孤儿回收 + ACP 常驻监听 + 本地服务四散条，
+        // 加 GC 策略与闲置释放两参数卡（自存储组迁入，字段绑定仍在
+        // labParamFields，值语义单源）。容器档 = 成员最高档（复用池稳定展示行
+        // → 稳定）；卡灯=三个活键家族（复用池主键退役不参与）。
+        {
+          id: "resourceGovernance",
+          labelKey: "settings.resourceGovernance",
+          tier: "stable",
+          onKeys: ["experimentalOrphanHandling", "experimentalACPListen", "experimentalLocalServer"],
+          members: [
+            // 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。tl1741
+            // 返修：无开关展示行（复用池常开，主键退役）。
+            { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable" },
+            // 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
+            { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
+            // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
+            { id: "idleReleaseMinutes", labelKey: "settings.detachedIdleRelease", tier: "recommended" },
+            // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
+            // tl1487 七组①：可选→推荐，建议值 100。
+            { id: "gcPercent", labelKey: "settings.gcPercent", tier: "recommended" },
+            // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
+            { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
+            // 本地服务（原 infra 独立卡；tl1265 第2轮：未稳定→可选）。
+            { id: "localServer", labelKey: "settings.localServer", tier: "optional" },
+          ],
+        },
         // tl134/tl1487 七组③：路径规则整卡移除（过时技术，用户裁决；存档
         // docs/archive/路径作用域规则tl134-机制存档-20261107.md）。
         // 任务 992（用户 1018 21:34 拍板）：工具优化整体合并到基础设施组（原独立
