@@ -75,6 +75,9 @@ func TestSourceTokenCitationResolvesInLedger(t *testing.T) {
 	if token == "" {
 		t.Fatalf("read_file result carries no source_token citation: %q", results[0])
 	}
+	if filed := a.task.ledger.ReceiptIDForCall("r1"); filed != token {
+		t.Fatalf("citation prints %q but the ledger filed %q for this call", token, filed)
+	}
 	observations := a.task.ledger.SourceToken(token)
 	if len(observations) == 0 {
 		t.Fatalf("printed source_token %q names no ledger observation (contract break: the model would be rejected with source_token_unknown)", token)
