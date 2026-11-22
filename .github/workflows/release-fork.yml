@@ -19,6 +19,14 @@ on:
         description: "Fork desktop tag to publish (e.g. desktop-v1.31.3+fork)"
         required: true
         type: string
+      verify_baseline:
+        description: "Previous package build point sha (tl1760 ancestry gate baseline; required when verify_branches is set)"
+        required: false
+        type: string
+      verify_branches:
+        description: "Comma-separated branch/tl-commit claims claimed by the release notes (empty = gate skipped, flow unchanged)"
+        required: false
+        type: string
 
 permissions:
   contents: write # create the release and upload artifacts
@@ -40,6 +48,50 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "channel=stable" >> "$GITHUB_OUTPUT"
+
+  # tl1760 ancestry gate: every branch/tl-commit claimed by the release notes
+  # must be contained in the tag being published (cherry patch-id primary,
+  # ancestor auxiliary, rev-list baseline-window fallback). Missing claims or
+  # a zero-delivery claim fails the gate and blocks publish. When no claims
+  # are provided the gate is skipped and the existing flow is unchanged.
+  verify-ancestry:
+    name: verify release ancestry (tl1760 gate)
+    needs: [resolve]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Fetch branch heads (claim refs live on branches, not the tag)
+        if: ${{ github.event.inputs.verify_branches != '' }}
+        run: git fetch --force origin "+refs/heads/*:refs/heads/*"
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Verify claimed branches are contained in the build point
+        env:
+          VERIFY_BASELINE: ${{ github.event.inputs.verify_baseline }}
+          VERIFY_BRANCHES: ${{ github.event.inputs.verify_branches }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VERIFY_BRANCHES" ]; then
+            echo "No branch claims provided - ancestry gate skipped, existing flow unchanged"
+            exit 0
+          fi
+          if [ -z "$VERIFY_BASELINE" ]; then
+            echo "::error::verify_branches given but verify_baseline (previous package build point) is missing"
+            exit 1
+          fi
+          BUILD_POINT="$(git rev-parse HEAD)"
+          echo "Ancestry gate: build point ${BUILD_POINT}, baseline ${VERIFY_BASELINE}"
+          node scripts/verify-release-ancestry.mjs \
+            --build-point "$BUILD_POINT" \
+            --baseline "$VERIFY_BASELINE" \
+            --branches "$VERIFY_BRANCHES"
 
   build:
     name: build (${{ matrix.name }})
@@ -111,7 +163,7 @@ jobs:
 
   publish:
     name: publish GitHub release
-    needs: [resolve, build]
+    needs: [resolve, build, verify-ancestry]
     runs-on: ubuntu-latest
     permissions:
       contents: write
