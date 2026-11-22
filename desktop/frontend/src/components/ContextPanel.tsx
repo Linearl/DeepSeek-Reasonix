@@ -115,6 +115,12 @@ export function formatSharePercent(value: number, total: number): string {
   return `${Math.round(pct)}%`;
 }
 
+// tl1729: the caller passes the RUNTIME PROPS snapshot (the ContextInfo that
+// App distributes to both this panel and the status bar), never the panel's
+// self-fetched ContextPanelInfo. The two surfaces read one clock, so the same
+// screen can no longer show two different session costs. The quote that drove
+// the readout rides the result (`quote`) so the rate-band badge and the
+// detail popover annotate the SAME value they display.
 export function contextCostDisplay({
   info,
   sessionCost,
@@ -133,6 +139,8 @@ export function contextCostDisplay({
   billingMode?: string;
   labelKind?: "estimated" | "payg_equivalent" | "fallback" | "bucketed" | "unavailable" | "partial_priced";
   partialPricedCount?: number;
+  /** tl1729: the structured quote behind the readout, when one drove it — the badge/popover must annotate this same quote. */
+  quote?: CostQuote;
   /** tl1556: per-currency bucket totals shown alongside the bucketed label so the amounts never disappear. */
   buckets?: Money[];
 } {
@@ -145,6 +153,7 @@ export function contextCostDisplay({
       estimated: true,
       complete: false,
       labelKind: "bucketed",
+      quote,
       // tl1556: keep the per-currency sums visible instead of a bare label.
       buckets: quote?.originalTotals,
     };
@@ -157,6 +166,7 @@ export function contextCostDisplay({
       estimated: true,
       complete: false,
       labelKind: "unavailable",
+      quote,
     };
   }
   const selected = quote?.selected;
@@ -184,6 +194,7 @@ export function contextCostDisplay({
               : "estimated",
         // undefined-safe（旧宿主无此字段）：JSON 序列化时缺省，不破坏既有 eq 断言。
         partialPricedCount: quote?.partialPricedCount,
+        quote,
       };
     }
   }
@@ -575,7 +586,13 @@ export function ContextPanel({
   // miss come as a pair from one source so the rate cannot mix scopes.
   const { hit: sessionCacheHit, miss: sessionCacheMiss } = contextSessionCache(info, context, usage);
   const totalTokensMetric = formatMetricTokens(totalTokens, locale);
-  const cost = contextCostDisplay({ info, sessionCost, sessionCurrency, usage });
+  // tl1729: session cost is a props-only readout — `context` here is the
+  // runtime-distributed ContextInfo (the same object the status bar's cost
+  // chip renders from), so the two surfaces share one clock and one value.
+  // The self-fetched `info` snapshot no longer feeds the cost amount, quote,
+  // rate band or estimated mark; it keeps serving the per-source breakdown,
+  // elapsed/requests and file lists, which have no cross-surface twin.
+  const cost = contextCostDisplay({ info: context, sessionCost, sessionCurrency, usage });
   const sourceUsageRows = contextSourceRows(info, sessionCurrency);
   const showSourceUsageRows = sourceUsageRows.length > 0;
   const sourceTotalTokens = sourceUsageRows.reduce((sum, row) => sum + sourceTokenTotal(row), 0);
@@ -662,7 +679,11 @@ export function ContextPanel({
     : t("compaction.failed");
   const capacityTone = compactionOverride ? (compactionOverride.phase === "running" ? "notice" : "warn") : windowStatus.tone;
   const capacityStatusLabel = compactionOverride ? compactionOverrideLabel : t(windowStatus.key);
-  const sessionEstimated = info?.sessionEstimated === true || context?.estimated === true;
+  // tl1729: the session "estimated" mark follows the runtime props only
+  // (context.estimated — the same flag the status bar marks with). The
+  // self-fetched snapshot's sessionEstimated no longer feeds any readout here,
+  // so the ≈ decoration cannot disagree between the two surfaces.
+  const sessionEstimated = context?.estimated === true;
   const markEstimated = (value: string, estimated: boolean) => estimated && value !== "-" ? `≈${value}` : value;
   const rawSessionCostLabel = cost.labelKind === "bucketed"
     ? // tl1556: 混合币种不再吞数字——分桶金额逐币种上屏（"$0.0123 + ¥0.85"），
@@ -693,7 +714,10 @@ export function ContextPanel({
             ? formatMoneyLocalized(0, cost.currency, { locale, fractionDigits: 2 })
             : markEstimated(formatMoneyLocalized(cost.amount, cost.currency, { locale, empty: "dash" }), sessionEstimated);
   const sessionCostLabel = rawSessionCostLabel;
-  const sessionRateBand = normalizeRateBand(info?.sessionCostQuote?.rateBand);
+  // tl1729: the rate-band badge annotates the quote that actually drove the
+  // readout above (cost.quote), not whichever quote the self-fetched snapshot
+  // happened to carry.
+  const sessionRateBand = normalizeRateBand(cost.quote?.rateBand);
   const sessionRateBandTitle = sessionRateBand ? t("billing.rateBand.tooltip") : undefined;
   const sessionRateBandBadge = sessionRateBand
     ? { label: rateBandLabel(sessionRateBand, t) ?? sessionRateBand, tone: sessionRateBand, title: sessionRateBandTitle }
@@ -877,7 +901,7 @@ export function ContextPanel({
                   title={sessionRateBandTitle}
                   badge={sessionRateBandBadge}
                   tabId={tabId}
-                  quote={info?.sessionCostQuote}
+                  quote={cost.quote}
                   costLabelKind={cost.labelKind}
                   costPartialPricedCount={cost.partialPricedCount}
                   sourceRows={sourceUsageRows}

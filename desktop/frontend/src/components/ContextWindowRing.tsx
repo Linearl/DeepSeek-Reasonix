@@ -82,6 +82,39 @@ const QUOTA_WINDOW_LABEL: Record<string, DictKey> = {
   monthly: "settings.opencodeGoUsage.window.monthly",
 };
 
+// tl1730（方案块1）: turn-cache authority/shadow 对照判决——权威=usage 事件
+// 线的实时对（上下文环显示的唯一来源），对照=ContextPanelInfo 快照对（遥测
+// 时钟，只作 debug 级对照，永不参与显示、永不取均值）。返回值即处置结果：
+//   "none"    快照对未上报（无对照可做）；
+//   "absent"  权威对未上报（新会话首轮桥接窗——已记录的正常空窗，不告警）；
+//   "agree"   两钟一致 → debug 对照行；
+//   "diverge" 两钟分歧 → 结构化告警（console 双通道：debug 对照 + warn 分歧，
+//              同 reportShellLabelFlap「slog + 可见信号」形态），显示仍用
+//              权威值——读数分歧要可见，不可调和。
+export type TurnCacheShadowVerdict = "none" | "absent" | "agree" | "diverge";
+
+export function reportTurnCacheShadow(
+  authority: { hit: number; miss: number },
+  shadow: { hit: number; miss: number } | null,
+): TurnCacheShadowVerdict {
+  if (!shadow || shadow.hit + shadow.miss <= 0) return "none";
+  if (authority.hit + authority.miss <= 0) return "absent";
+  if (authority.hit === shadow.hit && authority.miss === shadow.miss) {
+    console.debug("[context-ring] turn cache shadow check agrees with the live event pair", { authority, shadow });
+    return "agree";
+  }
+  console.warn(
+    "[context-ring] turn cache authority/shadow mismatch — display keeps the live event pair",
+    {
+      authority,
+      shadow,
+      action: "displaying the event pair",
+      hint: "if the ring rate disagrees with the status bar chip, please report it",
+    },
+  );
+  return "diverge";
+}
+
 export function ContextWindowRing({ enabled = true, context, tabId, turnCost, turnRateBand, currency, cacheHitTokens, cacheMissTokens, balance, turnMetrics }: ContextWindowRingProps) {
   const { locale, t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -246,11 +279,32 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
     setOpen(false);
   }, []);
 
+  // tl1730（方案块1 前端落地）: the per-turn cache rate has ONE authority —
+  // the live event pair the composer receives from the usage stream (the same
+  // numbers the status bar's turn chip reads). The hover-time ContextPanelInfo
+  // snapshot no longer bridges silently: the old per-field `??` could mix a
+  // live hit with a stale miss inside one rate, and the snapshot's telemetry
+  // clock could contradict the live chips. No live pair reported → "-"
+  // (honest absence), never a snapshot value. Ring rendering untouched (the
+  // popover readout row only).
+  const turnCacheHit = cacheHitTokens ?? 0;
+  const turnCacheMiss = cacheMissTokens ?? 0;
+  const turnCacheRate = formatCacheHitRate(turnCacheHit, turnCacheMiss);
+  // tl1730 对照读数：旧第二来源（ContextPanelInfo 快照对，遥测时钟）降级为
+  // debug 级对照——不参与显示、不取均值；弹层打开且权威对已上报时比对一次，
+  // 分歧发结构化告警（console debug 对照行 + warn 分支行，同
+  // reportShellLabelFlap 双通道形态）。权威对缺席（新会话首轮桥接窗）是已
+  // 记录的正常空窗，不告警。
+  const shadowHit = info?.cacheHitTokens ?? 0;
+  const shadowMiss = info?.cacheMissTokens ?? 0;
+  const shadowHasPair = shadowHit + shadowMiss > 0;
+  useEffect(() => {
+    if (!enabled || !open) return;
+    reportTurnCacheShadow({ hit: turnCacheHit, miss: turnCacheMiss }, shadowHasPair ? { hit: shadowHit, miss: shadowMiss } : null);
+  }, [enabled, open, turnCacheHit, turnCacheMiss, shadowHasPair, shadowHit, shadowMiss]);
+
   if (!enabled) return null;
 
-  const turnCacheHit = cacheHitTokens ?? info?.cacheHitTokens ?? 0;
-  const turnCacheMiss = cacheMissTokens ?? info?.cacheMissTokens ?? 0;
-  const turnCacheRate = formatCacheHitRate(turnCacheHit, turnCacheMiss);
   const compactTokens = windowTokens > 0 ? Math.round(windowTokens * compactRatio) : 0;
   const tokensToCompact = compactTokens > used ? compactTokens - used : 0;
   const ringOffset = RING_C * (1 - usagePct / 100);
