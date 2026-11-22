@@ -195,3 +195,61 @@ func TestPagedReadEnvelopeKeepsPagingStateUnderCitation(t *testing.T) {
 		t.Fatalf("a partial window must not claim a source end: %d", *envelope.SourceEnd)
 	}
 }
+
+// TestSameRoundReadRejectionGuidesNextRoundCitation pins the tl1762 recovery
+// copy: the two shapes a model actually hits must each name the way out — the
+// same-round trap (read and edit in one batch) must say the round has to end
+// before the read counts, and an unresolvable token must point at the literal
+// [source_token ...] line the host prints.
+func TestSameRoundReadRejectionGuidesNextRoundCitation(t *testing.T) {
+	a, path := newSourceTokenGateAgent(t)
+	read, err := json.Marshal(map[string]any{"path": path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	editNoToken, err := json.Marshal(map[string]any{
+		"path": path, "line_range": "2-2", "new_string": "changed", "anchor_head": "beta",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Same batch [read, edit]: the fresh read cannot pay for the edit — the
+	// rejection must tell the model the round has to end first, not just
+	// restate the rule it already tripped over.
+	results := relaxedEvidenceRound(t, a, []provider.ToolCall{
+		{ID: "r1", Name: "read_file", Arguments: string(read)},
+		{ID: "e1", Name: "edit_file", Arguments: string(editNoToken)},
+	})
+	for _, want := range []string{
+		"reads from the same batch do not count",
+		"a read issued in this same round does not either",
+		"end this round",
+		"cite the source_token that read prints",
+	} {
+		if !strings.Contains(results[1], want) {
+			t.Fatalf("same-round rejection must guide the way out (%q): %q", want, results[1])
+		}
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "alpha\nbeta\ngamma\n" {
+		t.Fatalf("the blocked edit must leave the file untouched, file = %q", content)
+	}
+
+	// A token that resolves to nothing must point at the printed line.
+	editFabricated, err := json.Marshal(map[string]any{
+		"path": path, "line_range": "2-2", "new_string": "changed",
+		"anchor_head": "beta", "source_token": "r_made_up",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	results = relaxedEvidenceRound(t, a, []provider.ToolCall{
+		{ID: "e2", Name: "edit_file", Arguments: string(editFabricated)},
+	})
+	if !strings.Contains(results[0], "printed at the end of that read_file result") {
+		t.Fatalf("unknown-token rejection must point at the printed citation line: %q", results[0])
+	}
+}
