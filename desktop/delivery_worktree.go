@@ -171,7 +171,13 @@ func (a *App) PrepareWorktreeMerge(tabID string) (worktree.MergeInspection, erro
 
 // MergeWorktreeBack merges only after active-work and dual-workspace lease
 // gates. It intentionally leaves navigation, tab closure, and cleanup to the
-// second phase.
+// second phase. The runtime blockers check + per-root merge reservation are
+// NOT taken here anymore (tl1727 归一化#6): both this bridge and the
+// merge_worktree_back tool face share the gate sunk into worktree.MergeBack
+// (registered at NewApp as reserveWorktreeMergeRuntime). Reserving here too
+// would deadlock the merge — reserveWorktreeMergeRuntime refuses overlapping
+// merge reservations — so the bridge keeps only the fail-fast blockers read
+// and the lease pair, and the core owns the reservation lifetime.
 func (a *App) MergeWorktreeBack(request MergeWorktreeBackRequest) (worktree.MergeResult, error) {
 	a.worktreeMergeMu.Lock()
 	defer a.worktreeMergeMu.Unlock()
@@ -193,11 +199,6 @@ func (a *App) MergeWorktreeBack(request MergeWorktreeBackRequest) (worktree.Merg
 		return worktree.MergeResult{Error: err.Error()}, err
 	}
 	defer release()
-	releaseReservation, err := a.reserveWorktreeMergeRuntime(inspection.SourceRoot, inspection.WorktreeRoot)
-	if err != nil {
-		return worktree.MergeResult{Error: err.Error()}, err
-	}
-	defer releaseReservation()
 	if _, currentRoot, err := a.mergeableWorktreeTabIdentity(request.TabID, tab); err != nil || !sameProjectRoot(currentRoot, wsRoot) {
 		if err == nil {
 			err = fmt.Errorf("worktree tab identity changed while waiting for merge access")

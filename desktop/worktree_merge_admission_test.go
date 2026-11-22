@@ -263,7 +263,14 @@ func TestMergeRuntimeReservationBlocksOwnersTurnsAndTerminals(t *testing.T) {
 	releaseAfter()
 }
 
-func TestMergeWorktreeBackHoldsRuntimeReservationThroughGitMutation(t *testing.T) {
+// tl1727 归一化#6: the runtime blockers check + merge reservation moved inside
+// worktree.MergeBack (registered at NewApp as the host runtime gate), so both
+// this bridge and the merge_worktree_back tool face share one gate. The bridge
+// must NOT also reserve: reserveWorktreeMergeRuntime refuses overlapping merge
+// reservations, so a bridge-level duplicate would fail every merge. This test
+// pins the inverted contract — while the merge core runs, no bridge-held
+// reservation exists — plus the NewApp registration itself.
+func TestMergeWorktreeBackReservesRuntimeInsideMergeCore(t *testing.T) {
 	isolateDesktopUserDirs(t)
 	sourceRoot := t.TempDir()
 	worktreeRoot := t.TempDir()
@@ -282,12 +289,22 @@ func TestMergeWorktreeBackHoldsRuntimeReservationThroughGitMutation(t *testing.T
 	tab := &WorkspaceTab{ID: "worktree", Scope: "project", WorkspaceRoot: worktreeRoot, Ready: true, Ctrl: &backgroundRuntimeController{}}
 	app.tabs[tab.ID] = tab
 	app.tabOrder = []string{tab.ID}
+	registeredGate := worktree.SetMergeRuntimeAcquire(nil)
+	t.Cleanup(func() { worktree.SetMergeRuntimeAcquire(registeredGate) })
+	if registeredGate == nil {
+		t.Fatal("NewApp did not register the host runtime gate for worktree.MergeBack")
+	}
 	mergeWorktreeBack = func(_ context.Context, _ string, _ worktree.MergeRequest) (worktree.MergeResult, error) {
 		for _, root := range []string{sourceRoot, worktreeRoot} {
-			if unexpectedRelease, err := app.beginWorkspaceRuntimeAdmission(root); err == nil {
-				unexpectedRelease()
-				t.Fatalf("runtime entered reserved merge root %s", filepath.Base(root))
+			// Inverted assertion (was: admission must FAIL here). The bridge no
+			// longer holds the reservation — the gate runs inside the real
+			// MergeBack, and a bridge-level duplicate would deadlock the core's
+			// own acquire.
+			release, err := app.beginWorkspaceRuntimeAdmission(root)
+			if err != nil {
+				t.Fatalf("bridge still holds a reservation on %s: %v", filepath.Base(root), err)
 			}
+			release()
 		}
 		return worktree.MergeResult{Merged: true, SourceRoot: sourceRoot, WorktreeRoot: worktreeRoot}, nil
 	}
@@ -299,11 +316,6 @@ func TestMergeWorktreeBackHoldsRuntimeReservationThroughGitMutation(t *testing.T
 	if err != nil || !result.Merged {
 		t.Fatalf("MergeWorktreeBack = %+v, %v", result, err)
 	}
-	release, err := app.beginWorkspaceRuntimeAdmission(worktreeRoot)
-	if err != nil {
-		t.Fatalf("reservation was not released after merge: %v", err)
-	}
-	release()
 }
 
 func desktopHasMergeBlocker(blockers []worktree.MergeBlocker, code string) bool {

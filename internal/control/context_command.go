@@ -33,7 +33,7 @@ func (c *Controller) runSessionVerb(run func() error, done, failPrefix string) {
 func renderContextReport(rep agent.ContextReport) (summary, detail string) {
 	if rep.Window <= 0 {
 		return "context: maintenance disabled (context_window = 0)",
-			fmt.Sprintf("%-18s%s\n%-18s%s", "latest prompt",
+			fmt.Sprintf("%-18s%s\n%-18s%s", "next request",
 				thousands(rep.LatestPrompt), "canonical", thousands(rep.CanonicalTokens))
 	}
 
@@ -46,7 +46,10 @@ func renderContextReport(rep agent.ContextReport) (summary, detail string) {
 		hard = fmt.Sprintf("  (usable %s after output reserve)", thousands(rep.HardCeiling))
 	}
 	line("window", thousands(rep.Window)+hard)
-	line("latest prompt", fmt.Sprintf("%s  (%s of window)", thousands(rep.LatestPrompt), percentOf(rep.LatestPrompt, rep.Window)))
+	// tl1726: the pressure reading is the trigger's own input (ContextUsedTokens),
+	// so the label names the caliber instead of pretending it is the billed
+	// last-turn prompt.
+	line("next request", fmt.Sprintf("%s  (%s of window)", thousands(rep.LatestPrompt), percentOf(rep.LatestPrompt, rep.Window)))
 	line("canonical", thousands(rep.CanonicalTokens))
 	visible := thousands(rep.ProjectionTokens)
 	if rep.Projected {
@@ -77,15 +80,18 @@ func renderContextReport(rep agent.ContextReport) (summary, detail string) {
 }
 
 // contextSummaryLine names the next thing that will happen, since "70% full" on
-// its own does not say whether that is close to anything.
+// its own does not say whether that is close to anything. A zero threshold
+// means "no such threshold" (the legacy snip/force fields stay zero), so a
+// zero threshold never matches — an unguarded `>= 0` used to make every
+// session read "at the force threshold".
 func contextSummaryLine(rep agent.ContextReport) string {
 	next := "fold at " + percentOf(rep.FoldThreshold, rep.Window)
 	switch {
-	case rep.LatestPrompt >= rep.ForceThreshold:
+	case rep.ForceThreshold > 0 && rep.LatestPrompt >= rep.ForceThreshold:
 		next = "at the force threshold"
-	case rep.LatestPrompt >= rep.FoldThreshold:
+	case rep.LatestPrompt >= rep.FoldThreshold && rep.FoldThreshold > 0:
 		next = "folding"
-	case rep.LatestPrompt >= rep.SnipThreshold:
+	case rep.SnipThreshold > 0 && rep.LatestPrompt >= rep.SnipThreshold:
 		next = "snipping stale tool results"
 	}
 	s := fmt.Sprintf("context %s / %s (%s) · next: %s",

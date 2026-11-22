@@ -32,6 +32,13 @@ type ContextReport struct {
 
 // ContextReport samples the current context state. Compaction is disabled when
 // Window is zero, in which case the thresholds carry no meaning.
+//
+// tl1726 归一化#5: the pressure reading is ContextUsedTokens — the exact
+// number the compaction trigger judges — not the previous turn's billed
+// prompt (which lagged a turn, counted completion-side tokens, and read zero
+// on a rebound session). Slash /context, the serve gauge (ContextSnapshot),
+// and the frontend panel (subscribing to ContextUsageForTab) therefore report
+// one caliber: the next request's view against the trigger's own denominator.
 func (a *Agent) ContextReport() ContextReport {
 	if a == nil {
 		return ContextReport{}
@@ -42,9 +49,7 @@ func (a *Agent) ContextReport() ContextReport {
 		OutputBudget: a.destinationMaxOutputTokens(),
 		CacheState:   a.CacheState(),
 	}
-	if u := a.sess.output.lastUsage.Load(); u != nil {
-		rep.LatestPrompt = u.LatestPromptTokens()
-	}
+	rep.LatestPrompt = a.ContextUsedTokens()
 	if a.sess.conversation != nil {
 		canonical, _ := a.sess.conversation.snapshotMessagesVersion()
 		rep.CanonicalTokens = a.estimatedPromptTokens(provider.ModelMessages(canonical))

@@ -2277,10 +2277,13 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const requestTokens = updateContextGauge ? (hasRequestCompletion ? (e.usage?.contextCompletionTokens ?? 0) : (e.usage?.completionTokens ?? 0)) : 0;
       const lastRequestTps = updateContextGauge ? (requestTokens > 0 && requestModelMs >= 500 ? requestTokens / (requestModelMs / 1000) : null) : s.lastRequestTps;
       // Context* is the latest sampling attempt; other token fields are billable aggregates.
-      let used = settled.context.used;
-      if (e.usage && settled.context.window && updateContextGauge) used = (e.usage.contextPromptTokens ?? 0) > 0
-        ? (e.usage.contextPromptTokens ?? 0)
-        : (e.usage.promptTokens ?? 0);
+      // tl1726: `context.used` is NOT rewritten here anymore. The usage-event
+      // prompt figure is a different caliber from the authoritative gauge
+      // (ContextSnapshot = what the next request sends, observed-anchor aware),
+      // and locally overwriting it made the reducer race the per-usage
+      // ContextUsageForTab refetch below (two windows could disagree mid-turn).
+      // The gauge reads only the authoritative snapshot; the usage event still
+      // bumps usageSeq, which is what triggers that refetch.
       const turnTokens = settled.turnTokens + (e.usage?.completionTokens ?? 0);
       // 任务 1137: prompt-side accumulation on the same event chain as
       // turnTokens; prompt 口径与 usageTotalTokens 的推导同式
@@ -2308,7 +2311,7 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       const usage = updateContextGauge ? e.usage : settled.usage;
       // The completed round's usage now accounts for the streamed tool-call
       // arguments, so drop the live estimate rather than double-count it.
-      return { ...settled, usage, context: { ...settled.context, used, sessionTokens }, turnTokens, turnInputTokens, turnOutputTokens, turnOutputCharsAtUsage, turnOutputEstimated, turnTotalTokens, turnCost, turnRateBand, turnArgChars: updateContextGauge ? 0 : settled.turnArgChars, sessionTokens, sessionCost, sessionCurrency, usageSeq: settled.usageSeq + 1, lastRequestTps, pendingRequestModelMs: updateContextGauge ? undefined : settled.pendingRequestModelMs };
+      return { ...settled, usage, context: { ...settled.context, sessionTokens }, turnTokens, turnInputTokens, turnOutputTokens, turnOutputCharsAtUsage, turnOutputEstimated, turnTotalTokens, turnCost, turnRateBand, turnArgChars: updateContextGauge ? 0 : settled.turnArgChars, sessionTokens, sessionCost, sessionCurrency, usageSeq: settled.usageSeq + 1, lastRequestTps, pendingRequestModelMs: updateContextGauge ? undefined : settled.pendingRequestModelMs };
     }
     case "read_status":
       return applyReadStatusEvent(s, e);

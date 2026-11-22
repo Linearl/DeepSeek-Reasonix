@@ -1049,9 +1049,14 @@ func (a *Agent) SessionCache() (hit, miss int) {
 	return int(a.sess.cacheHit.Load()), int(a.sess.cacheMiss.Load())
 }
 
-// ContextWindow returns the configured context-window size in tokens. 0
-// means compaction is disabled for this agent.
-func (a *Agent) ContextWindow() int { return a.contextWindow }
+// ContextWindow returns the context-window denominator every gauge shares
+// (tl1726 归一化#5): the trigger's own effective window — destination config
+// min the learned window (effectiveContextWindow), the same value
+// compactTrigger divides — not the construction-time config field. 0 means
+// compaction is disabled for this agent. Serving the raw configured field let
+// the serve/desktop gauge disagree with the slash report and the trigger after
+// a hot model switch: three windows for one session.
+func (a *Agent) ContextWindow() int { return a.effectiveContextWindow() }
 
 // mid-turn steer marker.
 // MidTurnSteerPrefix marks user messages that were injected mid-turn as

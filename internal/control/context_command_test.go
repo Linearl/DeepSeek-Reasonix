@@ -43,6 +43,17 @@ func TestContextSummaryFlagsBlockedMaintenance(t *testing.T) {
 	}
 }
 
+// tl1726: the legacy snip/force threshold fields stay zero on real reports
+// (only the fold trigger is live). A zero threshold means "no such threshold"
+// and must never match — an unguarded `>= 0` made every real summary read
+// "at the force threshold" regardless of pressure.
+func TestContextSummaryIgnoresZeroLegacyThresholds(t *testing.T) {
+	rep := agent.ContextReport{Window: 1000, FoldThreshold: 800, LatestPrompt: 300}
+	if got := contextSummaryLine(rep); !strings.Contains(got, "fold at 80%") {
+		t.Errorf("summary = %q, want the plain fold-at line (zero legacy thresholds ignored)", got)
+	}
+}
+
 func TestThousandsGroupsDigits(t *testing.T) {
 	for in, want := range map[int]string{
 		0: "0", 999: "999", 1000: "1,000", 731281: "731,281", 1048576: "1,048,576", -1234: "-1,234",

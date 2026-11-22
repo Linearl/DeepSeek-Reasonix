@@ -361,6 +361,32 @@ eq(renderedAverage(), "96.00%", "status bar renders the live all-source session 
 eq(renderedPanelAverage(), "96.00%", "panel stays aligned after a burst usage update");
 eq(controller?.state.usage?.source, "executor", "subagent usage does not replace the executor latest-request metric");
 
+// tl1726: the usage event must NOT locally rewrite context.used. The
+// authoritative ContextUsageForTab snapshot (ContextSnapshot caliber) is the
+// only gauge writer — the usage prompt figure (100 here vs the authoritative
+// 960) used to leak into the gauge until the refetch landed, so the reducer
+// and the snapshot could disagree mid-turn. Hold the authoritative snapshot
+// back with a deferred loader and prove the gauge stays on the authoritative
+// value while the usage event is processed.
+{
+  const heldSnapshot = deferred<ContextInfo>();
+  contextLoader = () => heldSnapshot.promise;
+  await act(async () => {
+    for (const handler of eventHandlers) handler(usageEvent());
+    await flushPromises();
+  });
+  eq(controller?.state.context.used, 960, "usage event does not locally overwrite the authoritative gauge");
+  heldSnapshot.resolve({ used: 970, window: 1_000, sessionTokens: 1_300, cacheHitTokens: 970, cacheMissTokens: 30 });
+  ok(
+    await settleUntil(() => controller?.state.context.used === 970),
+    "the authoritative snapshot remains the only gauge writer",
+  );
+  contextLoader = undefined;
+  await act(async () => {
+    await flushPromises();
+  });
+}
+
 const staleSnapshot = deferred<ContextInfo>();
 const latestSnapshot = deferred<ContextInfo>();
 const pendingSnapshots = [staleSnapshot.promise, latestSnapshot.promise];

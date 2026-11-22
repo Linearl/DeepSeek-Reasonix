@@ -3,11 +3,14 @@ package builtin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"reasonix/internal/worktree"
 )
 
 func gitToolMust(t *testing.T, dir string, args ...string) {
@@ -131,6 +134,110 @@ func TestMergeWorktreeBackRequiresPreparedIdentities(t *testing.T) {
 		Execute(context.Background(), json.RawMessage(`{"workspace_root":"."}`))
 	if err == nil || !strings.Contains(err.Error(), "required") {
 		t.Fatalf("missing identities err = %v, want required-field error", err)
+	}
+}
+
+// tl1727 归一化#6: the tool face used to validate only the four expected_*
+// identities before calling the same worktree.MergeBack as the desktop bridge,
+// so "a session is still running on this worktree" was invisible here (the
+// optimistic CAS cannot catch occupancy). The runtime gate now lives inside
+// MergeBack and the desktop process registers it — a tool merge hitting a
+// running session must be refused, and the identical request must go through
+// once the session is gone (same fixtures as the happy path above, gate
+// registered the way the desktop App does).
+func TestMergeWorktreeBackToolFaceRejectsRunningSession(t *testing.T) {
+	src := t.TempDir()
+	managed := t.TempDir()
+	gitToolMust(t, src, "init", "-b", "main")
+	if err := os.WriteFile(filepath.Join(src, "app.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitToolMust(t, src, "add", ".")
+	gitToolMust(t, src, "commit", "-m", "seed")
+
+	created, err := createWorktree{workDir: src, managedRoot: managed}.
+		Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("create_worktree: %v", err)
+	}
+	var createdInfo struct {
+		WorktreeRoot string `json:"worktreeRoot"`
+	}
+	if err := json.Unmarshal([]byte(created), &createdInfo); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(createdInfo.WorktreeRoot, "app.go"), []byte("package main // changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitToolMust(t, createdInfo.WorktreeRoot, "add", ".")
+	gitToolMust(t, createdInfo.WorktreeRoot, "commit", "-m", "work")
+
+	preparedRaw, err := prepareWorktreeMerge{workDir: createdInfo.WorktreeRoot, managedRoot: managed}.
+		Execute(context.Background(), json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("prepare_worktree_merge: %v", err)
+	}
+	var prepared struct {
+		TargetBranch       string `json:"targetBranch"`
+		TargetHead         string `json:"targetHead"`
+		WorktreeHead       string `json:"worktreeHead"`
+		WorktreeStateToken string `json:"worktreeStateToken"`
+	}
+	if err := json.Unmarshal([]byte(preparedRaw), &prepared); err != nil {
+		t.Fatal(err)
+	}
+
+	mergeArgs := func() json.RawMessage {
+		return mustJSON(t, map[string]any{
+			"workspace_root":                createdInfo.WorktreeRoot,
+			"expected_target_branch":        prepared.TargetBranch,
+			"expected_target_head":          prepared.TargetHead,
+			"expected_worktree_head":        prepared.WorktreeHead,
+			"expected_worktree_state_token": prepared.WorktreeStateToken,
+		})
+	}
+
+	previous := worktree.SetMergeRuntimeAcquire(func(sourceRoot, worktreeRoot string) (func(), error) {
+		if sourceRoot == "" || worktreeRoot == "" {
+			t.Errorf("gate received empty roots: %q %q", sourceRoot, worktreeRoot)
+		}
+		return nil, errors.New("merge runtime admission blocked: a source or worktree runtime still has active or waiting work")
+	})
+	t.Cleanup(func() { worktree.SetMergeRuntimeAcquire(previous) })
+
+	_, err = mergeWorktreeBack{workDir: createdInfo.WorktreeRoot, managedRoot: managed}.
+		Execute(context.Background(), mergeArgs())
+	if err == nil || !strings.Contains(err.Error(), "merge runtime admission blocked") {
+		t.Fatalf("merge with a running session err = %v, want the runtime admission refusal", err)
+	}
+
+	// Session finished (gate now passes): the identical prepared request merges.
+	release := worktree.SetMergeRuntimeAcquire(func(_, _ string) (func(), error) {
+		return func() {}, nil
+	})
+	t.Cleanup(func() { worktree.SetMergeRuntimeAcquire(release) })
+
+	mergedRaw, err := mergeWorktreeBack{workDir: createdInfo.WorktreeRoot, managedRoot: managed}.
+		Execute(context.Background(), mergeArgs())
+	if err != nil {
+		t.Fatalf("merge after the session finished: %v", err)
+	}
+	var merged struct {
+		Merged bool   `json:"merged"`
+		Error  string `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(mergedRaw), &merged); err != nil {
+		t.Fatal(err)
+	}
+	if !merged.Merged || merged.Error != "" {
+		t.Fatalf("merge result: %s", mergedRaw)
+	}
+	content, err := os.ReadFile(filepath.Join(src, "app.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "changed") {
+		t.Fatalf("source app.go after merge = %q, want the worktree change", content)
 	}
 }
 
