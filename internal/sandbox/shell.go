@@ -256,11 +256,21 @@ func isWindowsWSLBashPath(path, windowsRoot string) bool {
 // Windows ships a bash.exe launcher stub in %SystemRoot% that opens the WSL
 // install prompt instead of running anything, so confirm bash actually works
 // before trusting it. Timeout-bounded in case the stub blocks on that prompt.
+//
+// tl1763: the budget was 3s, but a real Git for Windows bash.exe carries the
+// full msys runtime — cold-start measured 2.4-3.7s on the affected machine
+// (both cmd-carrier and Git Bash-carrier hosts), so every candidate timed out
+// and all three discovery routes (PATH-derived, registry, standard roots) were
+// reported as not-installed while git.exe (native PE, fast) still probed fine.
+// 10s gives ~2.7x headroom over the worst observed start; a successful probe
+// short-circuits discovery, so healthy hosts still pay only one probe.
+const shellProbeBashTimeout = 10 * time.Second
+
 func probeBash(path string) bool {
 	if runtime.GOOS != "windows" {
 		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shellProbeBashTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, path, "-c", "true")
 	cmd.Env = secrets.ProcessEnv()
