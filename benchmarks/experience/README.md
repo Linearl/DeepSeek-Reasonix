@@ -34,10 +34,16 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 | M11 | 切换 effort 耗时（`switch-cost`） | P95 < 1500ms（同上门） | 任务 909 门化；锚 task 334/148「快路径不重建」 | `desktop: effort switch` 的 `elapsed_ms`（fast-same-level / fast-per-request；task 148 起有读数） |
 | M12 | 切换落重建 fallback（`switch-cost`，OBSERVE 计数） | 无（占比升高需归因） | 任务 909（快路径失效早期信号） | `desktop: model switch path=fallback-*` 计数 + `desktop: runtime build end trigger=set-effort` 计数 |
 | M13 | effort 读取 ≥150ms 慢读（`switch-cost`，OBSERVE census） | 无（越线才落行，条数本身即信号） | 任务 639/889（读取分段取证） | `desktop: effort read breakdown` 的 `total_ms`（`effortBreakdownLogMs=150` 截断样本，单列不并入 P95 门） |
+| M14 | 发消息→首响按 provider 分层（`first-response`，OBSERVE） | 无（各 provider 形态差异大，不设统一门） | tl1685 ①（P1 首响归因 tl1684 口径的前置：provider 等待主导长尾 88.7%，分层先持续可测） | `sessions/*.turns.jsonl` + 会话 meta 侧车 `<session>.jsonl.meta` 的 `model` 字段（canonical "provider/model" 前缀；**会话级粒度**：按会话当前 model 归窗口内全部 turn，ledger 本身不带 model 信息；缺 meta 归 `unknown`） |
+| M15 | boot 各相独立门 prompt / agent:tools / controller（`boot`，热路径 P95） | P95 < 60000 / 8000 / 4000ms（`-boot-phase-prompt-max-ms` / `-boot-phase-tools-max-ms` / `-boot-phase-ctl-max-ms` 可配） | task 1223 相分析法的持续门禁化（tl1685 ②）；**首期基线=20261122 现读数上浮**（prompt P95=37366/Max=47017、agent:tools P95=2677/Max=4707、controller P95=754/Max=2668，n=46），现读数本身是存量劣化面（自报复用 boot 的 prompt 相 P95=37s），门锚回归检测语义，P1 修复落地后收紧重定 | `boot: stage timings` 分相，样本池与 M1 热路径同池；相缺省不计样本不冒 0；冷启动相归因仍由 M1c「最慢相」注记承载 |
+| M16 | WARN slow switch stage 按 stage 细分（`warn-patrol`，OBSERVE） | 无（门=M9 巡检行本身，本行只回答「涨在哪些 stage」） | tl1685 ③（第6期候选③：83 条=上期 45+38，观测归因辅助） | M9 巡检池内 `desktop: frontend slow switch stage` 行 detail 的 `stage=` 字段（stage 值可含空格，采集期专用解析）；解析失败归 `(no-stage)` 不静默丢；注记列 top8 stage×n(P50,Max) |
+| M17 | effort 慢读条数÷切 tab 次数（`switch-cost`，比值观测） | 无（比值跨期对比替代条数单指标） | tl1685 ④（第6期实测教训：慢读 125→237 条升但 P95 2503→1855ms 反降——条数升/单条快=切换次数增多非单读劣化） | M13 慢读条数 ÷ M7 `frontend switch-tab summary` 行数；周趋势对比走**比值百分比**（比值平而条数升=切换频次增多非劣化，比值升=单读/单切劣化；上期 JSON 无 ratio 字段时退计数对比） |
 
 阈值均可 CLI 覆盖：`-boot-hot-max-ms`、`-open-topic-max-ms`、
 `-render-max-ms`、`-switch-fast-max-ms`、`-first-response-max-s`、
-`-boot-hot-budget-ms`、`-warn-patterns`（巡检模式）、`-warn-max-count`
+`-boot-hot-budget-ms`、`-boot-phase-prompt-max-ms` /
+`-boot-phase-tools-max-ms` / `-boot-phase-ctl-max-ms`（tl1685 ② 三相门）、
+`-warn-patterns`（巡检模式）、`-warn-max-count`
 （巡检门）、`-trend-worse-pct`（趋势慢化线）。`boot > Ns` 类告警即 M1 门
 （`-boot-hot-max-ms`），不重复实现。
 
@@ -64,9 +70,10 @@ go run ./benchmarks/experience -window 168h -json weekly.json -trend prev.json  
 ## 阶段 4：周趋势与 WARN 巡检（heartbeat 引擎）
 
 - **`-trend <prev.json>`**：与上期读数逐指标对比（键=bench+metric）：延迟行按
-  P95 百分比，恶化 ≥ `-trend-worse-pct`（默认 10%）标 `↑慢化`；计数行
-  （census/WARN）按 n 对比，增多即标 `↑增多`。任一侧无样本不出行。趋势段
-  **只报告、不改退出码**；上期文件缺失/损坏降级为 stderr 提示。
+  P95 百分比，恶化 ≥ `-trend-worse-pct`（默认 10%）标 `↑慢化`；比值行
+  （M17，`ratio` 字段两侧俱备时）按比值百分比对比——条数单指标会跨期误判；
+  计数行（census/WARN）按 n 对比，增多即标 `↑增多`。任一侧无样本不出行。
+  趋势段**只报告、不改退出码**；上期文件缺失/损坏降级为 stderr 提示。
 - **`warn-patrol`**（M9）：窗口内命中 `-warn-patterns` 的 `level=WARN` 行计数
   （**采集期按模式过滤**——2026-10-15 实测教训：全量留档时 168h 窗 6.1 万条
   `config: unknown key` 噪音会先吃满采集上限，把慢 switch 行挤出池子造成

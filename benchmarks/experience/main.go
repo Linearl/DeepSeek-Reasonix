@@ -74,7 +74,22 @@ const (
 	// 1500ms 说明有东西掉进慢 IO/重建——比 602 的 2s 留 500ms 余量，
 	// 避免高负载机器抖动误报。
 	defaultSwitchFastMaxMS = 1500
-	defaultWindow          = 72 * time.Hour
+	// boot 各相独立门（tl1685 ②）：task 1223 相分析法的持续门禁化——
+	// 启动慢的归因结论（prompt 阶段占 boot 60-83%）此前只活在一次性报告里，
+	// 周评测只有 boot total 一个门，相级回退（如复用坏了 prompt 重新变慢）
+	// 要等下一份归因报告才可见。三门挂在热路径样本池（与 M1 同池，P95 口径），
+	// 默认值 = 20261122 实测现读数上浮（首期基线，n=46）：
+	//   prompt       P50=3531 P95=37366 Max=47017 → 60000（Max 上浮 ~27%）
+	//   agent:tools  P50=558  P95=2677  Max=4707  → 8000（Max 上浮 ~70%）
+	//   controller   P50=207  P95=754   Max=2668  → 4000（Max 上浮 ~50%）
+	// 现读数本身就是存量劣化面（自报复用标记的 boot 其 prompt 相 P95=37s，
+	// 复用行 prompt=true 但组装照跑——tl1683 归因的余留，修复归 boot P1 另件，
+	// 本件只加观测不碰修复面），故门值锚定在「比现读数更坏才红」的回归检测
+	// 语义；P1 修复落地后用 -boot-phase-*-max-ms 收紧重定基线。
+	defaultBootPhasePromptMaxMS = 60000
+	defaultBootPhaseToolsMaxMS  = 8000
+	defaultBootPhaseCtlMaxMS    = 4000
+	defaultWindow               = 72 * time.Hour
 )
 
 type options struct {
@@ -85,6 +100,9 @@ type options struct {
 	bench               string
 	bootHotBudgetMS     int64
 	bootHotMaxMS        int64
+	bootPhasePromptMax  int64 // tl1685 ②：boot 相 prompt（热路径 P95）独立门
+	bootPhaseToolsMax   int64 // tl1685 ②：boot 相 agent:tools（热路径 P95）独立门
+	bootPhaseCtlMax     int64 // tl1685 ②：boot 相 controller（热路径 P95）独立门
 	openTopicMaxMS      int64
 	renderMaxMS         int64
 	switchFastMaxMS     int64 // 任务 909：切换快路径（模型/effort）P95 门
@@ -117,8 +135,12 @@ type metricResult struct {
 	P50MS     float64 `json:"p50_ms,omitempty"`
 	P95MS     float64 `json:"p95_ms,omitempty"`
 	MaxMS     float64 `json:"max_ms,omitempty"`
-	Verdict   verdict `json:"verdict"`
-	Note      string  `json:"note,omitempty"`
+	// Ratio 是「条数÷次数」型指标的比值（tl1685 ④）：周趋势对比按比值
+	// 百分比走（条数单指标会跨期误判——第6期慢读 125→237 条升但 P95
+	// 2503→1855ms 反降，条数升/单条快=切换次数增多非劣化）。
+	Ratio   float64 `json:"ratio,omitempty"`
+	Verdict verdict `json:"verdict"`
+	Note    string  `json:"note,omitempty"`
 }
 
 func main() {
@@ -130,6 +152,9 @@ func main() {
 	flag.StringVar(&o.bench, "bench", "all", "boot|open-topic|tab-switch|switch-cost|first-response|warn-patrol|all")
 	flag.Int64Var(&o.bootHotBudgetMS, "boot-hot-budget-ms", defaultBootHotBudgetMS, "热路径分类的重组相合计预算")
 	flag.Int64Var(&o.bootHotMaxMS, "boot-hot-max-ms", defaultBootHotMaxMS, "热路径 boot total 阈值（363①）")
+	flag.Int64Var(&o.bootPhasePromptMax, "boot-phase-prompt-max-ms", defaultBootPhasePromptMaxMS, "boot 相 prompt（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
+	flag.Int64Var(&o.bootPhaseToolsMax, "boot-phase-tools-max-ms", defaultBootPhaseToolsMaxMS, "boot 相 agent:tools（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
+	flag.Int64Var(&o.bootPhaseCtlMax, "boot-phase-ctl-max-ms", defaultBootPhaseCtlMaxMS, "boot 相 controller（热路径 P95）独立阈值（tl1685 ②，首期基线 20261122）")
 	flag.Int64Var(&o.openTopicMaxMS, "open-topic-max-ms", defaultOpenTopicMaxMS, "打开历史对话端到端阈值（363⑥）")
 	flag.Int64Var(&o.renderMaxMS, "render-max-ms", defaultRenderMaxMS, "切 tab 渲染阈值（196 慢线）")
 	flag.Int64Var(&o.switchFastMaxMS, "switch-fast-max-ms", defaultSwitchFastMaxMS, "切换模型/effort 快路径 P95 阈值（909）")
@@ -280,7 +305,49 @@ func benchBoot(col *logCollect, o options) []metricResult {
 	if r := out[0]; r.N > 0 {
 		out[0] = gated(r, r.P95MS, float64(o.bootHotMaxMS))
 	}
+	out = append(out, bootPhaseGateRows(col, o)...)
 	return out
+}
+
+// bootPhaseGateRows：boot 各相独立门（tl1685 ②）——task 1223 相分析法
+// （启动慢主因=boot prompt 阶段 60-83%）的持续门禁化。样本池与 M1 热路径
+// 同池（b.Hot=true 的 stage timings 分相），门口径 P95，与既有延迟门一致。
+// 相缺省（老版本日志无该分相）不计样本、不冒 0；无热路径样本整行 N/A。
+// 冷启动的相级归因不在此设门（存量冷启动相读数是已知劣化面，照报不修），
+// 由 M1c 冷启动行的「最慢相」注记承载。
+func bootPhaseGateRows(col *logCollect, o options) []metricResult {
+	type phaseGate struct {
+		name      string // boot summary 里的分相键
+		label     string // 指标名显示
+		threshold int64
+	}
+	gates := []phaseGate{
+		{"prompt", "prompt", o.bootPhasePromptMax},
+		{"agent:tools", "agent:tools", o.bootPhaseToolsMax},
+		{"controller", "controller", o.bootPhaseCtlMax},
+	}
+	rows := make([]metricResult, 0, len(gates))
+	for _, g := range gates {
+		var vals []int64
+		for _, b := range col.Boots {
+			if !b.Hot {
+				continue
+			}
+			if ms, ok := b.Stages[g.name]; ok {
+				vals = append(vals, ms)
+			}
+		}
+		r := latencyResult("boot", fmt.Sprintf("boot 相 %s（热路径，独立门）", g.label),
+			fmt.Sprintf("P95 < %dms", g.threshold),
+			"task 1223 相分析法的持续门禁化（tl1685 ②；首期基线=20261122 现读数上浮，P1 修复落地后 -boot-phase-*-max-ms 收紧重定）",
+			vals, float64(g.threshold),
+			verdictNA, "窗口内无热路径 boot 样本（该相门不适用）")
+		if r.N > 0 {
+			r = gated(r, r.P95MS, float64(g.threshold))
+		}
+		rows = append(rows, r)
+	}
+	return rows
 }
 
 // benchOpenTopic：M2 打开历史对话→可发消息 <2s（363 追加验收⑥，合成口径）；
@@ -436,7 +503,42 @@ func benchSwitchCost(col *logCollect, o options) []metricResult {
 			N:         0, Verdict: verdictPass, Note: "窗口内无慢读记录",
 		})
 	}
+	out = append(out, effortSlowReadRatioRow(col))
 	return out
+}
+
+// effortSlowReadRatioRow：effort 慢读条数 ÷ 切 tab 次数比值行（tl1685 ④，
+// 观测）。第 6 期实测教训：慢读 125→237 条升但 P95 2503→1855ms 反降——
+// 条数升/单条快=切换次数增多非单读劣化，条数单指标跨期对比会误判。
+// 比值化后：比值平而条数升=切换频次增多（非劣化）；比值升=单读/单切劣化。
+// 分母取切 tab 次数（frontend switch-tab summary 行数）：慢读的触发面以切
+// tab 附带的 ancillary effort 读为主（stage 标签即 switch-tab:ancillary
+// effort，第6期条数与 render n=290→446 同步上行互证），effort 快路径开关
+// 行数与慢读量级不相关（实测 168h 慢读 140 条 vs effort 开关 3 次）。
+func effortSlowReadRatioRow(col *logCollect) metricResult {
+	row := metricResult{
+		Bench:     "switch-cost",
+		Metric:    "effort 慢读条数÷切 tab 次数（比值观测）",
+		Source:    "desktop.log「desktop: effort read breakdown」÷「desktop: frontend switch-tab summary」",
+		Threshold: "—（观测；比值跨期对比替代条数单指标，防第6期式误判）",
+		Ref:       "tl1685 ④（第6期实测教训：125→237 条升但 P95 2503→1855ms 反降）",
+		N:         len(col.EffortReadSlow),
+	}
+	switches := len(col.SwitchTotal)
+	if switches == 0 {
+		if row.N == 0 {
+			row.Verdict = verdictPass
+			row.Note = "窗口内无慢读、也无切 tab 样本"
+		} else {
+			row.Verdict = verdictNA
+			row.Note = fmt.Sprintf("慢读 %d 条但切 tab 样本 0 条（前端未升级到 summary 打点版本），比值不可算", row.N)
+		}
+		return row
+	}
+	row.Verdict = verdictObserve
+	row.Ratio = float64(row.N) / float64(switches)
+	row.Note = fmt.Sprintf("慢读 %d 条 ÷ 切 tab %d 次 = %.2f 条/次；比值平而条数升=切换频次增多（非劣化），比值升=单读/单切劣化", row.N, switches, row.Ratio)
+	return row
 }
 
 // benchFirstResponse：M5 发消息→首响，P95 ≤ 阈值（370 未定数值验收；门值
@@ -519,7 +621,56 @@ func benchFirstResponse(o options, now time.Time) []metricResult {
 		tail.Note = "窗口内无 ≥60s 长尾样本"
 	}
 	out = append(out, tail)
+	out = append(out, providerStratificationRows(scan.Turns)...)
 	return out
+}
+
+// providerStratificationRows 把首响样本按 provider 分层（tl1685 ①，观测）。
+//
+// tl1684 归因证实首响长尾由 provider 等待主导（长尾样本中占 88.7%，corr≈0.80
+// 三期稳定），P95 单指标混着各 provider 的形态看不出归因——本行把「provider
+// 维度」变成周评测的持续读数，是 P1 首响归因件的前置。每 provider 一行
+// （键含 provider 名，周趋势按 P95 对比自动工作）。数据源是会话 meta 侧车
+// （<session>.jsonl.meta 的 model 字段，canonical "provider/model"），
+// 粒度是会话级；ledger 本身不带 model 信息（eventwire 无 modelRef），
+// 这是「不改被测系统」前提下能拿到的最细归属。
+func providerStratificationRows(turns []turnSample) []metricResult {
+	if len(turns) == 0 {
+		return nil
+	}
+	byProvider := map[string][]int64{}
+	for _, t := range turns {
+		p := t.Provider
+		if p == "" {
+			p = providerUnknown
+		}
+		byProvider[p] = append(byProvider[p], t.MS)
+	}
+	names := make([]string, 0, len(byProvider))
+	for p := range byProvider {
+		names = append(names, p)
+	}
+	// 多者在前（同名按字典序），报告阅读顺序与主因对齐。
+	sort.Slice(names, func(i, j int) bool {
+		if len(byProvider[names[i]]) != len(byProvider[names[j]]) {
+			return len(byProvider[names[i]]) > len(byProvider[names[j]])
+		}
+		return names[i] < names[j]
+	})
+	rows := make([]metricResult, 0, len(names))
+	for _, p := range names {
+		vals := byProvider[p]
+		r := latencyResult("first-response", fmt.Sprintf("发消息→首响 · provider=%s（分层观测）", p),
+			"—（观测分层；各 provider 形态差异大，不设统一门）",
+			"tl1685 ①（P1 首响归因 tl1684 口径的前置：provider 等待主导长尾 88.7%，分层先持续可测）",
+			vals, 0, verdictObserve, "")
+		r.Verdict = verdictObserve
+		r.Source = "sessions/*.turns.jsonl + <session>.jsonl.meta 的 model 字段（canonical provider/model 前缀）"
+		r.Note = fmt.Sprintf("会话级归属：按会话当前 meta.model 归窗口内全部 turn（会话内换模型的历史 turn 不重分层）；"+
+			"checkpoint 留存样本随所属 ledger 归同一 provider；meta 缺失归 %s", providerUnknown)
+		rows = append(rows, r)
+	}
+	return rows
 }
 
 // latencyResult 组装一项延迟读数（P50/P95/Max 由 vals 现算）。
@@ -616,6 +767,8 @@ func printResults(rs []metricResult) {
 			if r.N > 0 {
 				readout = "条 WARN 行"
 			}
+		case r.Ratio > 0:
+			readout = fmt.Sprintf("比值=%.2f 条/次（慢读 %d 条）", r.Ratio, r.N)
 		case r.N > 0:
 			readout = fmt.Sprintf("P50=%.0fms P95=%.0fms Max=%.0fms", r.P50MS, r.P95MS, r.MaxMS)
 		}

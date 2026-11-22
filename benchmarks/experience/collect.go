@@ -21,13 +21,13 @@ type sample struct {
 
 // bootSample 保留完整分相，供热路径分类与慢相归因。
 type bootSample struct {
-	At     time.Time // boot: stage timings 落行时刻（=构建结束）
-	Total  int64
-	Stages map[string]int64
-	Model  string
-	Root   string
-	Hot    bool // 本次 boot 真的走了复用路径，或分相预算启发式命中
-	Reuse  bool // 与 boot: assembly reuse 行配对成功（boot 自报的复用事实）
+	At      time.Time // boot: stage timings 落行时刻（=构建结束）
+	Total   int64
+	Stages  map[string]int64
+	Model   string
+	Root    string
+	Hot     bool // 本次 boot 真的走了复用路径，或分相预算启发式命中
+	Reuse   bool // 与 boot: assembly reuse 行配对成功（boot 自报的复用事实）
 	PoolHit bool // 与 desktop: runtime assembly hit 配对成功（池里有货，不等于走了复用）
 	// HotBy 记录热路径判定依据："reuse"（boot 自报复用）/ "budget"（分相预算
 	// 启发式）/ "pool-hit"（仅池命中——旧口径的假门来源，不再单独成立）。
@@ -54,10 +54,14 @@ type censusRow struct {
 
 // warnLine 是窗口内一条 level=WARN 日志的最小留档（阶段 4 WARN 巡检用：
 // 模式匹配在 msg+detail 上做，模式本身由 -warn-patterns 配置）。
+// Stage/MS 仅 slow switch stage 行解析填充（tl1685 ③ 按 stage 细分计数用），
+// 其余巡检行留空。
 type warnLine struct {
 	At     time.Time
 	Msg    string
 	Detail string
+	Stage  string
+	MS     int64
 }
 
 // warnCollectCap 限制留存的 WARN 巡检行数。**采集期就按模式过滤**
@@ -72,7 +76,7 @@ type logCollect struct {
 	Window          time.Duration
 	FilesParsed     int
 	LinesParsed     int
-	HotBudgetMS     int64      // 热路径分类的重组相合计预算（0 = 用默认值）
+	HotBudgetMS     int64       // 热路径分类的重组相合计预算（0 = 用默认值）
 	AssemblyHits    []time.Time // desktop: runtime assembly hit（363A 复用命中的直接证据）
 	ReuseMarks      []reuseMark // boot: assembly reuse（boot 自报：本次真的复用了什么）
 	Boots           []bootSample
@@ -168,6 +172,11 @@ func (c *logCollect) eatLine(line string, cutoff, now time.Time) {
 	if ln.level == "WARN" && len(c.warnPatterns) > 0 {
 		w := warnLine{At: ln.ts, Msg: ln.msg, Detail: ln.attrs["detail"]}
 		if warnLineMatchesAny(&w, c.warnPatterns) {
+			// tl1685 ③：slow switch stage 行在采集期顺带解析 stage/ms，
+			// 判定期按 stage 细分计数（观测归因辅助）。
+			if strings.Contains(w.Msg, "slow switch stage") {
+				w.Stage, w.MS, _ = parseSlowSwitchDetail(w.Detail)
+			}
 			if len(c.Warns) < warnCollectCap {
 				c.Warns = append(c.Warns, w)
 			} else {

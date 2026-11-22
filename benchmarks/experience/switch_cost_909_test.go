@@ -73,8 +73,9 @@ func TestBenchSwitchCostVerdicts(t *testing.T) {
 		EffortSwitchFast: []sample{{MS: 8}, {MS: 30}},
 	}
 	rows := benchSwitchCost(failCol, o)
-	if len(rows) != 4 {
-		t.Fatalf("行数 = %d（model 门 + effort 门 + fallback 计数 + 慢读 census）", len(rows))
+	// tl1685 ④ 起末尾追加 1 行慢读÷切tab 比值观测行。
+	if len(rows) != 5 {
+		t.Fatalf("行数 = %d（model 门 + effort 门 + fallback 计数 + 慢读 census + 比值观测）", len(rows))
 	}
 	if rows[0].Verdict != verdictFail || rows[0].P95MS != 2000 {
 		t.Fatalf("model P95=2000>1500 应 FAIL：%+v", rows[0])

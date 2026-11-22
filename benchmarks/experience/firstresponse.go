@@ -46,7 +46,16 @@ type turnSample struct {
 	TurnID  string
 	At      time.Time
 	MS      int64
+	// Provider 是该 turn 所属会话的 provider 分层键（tl1685 ①）：会话
+	// meta 侧车（<session>.jsonl.meta）model 字段（canonical "provider/
+	// model"）的 provider 段；meta 缺失/无 model/损坏一律归 "unknown"。
+	Provider string
 }
+
+// providerUnknown 是 provider 分层的兜底桶：ledger 本身不带 model 信息
+// （eventwire.Event 无 modelRef），provider 只能从会话 meta 侧车取，
+// 侧车缺失的老会话归此桶，不阻断首响扫描。
+const providerUnknown = "unknown"
 
 // sessionScan 是一轮 ledger 扫描的产物。
 type sessionScan struct {
@@ -132,12 +141,42 @@ type ledgerOpen struct {
 	responded bool
 }
 
+// sessionProviderOf 读会话 meta 侧车（<sessionPath>.jsonl.meta，与
+// internal/agent.BranchMeta 同一份文件）的 model 字段，返回 provider 分层键
+// （canonical "provider/model" 的 provider 段）。只读；meta 缺失、无 model、
+// 损坏一律归 "unknown"（providerUnknown），绝不阻断首响扫描。
+// 粒度是会话级：model 是会话当前值，窗口内会话换过模型的历史 turn 不重分层
+// （跨期换模型的影响由分层行的 Note 明示）。
+func sessionProviderOf(ledgerPath string) string {
+	sessionPath := strings.TrimSuffix(ledgerPath, store.SessionTurnEventLogSuffix) + ".jsonl"
+	b, err := os.ReadFile(sessionPath + ".meta")
+	if err != nil {
+		return providerUnknown
+	}
+	var meta struct {
+		Model string `json:"model"`
+	}
+	if err := json.Unmarshal(b, &meta); err != nil {
+		return providerUnknown
+	}
+	model := strings.TrimSpace(meta.Model)
+	if model == "" {
+		return providerUnknown
+	}
+	if i := strings.Index(model, "/"); i > 0 {
+		return model[:i]
+	}
+	return model
+}
+
 // scanLedgerFile 单文件状态机。行级规则与 doctor.readTurnLedger 对齐：
 // checkpoint/projection_ack 是保留簿记（跳过），无法解析/未知 recordType/
 // 缺 turnId 即视为尾部截断并停止（运行时下次打开修复，这里不修补）。
 // turn_done 之后的记录（恢复重开的罕见形态）忽略——重开会产生新 turn_started。
 // tl1684 R7：checkpoint 行携带的首响留存样本聚合进样本集——被截断的 turn 的
 // 事件行已物理删除，留存池是它们唯一的读数来源；与 live 配对按 TurnID 去重。
+// tl1685 ①：本文件产出的全部样本（live 配对 + checkpoint 留存池）统一挂
+// 该会话 meta 的 provider 分层键。
 func scanLedgerFile(path, name string, cutoff, skewEnd time.Time, out *sessionScan) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -145,6 +184,8 @@ func scanLedgerFile(path, name string, cutoff, skewEnd time.Time, out *sessionSc
 	}
 	defer f.Close()
 	out.FilesScanned++
+	provider := sessionProviderOf(path)
+	first := len(out.Turns)
 
 	inWindow := func(s *ledgerOpen) bool {
 		return !s.start.Before(cutoff) && !s.start.After(skewEnd)
@@ -169,6 +210,9 @@ func scanLedgerFile(path, name string, cutoff, skewEnd time.Time, out *sessionSc
 		if readErr != nil {
 			break // EOF 或读错误：正常收尾（截断只由 fold 判定）
 		}
+	}
+	for i := first; i < len(out.Turns); i++ {
+		out.Turns[i].Provider = provider
 	}
 	if torn {
 		out.Torn++
