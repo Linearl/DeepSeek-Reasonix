@@ -23,13 +23,19 @@ type listServerInfo struct {
 
 // Task 953 list v2 tuning (experimental_capability_groups on): the default
 // page is 30 summary rows, each description truncated to the same 240B the
-// search tier uses; a detail=true full dump that would exceed
-// maxToolOutputBytes is refused with pagination guidance instead of being
-// injected and truncated mid-stream by the agent layer.
+// search tier uses; a detail=true full dump that would exceed the injection
+// budget is refused with pagination guidance instead of being injected and
+// truncated mid-stream by the agent layer.
+//
+// tl1561 tiering: the injection budget stays pinned at the pre-tier 32 KiB —
+// the detail dump is a diagnostic listing with its own paging guidance, not a
+// task object, so it does not inherit the use_capability critical tier's
+// 100 KiB truncation budget.
 const (
-	listDefaultLimit     = 30
-	listMaxLimit         = 50
-	listSummaryDescBytes = 240
+	listDefaultLimit        = 30
+	listMaxLimit            = 50
+	listSummaryDescBytes    = 240
+	listDetailDumpBudgetBytes = 32 * 1024
 )
 
 // capInfoForList is one capability row in an action=list payload (both the
@@ -208,15 +214,15 @@ func (t *UseCapabilityTool) listCapabilitiesGroupTier(p useCapabilityArgs, caps 
 		if err != nil {
 			return "", err
 		}
-		if len(probe) > maxToolOutputBytes {
+		if len(probe) > listDetailDumpBudgetBytes {
 			guide := fmt.Sprintf(
 				"refused: detail=true full dump would be %d bytes for %d entries, over the %d-byte injection budget. This is a volume guardrail, not a failure. Page instead: {\"action\":\"list\",\"limit\":30,\"offset\":0} then advance offset by 30 (payload reports total and next_offset); or narrow with kind=skill|tool|source|session; or inspect one exact capability_id for its full description.",
-				len(probe), total, maxToolOutputBytes)
+				len(probe), total, listDetailDumpBudgetBytes)
 			payload := map[string]any{
 				"refused":  true,
 				"total":    total,
 				"bytes":    len(probe),
-				"budget":   maxToolOutputBytes,
+				"budget":   listDetailDumpBudgetBytes,
 				"guidance": guide,
 			}
 			b, err := json.MarshalIndent(payload, "", "  ")

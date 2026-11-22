@@ -53,7 +53,7 @@ func TestPartialRangeFinalAndFullFinalHaveDifferentContracts(t *testing.T) {
 }
 
 func TestLegacyPartialReadCanEditItsVisibleRange(t *testing.T) {
-	path := makeIncompleteReadFixture(t, "legacy.txt", 430, 96, 362, incompleteReadKeyRule)
+	path := makeIncompleteReadFixture(t, "legacy.txt", incompleteReadFixtureLines, 96, incompleteReadFixtureKeyLine, incompleteReadKeyRule)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)

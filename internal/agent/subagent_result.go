@@ -17,7 +17,10 @@ const (
 	// Leave room for the generic tool-result guard to add metadata without
 	// clipping a task manifest. The aggregate itself owns fair per-task preview
 	// allocation so every completed child keeps its status and retrieval ref.
-	subagentAggregateBudgetBytes = maxToolOutputBytes - 512
+	// tl1561 tiering: pinned at the pre-tier 32 KiB - 512 rather than derived
+	// from maxToolOutputBytes — a fleet aggregate is a fair-split budget over
+	// many children with its own reader, not a critical-tier task object.
+	subagentAggregateBudgetBytes = 32*1024 - 512
 	subagentResultDefaultBytes   = 12 * 1024
 	subagentResultMaxBytes       = 24 * 1024
 )

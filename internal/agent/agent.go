@@ -43,9 +43,46 @@ import (
 	"reasonix/internal/workspacelease"
 )
 
-// maxToolOutputBytes bounds the stable provider-visible Content. RawContent
-// retains the complete local result for explicit session-scoped paging.
-const maxToolOutputBytes = 32 * 1024
+// tl1561 分层截断阈值（用户拍板定稿：关键 100K / 常规 40K / 流式 8K）。RawContent
+// retains the complete local result for explicit session-scoped paging, and a
+// truncated marker points at the archived original file.
+//
+// 三档映射依据（报告「竞品对照-工具返回截断处理-tl1561参考-20261111」+ 本仓通道现实）：
+//   - 关键（criticalToolOutputBytes）：返回即任务对象本身，截断后模型大概率需要
+//     全文——read_file（文件内容）、web_fetch（抓取内容）、use_capability
+//     （capability 执行结果，tl 现场 heartbeat_task_list 78KB 即经此调用）、
+//     heartbeat_task_list（任务列表直调形态）。
+//   - 流式（streamingToolOutputBytes）：后台任务的增量轮询输出（bash_output）——
+//     旧增量已被上次轮询消费，单帧恢复价值低，对齐 OpenClaw 的
+//     LIVE_EXEC_OUTPUT_MAX_CHARS=8000。
+//   - 常规（regularToolOutputBytes）：其余全部工具（bash/grep/ls/task/…），
+//     过程性输出从预览即可判断下一步；默认档 fail-safe——新工具不意外放大。
+const (
+	criticalToolOutputBytes  = 100 * 1024
+	regularToolOutputBytes   = 40 * 1024
+	streamingToolOutputBytes = 8 * 1024
+)
+
+// toolOutputBudgetBytes resolves the provider-visible truncation budget for one
+// tool result. Critical tools keep byte-identical far larger payloads; the
+// streaming poller keeps each incremental frame small; everything else is the
+// regular tier.
+func toolOutputBudgetBytes(toolName string) int {
+	switch toolName {
+	case "read_file", "web_fetch", "use_capability", "heartbeat_task_list":
+		return criticalToolOutputBytes
+	case "bash_output":
+		return streamingToolOutputBytes
+	default:
+		return regularToolOutputBytes
+	}
+}
+
+// maxToolOutputBytes is the widest budget any single tool result may occupy
+// after tiering (the critical tier). Upstream safety bounds that only need one
+// number — history-write capping, cache-contract assertions — use it as the
+// global upper bound; per-tool budgeting goes through toolOutputBudgetBytes.
+const maxToolOutputBytes = criticalToolOutputBytes
 
 var deprecatedContextRetentionWarning sync.Once
 
@@ -4241,7 +4278,8 @@ func truncateToolOutputFor(s, toolName, toolCallID string) (string, string) {
 }
 
 func truncateToolOutputArchived(s, toolName, toolCallID, archivePath string) (string, string) {
-	if len(s) <= maxToolOutputBytes {
+	budget := toolOutputBudgetBytes(toolName)
+	if len(s) <= budget {
 		return s, ""
 	}
 	if toolName == "read_file" {
@@ -4256,22 +4294,28 @@ func truncateToolOutputArchived(s, toolName, toolCallID, archivePath string) (st
 	case toolName == "grep" || toolName == "glob" || toolName == "ls" || toolName == "list_dir":
 		strategy = snipStrategy{head: 80, tail: 8, headChars: 10000, tailChars: 1000}
 	}
+	// tl1561: the streaming tier's budget is itself small, so start from a
+	// proportionally small preview; the marker-fit loop below still enforces
+	// the hard bound if anything overflows.
+	if budget <= streamingToolOutputBytes {
+		strategy = snipStrategy{head: 40, tail: 40, headChars: 6000, tailChars: 1200}
+	}
 	headKeep := strategy.headChars
 	tailKeep := strategy.tailChars
-	if headKeep+tailKeep > maxToolOutputBytes-512 {
-		headKeep = maxToolOutputBytes * 2 / 3
-		tailKeep = maxToolOutputBytes - headKeep - 512
+	if headKeep+tailKeep > budget-512 {
+		headKeep = budget * 2 / 3
+		tailKeep = budget - headKeep - 512
 	}
 	if headKeep < 1024 {
-		headKeep = maxToolOutputBytes / 2
-		tailKeep = maxToolOutputBytes / 2
+		headKeep = budget / 2
+		tailKeep = budget / 2
 	}
 	// Prefer more tail when the body looks like a failure.
 	lower := strings.ToLower(s)
 	if strings.Contains(lower, "error:") || strings.Contains(lower, "panic:") || strings.Contains(lower, "fatal:") {
-		tailKeep = max(tailKeep, maxToolOutputBytes/3)
-		if headKeep+tailKeep > maxToolOutputBytes-512 {
-			headKeep = maxToolOutputBytes - 512 - tailKeep
+		tailKeep = max(tailKeep, budget/3)
+		if headKeep+tailKeep > budget-512 {
+			headKeep = budget - 512 - tailKeep
 		}
 	}
 	head := snapToRuneBoundary(s, 0, headKeep)
@@ -4279,10 +4323,10 @@ func truncateToolOutputArchived(s, toolName, toolCallID, archivePath string) (st
 	marker := toolOutputRecoveryMarker(toolName, toolCallID, archivePath, len(s), len(head)+len(tail))
 	for range 3 {
 		bodyLen := len(head) + len(marker) + len(tail)
-		if bodyLen <= maxToolOutputBytes {
+		if bodyLen <= budget {
 			break
 		}
-		overflow := bodyLen - maxToolOutputBytes
+		overflow := bodyLen - budget
 		trimHead := overflow / 2
 		trimTail := overflow - trimHead
 		if trimHead < len(head) {

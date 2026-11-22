@@ -18,10 +18,13 @@ func truncateReadFileOutput(s, toolName, toolCallID string) (string, string) {
 // truncateReadFileOutputArchived is the archive-aware form (tl1561): the
 // marker points at the archived original instead of the retired result_ref
 // channel. next_offset stays mechanical — readFileRecoveryOffset parses it.
+// read_file sits in the critical tier, so the contiguous prefix budget follows
+// toolOutputBudgetBytes rather than the global upper bound.
 func truncateReadFileOutputArchived(s, toolName, toolCallID, archivePath string) (string, string) {
-	headKeep := maxToolOutputBytes - 1024
+	budget := toolOutputBudgetBytes(toolName)
+	headKeep := budget - 1024
 	if headKeep < 1024 {
-		headKeep = maxToolOutputBytes / 2
+		headKeep = budget / 2
 	}
 	head := snapToRuneBoundary(s, 0, min(headKeep, len(s)))
 	if newline := strings.LastIndexByte(head, '\n'); newline >= 1024 {
@@ -29,11 +32,11 @@ func truncateReadFileOutputArchived(s, toolName, toolCallID, archivePath string)
 	}
 	for range 4 {
 		marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath, len(s), len(head), len(head))
-		if len(head)+len(marker) <= maxToolOutputBytes {
+		if len(head)+len(marker) <= budget {
 			notice := fmt.Sprintf(i18n.M.ToolOutputTruncatedFmt, len(s)-len(head), len(s))
 			return head + marker, notice
 		}
-		trimTo := len(head) - (len(head) + len(marker) - maxToolOutputBytes)
+		trimTo := len(head) - (len(head) + len(marker) - budget)
 		if trimTo <= 0 {
 			head = ""
 			continue
@@ -44,8 +47,8 @@ func truncateReadFileOutputArchived(s, toolName, toolCallID, archivePath string)
 		}
 	}
 	marker := toolOutputRecoveryMarkerAt(toolName, toolCallID, archivePath, len(s), len(head), len(head))
-	if len(marker) > maxToolOutputBytes {
-		marker = snapToRuneBoundary(marker, 0, maxToolOutputBytes)
+	if len(marker) > budget {
+		marker = snapToRuneBoundary(marker, 0, budget)
 	}
 	notice := fmt.Sprintf(i18n.M.ToolOutputTruncatedFmt, len(s)-len(head), len(s))
 	return head + marker, notice

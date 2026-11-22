@@ -19,9 +19,10 @@ import (
 )
 
 // TestTruncateToolOutputUnderCap leaves small payloads alone — the cap should
-// never rewrite content that already fits.
+// never rewrite content that already fits. tl1561 tiering: an unnamed tool is
+// the regular tier, so the at-cap fixture is built from the regular budget.
 func TestTruncateToolOutputUnderCap(t *testing.T) {
-	in := strings.Repeat("a", maxToolOutputBytes)
+	in := strings.Repeat("a", regularToolOutputBytes)
 	got, notice := truncateToolOutput(in)
 	if got != in {
 		t.Errorf("payload at exactly the cap was rewritten")
