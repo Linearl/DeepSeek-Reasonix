@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -59,5 +60,49 @@ func TestServePoolStatusCarriesQRFields(t *testing.T) {
 		if strings.HasPrefix(h, "127.") {
 			t.Fatalf("lan_hosts carries loopback %q; QR must never offer loopback to a phone", h)
 		}
+	}
+}
+
+// tl1539 pins: the QR connect base override persists under the exact config
+// key serve_connect_base_override in servepool.json, rides ServePoolStatus as
+// base_override, is storage-trimmed only (URL normalization lives in the
+// frontend constructor), and an empty value restores the default lan mode.
+func TestServePoolConnectBaseOverridePersists(t *testing.T) {
+	isolateDesktopUserDirs(t)
+	a := &App{}
+
+	// Default (no override ever set): lan mode, empty override.
+	if got, _ := a.ServePoolStatus()["base_override"].(string); got != "" {
+		t.Fatalf("fresh ServePoolStatus base_override = %q; want empty (default lan mode)", got)
+	}
+
+	if err := a.SetServePoolConnectBase("  https://tunnel.example.com/  "); err != nil {
+		t.Fatalf("SetServePoolConnectBase: %v", err)
+	}
+	if got := loadServePoolSettings().ServeConnectBase; got != "https://tunnel.example.com/" {
+		t.Fatalf("persisted ServeConnectBase = %q; want storage-trimmed input", got)
+	}
+	b, err := os.ReadFile(servepoolSettingsPath())
+	if err != nil {
+		t.Fatalf("read servepool.json: %v", err)
+	}
+	if !strings.Contains(string(b), `"serve_connect_base_override"`) {
+		t.Fatalf("servepool.json missing serve_connect_base_override key; got %s", b)
+	}
+	if got, _ := a.ServePoolStatus()["base_override"].(string); got != "https://tunnel.example.com/" {
+		t.Fatalf("ServePoolStatus base_override = %q; want persisted override", got)
+	}
+
+	// Idempotent set: same value must not rewrite the file with an error.
+	if err := a.SetServePoolConnectBase("https://tunnel.example.com/"); err != nil {
+		t.Fatalf("idempotent SetServePoolConnectBase: %v", err)
+	}
+
+	// Empty restore: back to default lan mode.
+	if err := a.SetServePoolConnectBase(""); err != nil {
+		t.Fatalf("SetServePoolConnectBase(empty): %v", err)
+	}
+	if got, _ := a.ServePoolStatus()["base_override"].(string); got != "" {
+		t.Fatalf("after empty set base_override = %q; want empty (lan mode restored)", got)
 	}
 }

@@ -235,6 +235,11 @@ func gatewayPort() int {
 type servepoolSettings struct {
 	Enabled bool `json:"enabled"`
 	Port    int  `json:"port,omitempty"`
+	// ServeConnectBase is the tl1539 QR base override (config key
+	// serve_connect_base_override): a tunnel/public base such as
+	// https://xxx.trycloudflare.com the connect QR encodes instead of the
+	// lan host:port pair. Empty = default lan mode.
+	ServeConnectBase string `json:"serve_connect_base_override,omitempty"`
 }
 
 func loadServePoolSettings() servepoolSettings {
@@ -316,22 +321,44 @@ func (a *App) SetServePoolPort(port int) error {
 	return nil
 }
 
+// SetServePoolConnectBase persists the QR connect base override (tl1539):
+// the tunnel/public base (e.g. https://xxx.trycloudflare.com) the settings
+// panel encodes into the connect QR instead of the lan host:port pair.
+// Empty (or whitespace-only) restores the default lan mode. Storage-only:
+// the gateway neither reads this field nor restarts on change - the QR URL
+// is built frontend-side from ServePoolStatus.base_override, so base
+// normalization (scheme/trailing slash) lives in the frontend constructor.
+func (a *App) SetServePoolConnectBase(base string) error {
+	base = strings.TrimSpace(base)
+	s := loadServePoolSettings()
+	if s.ServeConnectBase == base {
+		return nil
+	}
+	s.ServeConnectBase = base
+	return saveServePoolSettings(s)
+}
+
 // ServePoolStatus reports the gateway state for the settings panel.
 // lan_hosts (tl1536) lists the machine's phone-reachable IPv4 addresses so
 // the panel can render a scannable serve connect QR; the QR value is built
 // frontend-side as http://<host>:<port>?token=<gateway-token> — the query
 // auth form internal/servepool gateway.go checkToken accepts and the one
 // GrandCouncil's HttpClientFactory already injects.
+// base_override (tl1539) carries the configured connect base override; the
+// frontend switches the QR between lan and custom-base modes on it (empty =
+// lan mode, verbatim tl1536 behavior).
 func (a *App) ServePoolStatus() map[string]any {
+	s := loadServePoolSettings()
 	return map[string]any{
-		"enabled":   servepoolEnabled(),
-		"running":   a.gatewaySrv != nil,
-		"bind":      a.gatewayBind,
-		"addr":      a.gatewayAddr,
-		"port":      gatewayPort(),
-		"token":     loadOrCreateGatewayToken(),
-		"listen":    fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
-		"lan_hosts": lanHostsForQR(),
+		"enabled":       s.Enabled,
+		"running":       a.gatewaySrv != nil,
+		"bind":          a.gatewayBind,
+		"addr":          a.gatewayAddr,
+		"port":          gatewayPort(),
+		"token":         loadOrCreateGatewayToken(),
+		"listen":        fmt.Sprintf("0.0.0.0:%d", gatewayPort()),
+		"lan_hosts":     lanHostsForQR(),
+		"base_override": s.ServeConnectBase,
 	}
 }
 

@@ -1181,8 +1181,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // Serve pool remote gateway (Settings → 集成与连接 → 本地服务器服务).
   // lan_hosts (tl1536): phone-reachable IPv4 addresses, best-first — the QR
   // block builds http://<host>:<port>?token=<token> from these.
-  ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string; lan_hosts: string[] }>;
+  ServePoolStatus(): Promise<{ enabled: boolean; running: boolean; bind: string; addr: string; port: number; token: string; listen: string; lan_hosts: string[]; base_override: string }>;
   SetServePoolEnabled(enabled: boolean): Promise<void>;
+  // tl1539: persist the QR connect base override (config key
+  // serve_connect_base_override; empty = default lan mode). Storage-only -
+  // the gateway neither reads it nor restarts on change.
+  SetServePoolConnectBase(base: string): Promise<void>;
   GatewayToken(): Promise<string>;
   ServePoolAddress(): Promise<string>;
   AddAuthorizedWriteDir(scope: 0 | 1, dir: string): Promise<void>;
@@ -4668,10 +4672,13 @@ function makeMockApp(): AppBindings {
       throw new Error("DeleteInstalledVersion is unavailable in the preview build");
     },
     async ServePoolStatus() {
-      return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789", lan_hosts: ["192.168.1.10"] };
+      return { enabled: false, running: false, bind: "", addr: "", port: 18789, token: "mock-gateway-token", listen: "0.0.0.0:18789", lan_hosts: ["192.168.1.10"], base_override: "" };
     },
     async SetServePoolEnabled() {
       // dev mock: no-op
+    },
+    async SetServePoolConnectBase() {
+      // tl1539 dev mock: no-op (preview never persists a connect base)
     },
     async GatewayToken() {
       return "mock-gateway-token";
