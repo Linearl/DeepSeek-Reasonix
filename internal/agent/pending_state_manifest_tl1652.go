@@ -242,7 +242,7 @@ var pendingStateManifest = []pendingStateEntry{
 	{"desktop\\settings_app.go:328", "BotSettingsView.QueueCap", dispPersistedElsewhere, "配置投影"},
 	{"desktop\\settings_app.go:329", "BotSettingsView.QueueDrop", dispPersistedElsewhere, "配置投影"},
 	{"desktop\\settings_app.go:428", "SettingsView.SessionStorageRestartPending", dispPersistedElsewhere, "投影"},
-	{"desktop\\settings_app.go:803", "DesktopStartupSettingsView.SessionStorageRestartPending", dispPersistedElsewhere, "投影"},
+	{"desktop\\settings_app.go:808", "DesktopStartupSettingsView.SessionStorageRestartPending", dispPersistedElsewhere, "投影"},
 	{"desktop\\subagents_app.go:63", "SubagentArtifactView.PendingMail", dispPersistedElsewhere, "投影"},
 	{"desktop\\tasklist_panel.go:56", "TasklistOverview.Pending", dispPersistedElsewhere, "投影"},
 	{"desktop\\pre_repair_cleanup.go:453", "PreRepairBatchCleanupView.Staged", dispPersistedElsewhere, "前端视图投影（批清理暂存状态）"},
