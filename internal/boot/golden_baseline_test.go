@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 
 	"reasonix/internal/agent"
 	"reasonix/internal/provider"
+	"reasonix/internal/sandbox"
 	"reasonix/internal/tool"
 )
 
@@ -31,7 +33,11 @@ import (
 // Machine dependence is designed out of the golden: the environment probe
 // section is disabled in the fixture config (it embeds GOOS/GOARCH, shell
 // labels, and probe output; internal/environment covers it with its own
-// snapshot tests), and the workspace root path is normalized to <ROOT>.
+// snapshot tests), the workspace root path is normalized to <ROOT>, and the
+// resolved shell is pinned to the bash form for the duration of each capture
+// (sandbox.PinResolveShellForTest) so the bash tool's provider-visible
+// description cannot flip to its PowerShell fallback when probeBash's 3-second
+// budget times out under host load (tl1735 B2 §五).
 const goldenBaselineDir = "testdata/golden"
 
 // goldenBaseline is one deterministic capture of the provider-visible
@@ -186,6 +192,14 @@ func TestNormalizeGoldenRootReplacesEveryAlias(t *testing.T) {
 }
 
 func TestGoldenBaselineNoExtensions(t *testing.T) {
+	// Pin the shell resolution to the bash form: the same machine-dependence
+	// design-out as [environment].enabled=false and [tools.search].engine above.
+	// Without the pin, host load can push every probeBash health check past its
+	// 3-second budget, the auto resolution falls back to PowerShell, and the
+	// bash tool's description drifts by the PowerShell NOTE block (tl1735 B2 §五).
+	restore := sandbox.PinResolveShellForTest(sandbox.Shell{Kind: sandbox.ShellBash, Path: "bash"})
+	t.Cleanup(restore)
+
 	// Resolve the golden directory before the fixture chdirs into a temp
 	// workspace, or reads/writes would land inside the fixture.
 	goldenDir, err := filepath.Abs(goldenBaselineDir)
@@ -208,18 +222,7 @@ func TestGoldenBaselineNoExtensions(t *testing.T) {
 		t.Fatal("provider request serialization is not deterministic across identical Builds")
 	}
 
-	shapeJSON, err := json.MarshalIndent(first.PrefixShape, "", "  ")
-	if err != nil {
-		t.Fatalf("marshal prefix shape: %v", err)
-	}
-	shapeJSON = append(shapeJSON, '\n')
-
-	artifacts := map[string][]byte{
-		"system_prompt.txt":     []byte(first.SystemPrompt),
-		"tool_schemas.json":     first.ToolSchemas,
-		"provider_request.json": first.ProviderReq,
-		"prefix_shape.json":     shapeJSON,
-	}
+	artifacts := goldenArtifacts(t, first)
 
 	if os.Getenv("REASONIX_UPDATE_GOLDEN") == "1" {
 		if err := os.MkdirAll(goldenDir, 0o755); err != nil {
@@ -234,6 +237,13 @@ func TestGoldenBaselineNoExtensions(t *testing.T) {
 		return
 	}
 
+	assertMatchesGolden(t, goldenDir, artifacts)
+}
+
+// assertMatchesGolden fails the test when any artifact differs byte-for-byte
+// from the committed golden file of the same name.
+func assertMatchesGolden(t *testing.T, goldenDir string, artifacts map[string][]byte) {
+	t.Helper()
 	for name, want := range artifacts {
 		got, err := os.ReadFile(filepath.Join(goldenDir, name))
 		if err != nil {
@@ -245,6 +255,69 @@ func TestGoldenBaselineNoExtensions(t *testing.T) {
 				name, len(got), len(want), firstDivergence(string(got), string(want)))
 		}
 	}
+}
+
+// goldenArtifacts assembles the four golden files from one baseline capture.
+func goldenArtifacts(t *testing.T, base goldenBaseline) map[string][]byte {
+	t.Helper()
+	shapeJSON, err := json.MarshalIndent(base.PrefixShape, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal prefix shape: %v", err)
+	}
+	return map[string][]byte{
+		"system_prompt.txt":     []byte(base.SystemPrompt),
+		"tool_schemas.json":     base.ToolSchemas,
+		"provider_request.json": base.ProviderReq,
+		"prefix_shape.json":     append(shapeJSON, '\n'),
+	}
+}
+
+// TestGoldenBaselineNoExtensionsUnderProbeTimeout deterministically replays the
+// tl1735 B2 §五 load failure: every bash health probe reports the outcome a
+// 3-second budget produces under load (false), so the auto resolution falls
+// back to PowerShell and the bash tool's description grows by the PowerShell
+// NOTE block. The golden shell pin must win over that hostile outcome — the
+// capture stays byte-identical to the committed bash-form baseline. Without the
+// pin this test turns red deterministically, so removing the pin is caught here
+// instead of by a load-dependent flake.
+func TestGoldenBaselineNoExtensionsUnderProbeTimeout(t *testing.T) {
+	// Resolve the golden directory before the fixture chdirs into a temp
+	// workspace, or reads/writes would land inside the fixture.
+	goldenDir, err := filepath.Abs(goldenBaselineDir)
+	if err != nil {
+		t.Fatalf("resolve golden dir: %v", err)
+	}
+
+	restoreProbe := sandbox.PinShellProbeForTest(func(string) bool { return false })
+	t.Cleanup(func() {
+		restoreProbe()
+		// The poisoned snapshot (probe=false baked into every candidate) is
+		// cached process-wide for 30 seconds; drop it so later tests in this
+		// binary re-probe for real instead of inheriting the failed probes.
+		sandbox.InvalidateShellInventory()
+	})
+	// Drop any snapshot an earlier test cached, so phase 1 below builds a fresh
+	// snapshot that actually consults the injected probe.
+	sandbox.InvalidateShellInventory()
+
+	// Phase 1 — repro proof: with the probe injected and no pin installed, the
+	// failure mode is live. Windows auto resolution flips to the PowerShell
+	// fallback exactly as it did in the tl1735 B2 §五 round3/round5 failures.
+	// (Non-Windows has no PowerShell fallback, so a failed probe cannot flip
+	// the kind there and there is nothing to reproduce.)
+	if runtime.GOOS == "windows" {
+		if sh := sandbox.ResolveShell("", "", nil); sh.Kind != sandbox.ShellPowerShell {
+			t.Fatalf("probe-timeout injection did not reproduce the failure mode: resolved shell kind = %s, want powershell", sh.Kind)
+		}
+	}
+
+	// Phase 2 — the fix: the same injected probe outcome plus the golden shell
+	// pin must leave the recorded surface untouched.
+	restoreShell := sandbox.PinResolveShellForTest(sandbox.Shell{Kind: sandbox.ShellBash, Path: "bash"})
+	t.Cleanup(restoreShell)
+
+	base := captureGoldenBaseline(t)
+	assertMatchesGolden(t, goldenDir, goldenArtifacts(t, base))
 }
 
 // TestGoldenBaselineContractSanity cross-checks the golden tool contract
