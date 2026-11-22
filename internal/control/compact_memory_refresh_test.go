@@ -1,7 +1,9 @@
 package control
 
 import (
+	"bytes"
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -463,5 +465,187 @@ func TestFreshSessionBasePromptGating(t *testing.T) {
 	c2 := New(Options{Executor: exec2, SessionDir: dir, Label: "test"})
 	if got := c2.freshSessionBasePrompt(); got != "sys" {
 		t.Fatalf("nil reloader must fall back to the boot copy: %q", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// tl1735 (Block 2): the resume leg of the refresh chain. selfHealAfterResume
+// now calls rebuildHostState — deliberately OUTSIDE the sessionSelfHealActive
+// gate, so the refresh guarantee does not follow the self-heal experiment
+// switch (架构方案 §六, 验收⑩) — plus the panic-injection nail (验收⑦ test
+// half) and the elapsed probe (验收⑥).
+// ---------------------------------------------------------------------------
+
+// resumeRefreshFixture saves a loadable session so c.Resume runs the full
+// resume chain (recoverInterruptedTurn → selfHealAfterResume) against a real
+// session file.
+func resumeRefreshFixture(t *testing.T, ws, system string) (path string, loaded *agent.Session) {
+	t.Helper()
+	path = agent.NewSessionPath(ws, "main")
+	loaded = agent.NewSession(system)
+	loaded.Add(provider.Message{Role: provider.RoleUser, Content: "hi"})
+	if err := loaded.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	return path, loaded
+}
+
+// TestResumeRefreshesMemoryRegionFromDisk covers acceptance ⑩: an edit that
+// landed on disk before the resume reaches the provider-visible leading system
+// message through the resume path, the # Memory region appears exactly once,
+// and the transcript history is untouched.
+func TestResumeRefreshesMemoryRegionFromDisk(t *testing.T) {
+	ws, userDir := memoryRefreshFixture(t)
+	var calls atomic.Int64
+	if err := os.WriteFile(filepath.Join(ws, "AGENTS.md"),
+		[]byte("## Standing instructions\n\nKeep answers terse.\n\nZZ-REFRESH-PROBE-RESUME\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path, loaded := resumeRefreshFixture(t, ws, "stale boot base")
+	exec := agent.New(nil, nil, agent.NewSession("stale boot base"), agent.Options{SessionPath: path}, event.Discard)
+	c := New(Options{
+		Executor:               exec,
+		SessionDir:             ws,
+		Label:                  "test",
+		DisableColdResumePrune: true,
+		Memory:                 memory.Load(memory.Options{CWD: ws, UserDir: userDir}),
+		MemorySystemReload:     countingMemoryReload("base prompt", ws, userDir, &calls),
+	})
+
+	c.Resume(loaded, path)
+
+	if calls.Load() == 0 {
+		t.Fatal("resume did not fire the host state rebuild")
+	}
+	msgs := exec.Session().Snapshot()
+	if len(msgs) != 2 {
+		t.Fatalf("resume changed the transcript length: got %d want 2", len(msgs))
+	}
+	if msgs[0].Role != provider.RoleSystem {
+		t.Fatalf("no leading system message: %+v", msgs[0])
+	}
+	if !strings.Contains(msgs[0].Content, "ZZ-REFRESH-PROBE-RESUME") {
+		t.Fatalf("resume kept serving the boot-time base copy:\n%.400q", msgs[0].Content)
+	}
+	if got := strings.Count(msgs[0].Content, "# Memory"); got != 1 {
+		t.Fatalf("# Memory region count = %d, want 1 after resume:\n%.400q", got, msgs[0].Content)
+	}
+	if msgs[1].Content != "hi" {
+		t.Fatalf("history disturbed by the resume refresh: %+v", msgs[1])
+	}
+}
+
+// TestResumeRefreshIdempotentWhenMemoryUnchanged pins the idempotence
+// judgment on the resume leg: with no on-disk change a second resume pass
+// leaves the system message byte-identical and emits zero extra notices.
+func TestResumeRefreshIdempotentWhenMemoryUnchanged(t *testing.T) {
+	ws, userDir := memoryRefreshFixture(t)
+	var calls atomic.Int64
+	var notices atomic.Int64
+	path, loaded := resumeRefreshFixture(t, ws, "boot base")
+	exec := agent.New(nil, nil, agent.NewSession("boot base"), agent.Options{SessionPath: path}, event.Discard)
+	c := New(Options{
+		Executor:               exec,
+		SessionDir:             ws,
+		Label:                  "test",
+		DisableColdResumePrune: true,
+		Memory:                 memory.Load(memory.Options{CWD: ws, UserDir: userDir}),
+		MemorySystemReload:     countingMemoryReload("base prompt", ws, userDir, &calls),
+		Sink: event.FuncSink(func(e event.Event) {
+			if e.Kind == event.Notice {
+				notices.Add(1)
+			}
+		}),
+	})
+
+	c.Resume(loaded, path)
+	first := exec.Session().Snapshot()[0].Content
+	if calls.Load() == 0 {
+		t.Fatal("first resume did not fire the rebuild")
+	}
+	noticesAfterFirst := notices.Load()
+
+	// Second resume pass, no disk change: identical content → SetLeading
+	// returns false → no rewrite, no notice.
+	c.selfHealAfterResume(path)
+	if calls.Load() < 2 {
+		t.Fatalf("second resume pass did not run the rebuild (calls=%d)", calls.Load())
+	}
+	if got := exec.Session().Snapshot()[0].Content; got != first {
+		t.Fatalf("idempotent pass rewrote the system message:\nfirst:  %.300q\nsecond: %.300q", first, got)
+	}
+	if n := notices.Load(); n != noticesAfterFirst {
+		t.Fatalf("idempotent pass emitted notices: %d -> %d", noticesAfterFirst, n)
+	}
+}
+
+// TestResumeRebuildPanicInjectionKeepsPromptAndSession is the tl1735 (B2-2)
+// panic nail covering acceptance ⑦'s test gap on the controller side: the
+// reloader panics mid-rebuild while the self-heal gate is OFF — the call
+// happening at all proves the rebuild lives outside the gate (B2-1), the
+// surviving resume chain proves the recover guard works, the previous prompt
+// stays installed, and the history is untouched.
+func TestResumeRebuildPanicInjectionKeepsPromptAndSession(t *testing.T) {
+	ws, userDir := memoryRefreshFixture(t)
+	var reloadCalls atomic.Int64
+	path, loaded := resumeRefreshFixture(t, ws, "base + [oldMemory]")
+	exec := agent.New(nil, nil, agent.NewSession("base + [oldMemory]"), agent.Options{SessionPath: path}, event.Discard)
+	c := New(Options{
+		Executor:               exec,
+		SessionDir:             ws,
+		Label:                  "test",
+		DisableColdResumePrune: true,
+		Memory:                 memory.Load(memory.Options{CWD: ws, UserDir: userDir}),
+		MemorySystemReload: func() string {
+			reloadCalls.Add(1)
+			panic("injected rebuild panic (tl1735 B2-2)")
+		},
+	})
+
+	c.Resume(loaded, path) // must not let the panic escape
+
+	if reloadCalls.Load() == 0 {
+		t.Fatal("rebuild did not run on resume with the self-heal gate off — it must live outside the gate")
+	}
+	msgs := exec.Session().Snapshot()
+	if len(msgs) != 2 {
+		t.Fatalf("resume did not survive the injected panic: got %d messages, want 2", len(msgs))
+	}
+	if msgs[0].Content != "base + [oldMemory]" {
+		t.Fatalf("previous prompt not preserved across the panic: %.200q", msgs[0].Content)
+	}
+	if msgs[1].Content != "hi" {
+		t.Fatalf("history disturbed by the panic path: %+v", msgs[1])
+	}
+}
+
+// TestRebuildHostStateEmitsElapsedProbe pins the tl1735 (B2-3) elapsed probe:
+// a rebuild run must log its duration ("host state rebuild finished" with an
+// elapsed_ms field) so the p95 refresh cost stays observable (验收⑥ 读数落日志).
+func TestRebuildHostStateEmitsElapsedProbe(t *testing.T) {
+	ws, userDir := memoryRefreshFixture(t)
+	var calls atomic.Int64
+	var buf bytes.Buffer
+	prevLogger := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	t.Cleanup(func() { slog.SetDefault(prevLogger) })
+
+	exec := agent.New(nil, nil, agent.NewSession("base prompt"), agent.Options{}, event.Discard)
+	c := New(Options{
+		Executor:           exec,
+		SessionDir:         ws,
+		Label:              "test",
+		Memory:             memory.Load(memory.Options{CWD: ws, UserDir: userDir}),
+		MemorySystemReload: countingMemoryReload("base prompt", ws, userDir, &calls),
+	})
+
+	c.rebuildHostState()
+
+	out := buf.String()
+	if !strings.Contains(out, "host state rebuild finished") {
+		t.Fatalf("elapsed probe line missing from the rebuild logs:\n%s", out)
+	}
+	if !strings.Contains(out, "elapsed_ms=") {
+		t.Fatalf("elapsed_ms field missing from the probe line:\n%s", out)
 	}
 }

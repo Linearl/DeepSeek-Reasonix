@@ -8333,12 +8333,19 @@ func (c *Controller) MemorySystemReload() func() string {
 //     case the write lands on an orphaned session about to be replaced).
 //
 // Step 3 (tool-surface two-layer swap, pendingToolRebuild + admission-entry
-// drain, gated by rotating/running/finishing) and step 4 (resume
-// normalization via selfHealAfterResume) are tl-1195 scope.
+// drain, gated by rotating/running/finishing) remains tl-1195 scope (tl1735
+// 拍板: no runtime re-surfacing scenario — explicit exception, FORK.md). Step
+// 4 (resume normalization) landed in tl1735: selfHealAfterResume calls this
+// function on every Resume, OUTSIDE the sessionSelfHealActive gate.
 func (c *Controller) rebuildHostState() {
+	// tl1735 (B2-3): elapsed probe — refresh duration must be observable
+	// (架构方案 验收⑥ p95 < 100ms 口径). The probe covers step 1 + step 2
+	// (reload + compose + prompt swap + live-snapshot re-read); the panic
+	// branch reports the elapsed time too.
+	started := time.Now()
 	defer func() {
 		if r := recover(); r != nil {
-			slog.Warn("host state rebuild panicked; keeping previous prompt", "panic", r)
+			slog.Warn("host state rebuild panicked; keeping previous prompt", "panic", r, "elapsed_ms", time.Since(started).Milliseconds())
 		}
 	}()
 	if c == nil {
@@ -8355,9 +8362,11 @@ func (c *Controller) rebuildHostState() {
 	sess := c.executor.Session()
 	overridden := c.prompt.baseOverridden
 	c.mu.Unlock()
+	promptChanged := false
 	if !overridden && sess != nil {
 		if prompt := reload(); prompt != "" {
-			if changed := sess.SetLeadingSystemPromptWithReason(prompt, compactMemoryRefreshReason); changed {
+			promptChanged = sess.SetLeadingSystemPromptWithReason(prompt, compactMemoryRefreshReason)
+			if promptChanged {
 				slog.Info("memory region of the system prompt refreshed after maintenance", "reason", compactMemoryRefreshReason)
 				if c.sink != nil {
 					c.sink.Emit(event.Event{Kind: event.Notice, Level: event.LevelInfo,
@@ -8370,6 +8379,10 @@ func (c *Controller) rebuildHostState() {
 	// extension owns the base prompt: session-context is transcript state and
 	// benefits from the fresh snapshot regardless of who owns the prefix.
 	c.memory.ReloadFromDisk()
+	slog.Info("host state rebuild finished",
+		"elapsed_ms", time.Since(started).Milliseconds(),
+		"prompt_changed", promptChanged,
+		"extension_skipped", overridden)
 }
 
 // compactMemoryRefreshReason is the rewrite-boundary reason recorded on the
