@@ -57,6 +57,10 @@ export interface SettingsView {
   experimentalSessionCollabAutoFold?: boolean;
   // Task 704: gates the topicbar transcript|trajectory switch and the trajectory surface (experimental; off = transcript only).
   experimentalTrajectoryView?: boolean;
+  // tl1746: gates the embedded read-only tasklist panel (lab switch, default off).
+  experimentalTasklistPanel?: boolean;
+  // tl1746: tasklist database path override (empty = built-in default; the panel resolves at query time).
+  tasklistDbPath?: string;
   // Conversation store mode in use (task 155): "v3_only" | "dual_write_read_v3" |
   // "dual_write_read_v4" | "v4_only"; switched from Settings > Experimental.
   sessionStorage?: string;

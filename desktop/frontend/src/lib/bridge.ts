@@ -1279,6 +1279,75 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   ContinueSubagentForSession(sessionPath: string, ref: string): Promise<SubagentSendReceiptView>;
 }
 
+// ── tl1746 phase 1: 任务面板只读直读视图类型（手写，与 Go JSON 同构）────
+// 口径与 tl.py 对齐：优先级 = prio_mark 列；待办 = 非 done/verified/cancelled；
+// 完成 = done+verified。分布按原值分组（空串桶前端显示「未标」）。
+
+/** One distribution bucket (status / domain / priority). */
+export interface TasklistCount {
+  key: string;
+  count: number;
+}
+
+/** 总览 tab：四统计卡 + 分布（cached=true 表示 30s 窗口内缓存命中）。 */
+export interface TasklistOverview {
+  path: string;
+  total: number;
+  pending: number;
+  done: number;
+  cancelled: number;
+  byStatus: TasklistCount[];
+  byDomain: TasklistCount[];
+  byPriority: TasklistCount[];
+  openByDomain: TasklistCount[];
+  openByPriority: TasklistCount[];
+  generatedAt: string;
+  cached: boolean;
+}
+
+/** 任务列表 tab 单行。 */
+export interface TasklistTaskRow {
+  num: number;
+  title: string;
+  status: string;
+  priority: string;
+  domain: string;
+  createdAt: string;
+  doneAt: string;
+  leftover: string;
+  blockReason: string;
+  groupTag: string;
+}
+
+/** 任务列表 tab 筛选（全部可省略 = 不过滤）。 */
+export interface TasklistQueryFilters {
+  status?: string;
+  priority?: string;
+  domain?: string;
+  search?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  limit?: number;
+}
+
+/** 任务列表 tab 结果（rows 已在 Go 侧保证非 null 空数组）。 */
+export interface TasklistQueryResult {
+  path: string;
+  rows: TasklistTaskRow[];
+  total: number;
+  limited: boolean;
+  elapsedMs: number;
+}
+
+/** 实验室「测试连接」结果（readOnly 恒 true——探测句柄同样 mode=ro）。 */
+export interface TestTasklistDBResult {
+  path: string;
+  ok: boolean;
+  tasks: number;
+  error: string;
+  readOnly: boolean;
+}
+
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
   ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
@@ -2141,6 +2210,16 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   AlertLogUsage(): Promise<{ bytes: number; files: number; dir: string }>;
   // tl 1097: open logs/desktop in the system file manager (non-blocking).
   OpenLogDir(): Promise<void>;
+  // ── tl1746 phase 1: 任务面板只读直读（tasklist.db mode=ro）──────────
+  // 手写契约（wails generate 产物已核）：path 空串 = 内置默认库；refresh=true
+  // 绕过 30s 总览缓存（面板手动刷新按钮）。只读红线：Go 侧 DSN 恒 mode=ro、
+  // 仅 SELECT/PRAGMA 读——写仍走 tl.py（SSOT），本契约不提供任何写方法。
+  GetTasklistOverview(path: string, refresh: boolean): Promise<TasklistOverview>;
+  QueryTasks(path: string, filters: TasklistQueryFilters): Promise<TasklistQueryResult>;
+  TestTasklistDB(path: string): Promise<TestTasklistDBResult>;
+  OpenTasklistDBLocation(path: string): Promise<void>;
+  SetExperimentalTasklistPanel(enabled: boolean): Promise<void>;
+  SetTasklistDBPath(path: string): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
   // Task 264: background-woken sessions stay out of the tab bar (detached
@@ -7374,6 +7453,16 @@ function makeMockApp(): AppBindings {
     async SetDesktopAlertLogMaxTotalMB() {},
     async AlertLogUsage() { return { bytes: 0, files: 0, dir: "" }; },
     async OpenLogDir() { console.info("mock OpenLogDir"); },
+    // tl1746: 任务面板 mock——空总览（错误卡面走 GetTasklistOverview reject
+    // 路径在真机才有意义；dev mock 给空数据面板即空态，不造假读数）。
+    async GetTasklistOverview() {
+      return { path: "", total: 0, pending: 0, done: 0, cancelled: 0, byStatus: [], byDomain: [], byPriority: [], openByDomain: [], openByPriority: [], generatedAt: "", cached: false };
+    },
+    async QueryTasks() { return { path: "", rows: [], total: 0, limited: false, elapsedMs: 0 }; },
+    async TestTasklistDB() { return { path: "", ok: false, tasks: 0, error: "browser mock has no tasklist database", readOnly: true }; },
+    async OpenTasklistDBLocation() { console.info("mock OpenTasklistDBLocation"); },
+    async SetExperimentalTasklistPanel() {},
+    async SetTasklistDBPath() {},
     async ScanDagMigration() { return { sessions: [], scanned: 0, backups: 0, elapsedMs: 0 }; },
     async RunDagMigration() { return { sessions: [], migrated: 0, active: 0, skipped: 0, failed: 0, elapsedMs: 0 }; },
     async PlanDagBackupCleanup() { return { backups: [], deletable: [], deleteBytes: 0, remainingMigrations: 0 }; },

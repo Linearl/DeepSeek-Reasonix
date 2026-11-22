@@ -329,7 +329,7 @@ func (a *App) QueryTasks(path string, filters TasklistQueryFilters) (*TasklistQu
 		return nil, fmt.Errorf("任务数据库读取失败：%w", err)
 	}
 	defer rows.Close()
-	out := &TasklistQueryResult{Path: resolved, Total: total, Limited: total > limit}
+	out := &TasklistQueryResult{Path: resolved, Total: total, Limited: total > limit, Rows: []TasklistTaskRow{}}
 	for rows.Next() {
 		var r TasklistTaskRow
 		if err := rows.Scan(&r.Num, &r.Title, &r.Status, &r.Priority, &r.Domain, &r.CreatedAt, &r.DoneAt, &r.Leftover, &r.BlockReason, &r.GroupTag); err != nil {
