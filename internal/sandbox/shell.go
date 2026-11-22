@@ -256,11 +256,21 @@ func isWindowsWSLBashPath(path, windowsRoot string) bool {
 // Windows ships a bash.exe launcher stub in %SystemRoot% that opens the WSL
 // install prompt instead of running anything, so confirm bash actually works
 // before trusting it. Timeout-bounded in case the stub blocks on that prompt.
+//
+// tl1763: the budget was 3s, but a real Git for Windows bash.exe carries the
+// full msys runtime — cold-start measured 2.4-3.7s on the affected machine
+// (both cmd-carrier and Git Bash-carrier hosts), so every candidate timed out
+// and all three discovery routes (PATH-derived, registry, standard roots) were
+// reported as not-installed while git.exe (native PE, fast) still probed fine.
+// 10s gives ~2.7x headroom over the worst observed start; a successful probe
+// short-circuits discovery, so healthy hosts still pay only one probe.
+const shellProbeBashTimeout = 10 * time.Second
+
 func probeBash(path string) bool {
 	if runtime.GOOS != "windows" {
 		return true
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), shellProbeBashTimeout)
 	defer cancel()
 	cmd := proc.CommandContext(ctx, path, "-c", "true")
 	cmd.Env = secrets.ProcessEnv()
@@ -360,7 +370,13 @@ func sanitizeWindowsBashPath(path string, exists func(string) bool) string {
 }
 
 // windowsPowerShellCandidates lists common PowerShell executables that are not
-// always present on PATH, especially PowerShell 7's default MSI install path.
+// always present on PATH: PowerShell 7's default MSI install path, the Store
+// edition's App Execution Alias under %LOCALAPPDATA%\Microsoft\WindowsApps
+// (tl1763: that directory is absent from many processes' PATH, so LookPath
+// never finds the alias, but os.Stat sees the AppExecLink reparse point and
+// CreateProcess executes it fine — measured working via the Go carrier), and
+// the inbox Windows PowerShell 5.1. MSI wins over Store; the inbox 5.1 stays
+// the last-resort fallback.
 func windowsPowerShellCandidates() []string {
 	var roots []string
 	for _, env := range []string{"ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"} {
@@ -371,6 +387,9 @@ func windowsPowerShellCandidates() []string {
 	var out []string
 	for _, r := range roots {
 		out = append(out, filepath.Join(r, "PowerShell", "7", "pwsh.exe"))
+	}
+	if v := os.Getenv("LOCALAPPDATA"); v != "" {
+		out = append(out, filepath.Join(v, "Microsoft", "WindowsApps", "pwsh.exe"))
 	}
 	if v := os.Getenv("SystemRoot"); v != "" {
 		out = append(out, filepath.Join(v, "System32", "WindowsPowerShell", "v1.0", "powershell.exe"))

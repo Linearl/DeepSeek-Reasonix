@@ -59,7 +59,7 @@ func TestWindowsBashCandidateOrder(t *testing.T) {
 	// "exists", so the config candidate survives sanitization.
 	exists := func(p string) bool { return strings.EqualFold(p, `E:\Portable\Git\bin\bash.exe`) }
 
-	got, sources := windowsBashCandidateSources("auto", `E:\Portable\Git\git-bash.exe`, lookPath, exists)
+	got, sources := windowsBashCandidateSources("auto", `E:\Portable\Git\git-bash.exe`, nil, lookPath, exists)
 	if len(got) == 0 {
 		t.Fatal("expected candidates")
 	}
@@ -143,7 +143,7 @@ func TestWindowsBashCandidatesDedupeAndWSLExclusion(t *testing.T) {
 	lookPath := fakeLookPath(map[string]string{
 		"git.exe": `C:\Program Files\Git\cmd\git.exe`,
 	})
-	got, _ := windowsBashCandidateSources("auto", "", lookPath, fileExists)
+	got, _ := windowsBashCandidateSources("auto", "", nil, lookPath, fileExists)
 	seen := map[string]bool{}
 	for _, p := range got {
 		key := strings.ToLower(p)

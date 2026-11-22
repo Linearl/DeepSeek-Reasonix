@@ -267,7 +267,7 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 		snap.probeFunc = probe
 	}
 	if goos == "windows" {
-		snap.bashCands, snap.sources = windowsBashCandidateSources(prefer, configPath, exec.LookPath, fileExists)
+		snap.bashCands, snap.sources = windowsBashCandidateSources(prefer, configPath, windowsRegistryGitRoots(), exec.LookPath, fileExists)
 		snap.psCands = windowsPowerShellCandidates()
 		snap.caps = windowsShellCapabilities(snap)
 	} else {
@@ -354,9 +354,10 @@ type shellCandidate struct {
 // discovery priority order with their sources, deduplicated case-insensitively
 // and with the WSL launcher excluded: the only bash.exe under %SystemRoot% is
 // the WSL bootstrapper, and a native Windows workspace must never be routed
-// into the Linux VM's /mnt/* view of itself. lookPath and exists are injected
-// so the ordering is testable on any host.
-func windowsBashCandidateSources(prefer, configPath string, lookPath func(string) (string, error), exists func(string) bool) ([]string, map[string]string) {
+// into the Linux VM's /mnt/* view of itself. lookPath, exists, and
+// registryRoots are injected so the ordering is testable on any host;
+// production passes windowsRegistryGitRoots().
+func windowsBashCandidateSources(prefer, configPath string, registryRoots []string, lookPath func(string) (string, error), exists func(string) bool) ([]string, map[string]string) {
 	var ordered []shellCandidate
 	seen := map[string]bool{}
 	push := func(path, source string) {
@@ -391,7 +392,7 @@ func windowsBashCandidateSources(prefer, configPath string, lookPath func(string
 		}
 	}
 	// 4. Git for Windows registry InstallPath (HKLM and HKCU, native + WOW64).
-	for _, root := range windowsRegistryGitRoots() {
+	for _, root := range registryRoots {
 		push(filepath.Join(root, "bin", "bash.exe"), ShellSourceRegistry)
 		push(filepath.Join(root, "usr", "bin", "bash.exe"), ShellSourceRegistry)
 	}
