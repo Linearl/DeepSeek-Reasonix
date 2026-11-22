@@ -357,10 +357,15 @@ func (a *Agent) CompactionLiveBeginForTest(trigger string) { a.compactionLiveBeg
 func (a *Agent) CompactionLiveStopForTest() { a.compactionLiveStop() }
 
 // compactionLiveAddOutput feeds one summarizer chunk into the meter and emits
-// a CompactionProgress event when the gate admits it. runSummaryRequest calls
-// this per chunk; with no active pass it is a cheap mutex-guarded no-op, and
-// runSummaryRequest only runs for compaction summarizer requests, so normal
-// turns never reach this path at all.
+// a CompactionProgress event when the gate admits it. tl1751: this runs as the
+// StreamAuxiliary WithStreamProgress bypass, per chunk AT ARRIVAL (previously
+// it ran per chunk at drain time, after the atomicity buffer emptied — the
+// 16838 tps fake-readout incident); with no active pass it is a cheap
+// mutex-guarded no-op, and runSummaryRequest only runs for compaction
+// summarizer requests, so normal turns never reach this path at all. It is
+// called from the StreamAuxiliary producer goroutine (same concurrency class
+// the parallel chunked-fold fragments already exercise: mutex-guarded meter +
+// event.Sync-wrapped sink) and never retains the text — rune count only.
 func (a *Agent) compactionLiveAddOutput(text string) {
 	if !a.compactionLive.addOutput(text) {
 		return
