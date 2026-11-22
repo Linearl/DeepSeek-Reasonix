@@ -47,6 +47,9 @@ export type ChannelWorkspaceBindings = Pick<
   | "ChannelUnsetDeputy"
   | "ChannelLeaveHuman"
   | "ChannelDissolveForHuman"
+  /** tl1721: 消息清空/恢复（软删除墓碑语义，入口在共用详情抽屉）。 */
+  | "ChannelClearHistoryForHuman"
+  | "ChannelRestoreHistoryForHuman"
   | "ListAddressableSessions"
 > & {
   /** tl1441 ③：群聊附件预览读回（全局附件目录锚点；测试注入点）。 */
@@ -263,6 +266,32 @@ export function ChannelWorkspacePanel({
     }
   }, [b, onBackToList, refresh]);
 
+  // tl1721：消息清空（群主专用，软删除墓碑）+ 恢复（怎么退）——执行面在此，
+  // 两击武装态/恢复入口在共用抽屉 ChannelDetailDrawer 内部（同解散口径）。
+  const clearHistory = useCallback(async () => {
+    setActionError(null);
+    try {
+      const res = await b.ChannelClearHistoryForHuman(channelRefRef.current);
+      setChat((prev) => (prev && (prev.channel.id === res.channel || prev.channel.name === res.channel)
+        ? { ...prev, channel: { ...prev.channel, clearedAt: res.clearedAt } }
+        : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    }
+  }, [b, refresh]);
+
+  const restoreHistory = useCallback(async () => {
+    setActionError(null);
+    try {
+      const updated = await b.ChannelRestoreHistoryForHuman(channelRefRef.current);
+      setChat((prev) => (prev && (prev.channel.id === updated.id || prev.channel.name === updated.name) ? { ...prev, channel: updated } : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    }
+  }, [b, refresh]);
+
   const removeMember = useCallback(async (contactId: string) => {
     setActionError(null);
     try {
@@ -390,6 +419,7 @@ export function ChannelWorkspacePanel({
                 onBubbleContextMenu={(point) => setMenu(point)}
                 deputyId={openCh.deputyId}
                 channelOwnerType={openCh.ownerType}
+                clearedAt={openCh.clearedAt}
               />
             </div>
 
@@ -460,6 +490,8 @@ export function ChannelWorkspacePanel({
           onUnsetDeputy={() => void unsetDeputy()}
           onLeave={() => void leave()}
           onDissolve={() => void dissolve()}
+          onClearHistory={() => void clearHistory()}
+          onRestoreHistory={() => void restoreHistory()}
           onEnsureDirectory={() => void ensureDirectory()}
           inviteOpen={inviteOpen}
           onInviteOpenChange={setInviteOpen}

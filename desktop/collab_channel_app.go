@@ -78,6 +78,35 @@ func (a *App) ChannelDissolveForHuman(ref string) error {
 	return store.Dissolve(ref, collabchannel.HumanLocal)
 }
 
+// ChannelClearHistoryForHuman tombstones the channel's shared history (tl1721
+// 消息清空，入口=聊天-详情面板): every read path hides messages at/below the
+// tombstone FOR EVERY MEMBER — the channel log is shared state, and the result
+// reports what the clear touched (newly hidden lines, stopped queued fan-out,
+// already-delivered copies). Soft delete by design: RestoreHistory zeroes the
+// tombstone and the history is fully back. Owner-only via Store.ClearHistory
+// (the removal side of channel management — same line as Dissolve; the deputy
+// carries invite only, 856 ⑤); delivered mailbox copies are never retracted
+// (the task-309 inbox belongs to the recipient — same boundary as Cancel).
+func (a *App) ChannelClearHistoryForHuman(ref string) (collabchannel.ClearResult, error) {
+	store, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		return collabchannel.ClearResult{}, err
+	}
+	defer store.Close()
+	return store.ClearHistory(ref, collabchannel.HumanLocal)
+}
+
+// ChannelRestoreHistoryForHuman lifts the clear tombstone (tl1721 的「怎么退」):
+// hidden lines become visible again for every member. Owner-only, idempotent.
+func (a *App) ChannelRestoreHistoryForHuman(ref string) (collabchannel.Channel, error) {
+	store, err := collabchannel.Open(config.SessionCollabMailDir())
+	if err != nil {
+		return collabchannel.Channel{}, err
+	}
+	defer store.Close()
+	return store.RestoreHistory(ref, collabchannel.HumanLocal)
+}
+
 // ChannelSendFromHuman publishes one message as human:local through the SAME
 // Publish path the agent tools use (风暴治理/小时上限对人类发言同样生效) and
 // kicks the background drain. tl1406 路由：composer 插入的是 "@<显示名> "

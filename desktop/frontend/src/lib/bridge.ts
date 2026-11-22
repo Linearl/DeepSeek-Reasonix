@@ -918,6 +918,8 @@ export interface CollabChannelView {
   ownerId?: string;
   /** 任务 856 ⑤: 单副管理员（缺省=无）；仅 human 群主可任命，拥有邀请权。 */
   deputyId?: string;
+  /** tl1721: 消息清空墓碑（缺省 0/undefined=未清空）；恢复后归零。 */
+  clearedAt?: number;
   memberDetails?: CollabChannelMemberView[];
 }
 
@@ -995,6 +997,17 @@ export interface CollabChannelCancelResultView {
   cancelledQueued: number;
   alreadyDelivered: number;
   alreadyCancelled: boolean;
+}
+
+/** tl1721: 一次消息清空的结果（ClearHistory 软删除墓碑的 JSON 形状）。 */
+export interface CollabChannelClearResultView {
+  channel: string;
+  clearedAt: number;
+  clearedMessages: number;
+  cancelledQueued: number;
+  alreadyDelivered: number;
+  /** true=墓碑已存在且本次前移（恢复后再清空=全新清空，false）。 */
+  wasCleared: boolean;
 }
 
 interface NativeConfirmRequest {
@@ -2327,6 +2340,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ChannelLeaveHuman(ref: string): Promise<void>;
   /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
   ChannelDissolveForHuman(ref: string): Promise<void>;
+  /** tl1721: 消息清空（聊天-详情入口；仅群主；软删除墓碑，全体成员共享可见变化）。 */
+  ChannelClearHistoryForHuman(ref: string): Promise<CollabChannelClearResultView>;
+  /** tl1721: 恢复被清空的历史（墓碑归零，全量回归；仅群主，幂等）——「怎么退」。 */
+  ChannelRestoreHistoryForHuman(ref: string): Promise<CollabChannelView>;
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
@@ -7604,6 +7621,12 @@ function makeMockApp(): AppBindings {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelDissolveForHuman(_ref: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelClearHistoryForHuman(_ref: string) {
+      throw new Error("channel storage is unavailable in the dev shell");
+    },
+    async ChannelRestoreHistoryForHuman(_ref: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
     async ChannelSendFromHuman(_ref: string, _body: string) {

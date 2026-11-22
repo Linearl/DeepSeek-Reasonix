@@ -2606,12 +2606,15 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// in agent for tests and direct callers (task 174 pattern).
 	reg.Add(agent.NewQueryCollabMailAliasTool(collab))
 	// Task 349: the channel tools (0928 拍板 tool set + 20261002 取消消息
-	// 增量) — list/read/send/cancel over the chat-channel entity; send
-	// expands to task-309 mailbox singles, never a second delivery path.
+	// 增量 + tl1721 拉人) — list/read/send/cancel/invite over the chat-channel
+	// entity; send expands to task-309 mailbox singles, never a second delivery
+	// path. invite rides the same Store.Invite permission the desktop panel
+	// uses (owner OR deputy — 任务 856 ⑤ 的工具面载体缺口补齐).
 	reg.Add(agent.NewChannelListTool(collab))
 	reg.Add(agent.NewChannelReadTool(collab))
 	reg.Add(agent.NewChannelSendTool(collab))
 	reg.Add(agent.NewChannelCancelTool(collab))
+	reg.Add(agent.NewChannelInviteTool(collab))
 	reg.Add(agent.NewTalkToSessionTool(collab))
 	// 任务 570 (c1)：按 messageId 查询投递终态（只读）。talk_to_session
 	// 的 queued 只是入队回执；注入/降级/拒绝由投递泵异步定局并写入回执

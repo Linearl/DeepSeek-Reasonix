@@ -53,6 +53,12 @@ export interface ChannelDetailDrawerProps {
   onUnsetDeputy: () => void;
   onLeave: () => void;
   onDissolve: () => void;
+  /**
+   * tl1721: 消息清空/恢复（仅群主；软删除墓碑语义）。清空走两击武装态（同
+   * 解散），恢复是非破坏动作单击即走。宿主负责调用与错误条，抽屉纯装配。
+   */
+  onClearHistory: () => void;
+  onRestoreHistory: () => void;
   /** 打开邀请框时宿主补拉通讯录（tl1216 退避重练的入口）。 */
   onEnsureDirectory?: () => void;
 }
@@ -81,6 +87,8 @@ export function ChannelDetailDrawer({
   onUnsetDeputy,
   onLeave,
   onDissolve,
+  onClearHistory,
+  onRestoreHistory,
   onEnsureDirectory,
   inviteOpen,
   onInviteOpenChange,
@@ -93,6 +101,9 @@ export function ChannelDetailDrawer({
   // tl1217：解散两击确认武装态（切群/关详情由宿主卸载本组件自然解除——
   // 武装态是「本次抽屉会话」的瞬时确认，不跨卸载存活）。
   const [dissolveArmed, setDissolveArmed] = useState(false);
+  // tl1721：消息清空两击确认武装态（同解散口径——清空对全体成员可见，
+  // 是破坏性动作；恢复非破坏，单击即走）。
+  const [clearArmed, setClearArmed] = useState(false);
 
   // 任务 856 ⑥：邀请框点外部区域自动关闭（tl1441 抽取后随抽屉内聚；原宿主
   // 实现逐行同价）。tl1242 house 形态：mousedown+click 双通道、捕获阶段、
@@ -291,6 +302,30 @@ export function ChannelDetailDrawer({
         <button type="button" className="btn btn--secondary btn--small" onClick={() => onLeave()}>
           {t("collabGroup.chat.leave")}
         </button>
+        {/* tl1721：消息清空——群主专用，两击确认防误触（对全体成员可见的
+            破坏性动作）；软删除墓碑语义，清空后出现恢复入口（怎么退）。 */}
+        {isOwner && hasOwner && !channel.clearedAt && (
+          <button
+            type="button"
+            className={`btn btn--small ${clearArmed ? "btn--danger" : "btn--secondary"}`}
+            onClick={() => {
+              if (!clearArmed) {
+                setClearArmed(true);
+                return;
+              }
+              setClearArmed(false);
+              onClearHistory();
+            }}
+          >
+            {clearArmed ? t("collabGroup.chat.clearHistoryConfirm") : t("collabGroup.chat.clearHistory")}
+          </button>
+        )}
+        {/* tl1721：已清空态的恢复入口（怎么退的前端承载；单击即走）。 */}
+        {isOwner && hasOwner && Boolean(channel.clearedAt) && (
+          <button type="button" className="btn btn--secondary btn--small" onClick={() => onRestoreHistory()}>
+            {t("collabGroup.chat.restoreHistory")}
+          </button>
+        )}
         {/* tl1217：解散群聊——群主专用出口，两击确认防误触；第一击换通用
             危险钮色示警+确认文案，第二击执行。 */}
         {iAmOwner && hasOwner && (

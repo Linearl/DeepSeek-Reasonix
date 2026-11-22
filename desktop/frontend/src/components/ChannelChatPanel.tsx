@@ -38,6 +38,7 @@ import {
 } from "./CollabGroupPanel";
 import type {
   CollabChannelCancelResultView,
+  CollabChannelClearResultView,
   CollabChannelMemberView,
   CollabChannelMessageView,
   CollabChannelView,
@@ -65,6 +66,10 @@ export type ChannelChatBindings = {
   ChannelLeaveHuman(ref: string): Promise<void>;
   /** tl1217: 解散群聊（仅 human 群主；硬删成员/消息，前端两击确认防误触）。 */
   ChannelDissolveForHuman(ref: string): Promise<void>;
+  /** tl1721: 消息清空（聊天-详情入口；仅群主；软删除墓碑，全体成员共享可见变化）。 */
+  ChannelClearHistoryForHuman(ref: string): Promise<CollabChannelClearResultView>;
+  /** tl1721: 恢复被清空的历史（墓碑归零全量回归；仅群主，幂等）——「怎么退」。 */
+  ChannelRestoreHistoryForHuman(ref: string): Promise<CollabChannelView>;
   ChannelSendFromHuman(ref: string, body: string): Promise<CollabChannelMessageView>;
   ChannelInvite(ref: string, contactIDs: string[]): Promise<CollabChannelView>;
   ChannelRemoveMember(ref: string, contactID: string): Promise<CollabChannelView>;
@@ -596,6 +601,39 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
     }
   }, [b, closeChannel, refresh]);
 
+  // tl1721：消息清空（群主专用，软删除墓碑——全体成员共享可见变化，抽屉
+  // 两击武装态确认）。成功即本地打墓碑 + 刷新（ChannelMessagesForHuman 的
+  // 服务端过滤让消息视窗自然收窄到清空点之后）。
+  const clearHistory = useCallback(async () => {
+    const ref = openIdRef.current;
+    if (!ref) return;
+    setActionError(null);
+    try {
+      const res = await b.ChannelClearHistoryForHuman(ref);
+      setChat((prev) => (prev && (prev.channel.id === res.channel || prev.channel.name === res.channel)
+        ? { ...prev, channel: { ...prev.channel, clearedAt: res.clearedAt } }
+        : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    }
+  }, [b, refresh]);
+
+  // tl1721 的「怎么退」：恢复被清空的历史（墓碑归零，全体成员的历史全量
+  // 回归）。成功即以返回的 Channel（含 clearedAt=0）更新本地 + 刷新。
+  const restoreHistory = useCallback(async () => {
+    const ref = openIdRef.current;
+    if (!ref) return;
+    setActionError(null);
+    try {
+      const updated = await b.ChannelRestoreHistoryForHuman(ref);
+      setChat((prev) => (prev && (prev.channel.id === updated.id || prev.channel.name === updated.name) ? { ...prev, channel: updated } : prev));
+      await refresh();
+    } catch (err) {
+      setActionError(String(err));
+    }
+  }, [b, refresh]);
+
   const removeMember = useCallback(async (contactId: string) => {
     const ref = openIdRef.current;
     if (!ref) return;
@@ -811,6 +849,7 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
                 onMentionClick={() => onViewDirectChains?.()}
                 deputyId={openCh.deputyId}
                 channelOwnerType={openCh.ownerType}
+                clearedAt={openCh.clearedAt}
               />
             </div>
 
@@ -939,6 +978,8 @@ export function ChannelChatPanel({ bindings, onOpenSession, onViewDirectChains, 
           onUnsetDeputy={() => void unsetDeputy()}
           onLeave={() => void leave()}
           onDissolve={() => void dissolve()}
+          onClearHistory={() => void clearHistory()}
+          onRestoreHistory={() => void restoreHistory()}
           onEnsureDirectory={() => ensureDirectoryRef.current()}
           inviteOpen={inviteOpen}
           onInviteOpenChange={setInviteOpen}

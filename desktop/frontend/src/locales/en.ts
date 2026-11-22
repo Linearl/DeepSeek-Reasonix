@@ -6715,6 +6715,13 @@ export const en = {
   "collabGroup.chat.leave": "Leave group",
   "collabGroup.chat.dissolve": "Dissolve group",
   "collabGroup.chat.dissolveConfirm": "Click again to dissolve — members and messages will be deleted",
+  // tl1721: message clear (chat-detail entry, owner-only) + restore ("怎么退").
+  // Clear is a shared visible change for every member — soft-delete tombstone,
+  // recoverable; the stream divider states the visible range honestly.
+  "collabGroup.chat.clearHistory": "Clear history",
+  "collabGroup.chat.clearHistoryConfirm": "Click again to clear — all members lose access to the current history (recoverable)",
+  "collabGroup.chat.historyCleared": "History cleared ({time}) — earlier messages are hidden",
+  "collabGroup.chat.restoreHistory": "Restore history",
   "settings.collabInbox": "Mail Center",
   "settings.collabInboxHint": "Mail history query, five-bucket views and retention (task 320)",
   "settings.collabInbox.open": "Open Mail Center",
