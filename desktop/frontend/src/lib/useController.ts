@@ -5775,8 +5775,20 @@ export function useController() {
   const reconcileStaleTurn = useCallback(async (tabId: string) => {
     await reconcileTabRuntime(tabId, { refreshAncillary: false });
   }, [reconcileTabRuntime]);
+  // tl1765: the runtime-projection channel (runtimeStateSync) only updates the
+  // runtimeStateStore — it never dispatches backend_status into the per-tab
+  // reducers, so "projection known" never actually takes over the local
+  // running flip. When the two channels diverge (local reducer stuck
+  // running=true after a lost turn_done while the projection reads engine
+  // idle — the 2026-11-22 GC-specialist shape: a 20:45 rewrite-conflict
+  // recovery fork moved the session identity and the terminal event never
+  // landed), the watchdog MUST stay armed: its reconcile routes through
+  // reconcileTabRuntime with hydrateSessionData on, so the task-874
+  // missed-turn-done reset converges the fork. Aligned channels (both busy
+  // or both idle) keep the legacy disable, preserving the no-double-reconcile
+  // intent of the original condition.
   useStaleTurnWatchdog({
-    tabId: runtimeState.known ? undefined : activeTabId, visibleState: activeState, activeTabIdRef, statesRef,
+    tabId: runtimeState.known && !(activeState.running && runtimeState.running === false) ? undefined : activeTabId, visibleState: activeState, activeTabIdRef, statesRef,
     lastTurnActivityAtByTab, sessionMoveAtByTab, reconcile: reconcileStaleTurn,
   });
 
