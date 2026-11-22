@@ -5996,7 +5996,7 @@ export const zh: Record<DictKey, string> = {
   "context.historyVolumeTitle": "口径：主读数 {used} = 下一请求实际发送量；全量记录 {canonical} = 整段历史体积（压缩只写投影，历史永不缩减，不计入窗口占用）。日志里的 compaction src= 就是全量记录这个数。",
   "context.readoutMeasured": "实测",
   "context.readoutEstimated": "估算",
-  "context.readoutSourceTitle": "来源：实测=上次响应已校准估算；估算=新会话首轮/切 provider 首轮（尚无响应）",
+  "context.readoutSourceTitle": "来源：实测=上次响应 usage 实账（重启沿用落盘锚）；估算=暂无实账锚（新会话/切 provider/压缩后首轮）",
   "context.windowUsedLabel": "已用",
   "context.windowUsed": "已用上下文",
   "context.windowCompactThreshold": "压缩阈值",

@@ -6104,7 +6104,7 @@ export const zhTW: Record<DictKey, string> = {
   "context.historyVolumeTitle": "口徑：主讀數 {used} = 下一請求實際發送量；全量記錄 {canonical} = 整段歷史體積（壓縮只寫投影，歷史永不縮減，不計入窗口占用）。日誌裡的 compaction src= 就是全量記錄這個數。",
   "context.readoutMeasured": "實測",
   "context.readoutEstimated": "估算",
-  "context.readoutSourceTitle": "來源：實測=上次響應已校準估算；估算=新會話首輪/切 provider 首輪（尚無響應）",
+  "context.readoutSourceTitle": "來源：實測=上次響應 usage 實賬（重啟沿用落盤錨）；估算=暫無實賬錨（新會話/切 provider/壓縮後首輪）",
   "context.windowUsedLabel": "已用",
   "context.windowUsed": "已用上下文",
   "context.windowCompactThreshold": "壓縮閾值",
