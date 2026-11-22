@@ -19,10 +19,13 @@ import type { TaskEvent, TaskSnapshot } from "../lib/types";
 
 type CatalogTask = TaskListRow;
 
-function hasTaskCatalogBinding(): boolean {
-  const bound = (window as unknown as { go?: { main?: { App?: { ListTaskPage?: unknown } } } }).go?.main?.App?.ListTaskPage;
-  return typeof bound === "function";
-}
+// tl1732: the task-catalog pagination API (ListTaskPage / ListTaskEventPage /
+// *ByKey control calls) is the SINGLE list/control surface. The legacy ForTab
+// list shim — client-side substring filtering, no pagination, and a scope
+// selector it silently ignored — is retired: one list semantics, one filter
+// engine (the server query), one pagination path, and the on-screen scope
+// selector can no longer claim semantics its data path cannot honor. The task
+// data model itself is untouched (non-goal).
 
 // --- helpers ---
 
@@ -166,15 +169,6 @@ export function TaskMonitorPanel({
 	const seq = ++requestSeq.current;
     try {
       setError(null);
-			if (!hasTaskCatalogBinding()) {
-				const legacy = await app.ListTasksForTab(tabID);
-				if (seq !== requestSeq.current) return;
-				const filtered = legacy.filter((task) => !query.trim() || [task.task_id, task.session_id, task.error_code, task.error_summary].some((value) => (value || "").toLowerCase().includes(query.trim().toLowerCase())));
-				setTasks((current) => applyTaskMonitorRefresh(current, filtered.map((task) => ({ ...task, __projectKey: "", __projectLabel: "", __catalogKey: task.task_id })), reason));
-				setNextCursor("");
-				setIndexProgress({ indexed: filtered.length, total: filtered.length, partial: false });
-				return;
-			}
 			const page = await app.ListTaskPage({ scope, tabId: tabID, projectKey: "", states: [], query, cursor, limit: 50 });
 			if (seq !== requestSeq.current) return;
 			const decorated = (page.items ?? []).map((item: { projectKey: string; projectLabel: string; task: TaskSnapshot }) => ({ ...item.task, __projectKey: item.projectKey, __projectLabel: item.projectLabel, __catalogKey: `${item.projectKey}:${item.task.task_id}` }));
@@ -202,9 +196,7 @@ export function TaskMonitorPanel({
     });
     try {
       const cursor = eventCursors.current.get(taskID) ?? 0;
-			const events: TaskEvent[] = hasTaskCatalogBinding()
-				? (await app.ListTaskEventPage({ projectKey: task.__projectKey, taskId: task.task_id, after: cursor, limit: 50 })).items ?? []
-				: await app.ListTaskEventsForTab(tabID, task.task_id, cursor);
+			const events: TaskEvent[] = (await app.ListTaskEventPage({ projectKey: task.__projectKey, taskId: task.task_id, after: cursor, limit: 50 })).items ?? [];
       if (events.length > 0) {
         setTaskEvents((prev) => {
           const next = new Map(prev);
@@ -236,7 +228,7 @@ export function TaskMonitorPanel({
         return next;
       });
     }
-	}, [tabID]);
+	}, []);
 
   // Initial fetch + periodic polling, classified by refresh reason (tl1483):
   // the first tick of an input set paints as "mount", a scope/query/tab
@@ -311,17 +303,11 @@ export function TaskMonitorPanel({
         return;
       }
 			const request = { projectKey: task.__projectKey, taskId: task.task_id, expectedVersion: task.version, reason: "desktop request", idempotencyKey: `desktop-${action}-${task.task_id}-${task.version}` };
-			const result = hasTaskCatalogBinding()
-				? action === "stop"
-					? await app.StopTaskByKey(request)
-					: action === "requeue"
-						? await app.RequeueTaskByKey(request)
-						: await app.OpenTaskSessionByKey({ projectKey: task.__projectKey, taskId: task.task_id })
-				: action === "stop"
-					? await app.StopTaskForTab(tabID, task.task_id, task.version, request.reason, request.idempotencyKey)
-					: action === "requeue"
-						? await app.RequeueTaskForTab(tabID, task.task_id, task.version, request.idempotencyKey)
-						: await app.OpenTaskSessionForTab(tabID, task.task_id);
+			const result = action === "stop"
+				? await app.StopTaskByKey(request)
+				: action === "requeue"
+					? await app.RequeueTaskByKey(request)
+					: await app.OpenTaskSessionByKey({ projectKey: task.__projectKey, taskId: task.task_id });
       if (result.error) {
         setActionError(`${result.error.code}: ${result.error.message}`);
       } else if (action === "open") {
