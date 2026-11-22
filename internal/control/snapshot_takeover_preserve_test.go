@@ -298,3 +298,55 @@ func TestTakeoverSupersetRewriteIsLossless(t *testing.T) {
 		}
 	}
 }
+
+// TestAdmissionHealTakeoverPreservesAndRelays pins the third takeover site:
+// the diverged turn-admission self-heal (the path the 2026-11-21 field case
+// actually retried) carries the same preserve + relay + accounting as the
+// ladder-side takeover.
+func TestAdmissionHealTakeoverPreservesAndRelays(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "preserve-admission.jsonl")
+	live := agent.NewSession("sys")
+	live.AddBatch(provider.Message{Role: "user", Content: "m1"}, provider.Message{Role: "assistant", Content: "m2"})
+	if err := live.SaveSnapshot(path); err != nil {
+		t.Fatalf("initial save: %v", err)
+	}
+	loaded, err := agent.LoadSession(path)
+	if err != nil {
+		t.Fatalf("LoadSession: %v", err)
+	}
+	loaded.Add(provider.Message{Role: "user", Content: "dead-tail"})
+	if err := loaded.SaveSnapshot(path); err != nil {
+		t.Fatalf("dead writer save: %v", err)
+	}
+	live.AddBatch(provider.Message{Role: "user", Content: "live3"}, provider.Message{Role: "assistant", Content: "live4"})
+	saveErr := live.SaveSnapshot(path)
+	var conflict *agent.SessionSnapshotConflictError
+	if !errors.As(saveErr, &conflict) || conflict == nil || conflict.Kind != agent.SessionSnapshotConflictDiverged {
+		t.Fatalf("live save err = %v, want diverged conflict", saveErr)
+	}
+	c, _ := newPreserveObservingController(t, path, live)
+
+	if !c.healDivergedSnapshotConflict(conflict) {
+		t.Fatal("admission self-heal declined the takeover")
+	}
+	records := readPreserveRecords(t, path)
+	if len(records) != 1 || len(records[0].Messages) != 1 || records[0].Messages[0].Content != "dead-tail" {
+		t.Fatalf("preserve records = %+v, want one record with the dead-tail message", records)
+	}
+	if records[0].Mode != "admission" {
+		t.Fatalf("preserve record mode = %q, want admission", records[0].Mode)
+	}
+	found := false
+	for _, m := range live.Snapshot() {
+		if m.Origin == provider.MessageOriginHost && strings.Contains(m.Content, TakeoverRecoveryRelayMarker) && strings.Contains(m.Content, "dead-tail") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("no relay message after the admission-side takeover")
+	}
+	rec := lastConflictDiagnostic(t, path)
+	if rec.Mode != "admission" || rec.TakeoverDiskOnly != 1 || rec.TakeoverPreserved != 1 || !rec.TakeoverInjected {
+		t.Fatalf("admission diagnostic = mode %q only %d preserved %d injected %v, want admission/1/1/true", rec.Mode, rec.TakeoverDiskOnly, rec.TakeoverPreserved, rec.TakeoverInjected)
+	}
+}
