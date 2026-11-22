@@ -184,3 +184,30 @@ func TestParseReadTrailerRecognizesBothPagingForms(t *testing.T) {
 		t.Fatalf("absent trailer = %+v", absent)
 	}
 }
+
+// tl1762: the host stamps a `[source_token ...]` citation line after the
+// reader's own paging trailer (agent appendReceiptCitation). Trailer parsing
+// must tolerate that suffix — a paged read that gains a citation must keep its
+// paging state, or the envelope reports a complete read that is still partial
+// (wrong HasMore/EOF, no continuation cursor).
+func TestParseReadTrailerToleratesSourceTokenCitation(t *testing.T) {
+	const citation = "[source_token r_1a2b3c4d]"
+	partial := ParseReadTrailer("   1→a\n   2→b\n\n[PARTIAL view: showing lines 1-2 of at least 4; pass offset=2 to continue. A partial window may be sufficient for local work.]\n" + citation)
+	if !partial.HasMore || partial.NextOffset != 2 || partial.LocalSafety {
+		t.Fatalf("PARTIAL trailer under a citation = %+v", partial)
+	}
+	safety := ParseReadTrailer("   1→a\n\n[read_file local safety page; next_offset=9 requested_end=20]\n" + citation)
+	if !safety.HasMore || !safety.LocalSafety || safety.NextOffset != 9 || safety.RequestedEnd != 20 {
+		t.Fatalf("safety trailer under a citation = %+v", safety)
+	}
+	more := ParseReadTrailer("   1→a\n\n[more lines below; pass offset=7 to continue]\n" + citation)
+	if !more.HasMore || more.NextOffset != 7 || more.LocalSafety {
+		t.Fatalf("more-lines trailer under a citation = %+v", more)
+	}
+	if plain := ParseReadTrailer("   1→a\n" + citation); plain.HasMore || plain.LocalSafety {
+		t.Fatalf("a citation without a paging trailer must not invent paging state: %+v", plain)
+	}
+	if mentioned := ParseReadTrailer("   1→see [source_token r_ff]\n\n[PARTIAL view: showing lines 1-1 of at least 2; pass offset=1 to continue. A partial window may be sufficient for local work.]\n"); !mentioned.HasMore || mentioned.NextOffset != 1 {
+		t.Fatalf("trailer must survive an in-content mention of the marker: %+v", mentioned)
+	}
+}
