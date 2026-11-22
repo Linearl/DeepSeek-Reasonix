@@ -39,6 +39,10 @@ export type TierFeatureId =
   | "draftRewrite"
   // tl1544：运行中编辑历史消息回溯重发（默认关——运行中编辑入口维持拒绝现状）。
   | "editResend"
+  // tl1718：composer 工具组默认折叠（宽窗口同样折叠为单图标，工具全集在既有
+  // 「⋯ 工具」二级菜单查看；默认关=折叠仍只由宽度驱动，铁律 2）。界面组
+  // 「视图布局」卡成员（940/959 先例）。
+  | "composerToolsFold"
   // tl 1132: DSH 式启动遮罩（默认关——关时 splash 不渲染，启动行为与
   // 引入前一致）。落 config.toml experimental_startup_splash，Go 渲染表
   // 同档登记（可选）。
@@ -295,6 +299,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1544：运行中编辑历史消息回溯重发（可选档，默认关——off 时运行中编辑
   // 入口维持拒绝现状，回合后 rewind 链零变化；镜像 Go 渲染表同步 +1）。
   editResend: "optional",
+  // tl1718：composer 工具组默认折叠（推荐档——工具栏常态占宽是 composer 宽度
+  // 痛点，关闭即缺口持续存在；默认关=宽度驱动的折叠行为零变化，铁律 2；
+  // 镜像 Go 渲染表同步 +1）。
+  composerToolsFold: "recommended",
   // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
   startupSplash: "optional",
   // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
@@ -582,10 +590,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 两条 Go-only 预存红同批收口进豁免名单）。
  * tl1746：tasklistPanel（任务面板，可观测性组，未稳定档）入表——未稳定
  * 3→4、总数 88→89（Go 渲染表同步 76→77，tasklist_db_path 为家族子键不
- * 另计）。 */
+ * 另计）。
+ * tl1718：composerToolsFold（composer 工具组默认折叠，界面组视图布局卡成员，
+ * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
-  recommended: 50,
+  recommended: 51,
   optional: 26,
   unstable: 4,
   retired: 0,

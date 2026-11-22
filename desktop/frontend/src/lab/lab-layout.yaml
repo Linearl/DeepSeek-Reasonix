@@ -243,7 +243,11 @@ groups:
         # 仍推荐（自有档推荐压过其余可选成员，聚合徽章不变）。
         # tl1544 预存红收口（20261121 随 tl1746 顺手修）：editResend 键与成员行
         # 补进本卡（default 侧早已有之，yaml 侧 tl1544 漏同步）。
-        onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite, experimentalEditResend]
+        # tl1718：composerToolsFold（工具组默认折叠）成员行入卡——工具栏常态
+        # 占宽是 composer 宽度痛点，与分栏/悬停展开/表格换行同属「版面占用
+        # 形态」面（940/959 先例）。推荐档；折叠形态与入口复用既有窄宽折叠
+        # （同一「⋯ 工具」菜单），菜单本体零改动。
+        onKeys: [experimentalSplitView, experimentalSidebarHoverLeft, experimentalSidebarHoverRight, experimentalApprovalSelect, experimentalTableWrap, experimentalSendTargetSelect, experimentalSmoothScrollFollow, experimentalDraftRewrite, experimentalEditResend, experimentalComposerToolsFold]
         members:
           - id: splitView
             labelKey: settings.splitView
@@ -286,6 +290,12 @@ groups:
           - id: editResend
             labelKey: settings.editResend
             tier: optional
+          # tl1718：工具组默认折叠——宽窗口同样保持折叠为单图标，工具全集在
+          # 既有「⋯ 工具」二级菜单查看（复用窄宽折叠形态与入口，菜单本体零
+          # 改动）。默认关=折叠仍只由宽度驱动（铁律 2）；保存即换态免重启。
+          - id: composerToolsFold
+            labelKey: settings.composerToolsFold
+            tier: recommended
       # tl1309 卡④：会话与任务面板（合并卡，742/782/961 条目级合并先例）——
       # 会话图墙（palette 会话网格墙）+ 工作流面板（palette DAG 面板）+ 任务
       # 完成摘要（每轮结果卡）三散条并卡：三者同为「运行状态/产出的可视化
