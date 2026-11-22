@@ -906,8 +906,14 @@ function SubagentDetailView({
             )}
           </div>
           {/* tl1537 双保险：首快照未落的窗口由内存投影顶上（0 延迟），
-              transcript 内容落盘后让位给上面的权威流。 */}
-          {entry.running && liveItems.length === 0 && !live.loading && !live.failed ? liveToolsSection : null}
+              transcript 内容落盘后让位给上面的权威流。
+              tl1766: the gate no longer excludes live.loading — the
+              projection IS the zero-delay channel for exactly this
+              no-content-yet window, so a first read still in flight must
+              not unmount it (paired with the pull-side loading reset, that
+              unmount was the 2s flicker). !live.failed stays: a genuine
+              failure keeps the honest retryable note (tl1202). */}
+          {entry.running && liveItems.length === 0 && !live.failed ? liveToolsSection : null}
         </>
       ) : (
         <>
