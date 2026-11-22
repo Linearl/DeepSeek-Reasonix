@@ -37,6 +37,11 @@ export interface ContextMaintenanceInfo {
   projectedTokens?: number;
   /** False while the view is the full-canonical fallback (task 549). Older backends omit it. */
   projectionValid?: boolean;
+  /** tl1752: true exactly when the provider-usage anchor priced projectedTokens
+   *  (实测); false when the estimator served it (no trusted anchor). New hosts
+   *  emit it unconditionally (like projectionValid); older hosts omit it —
+   *  consumers fall back to the legacy admission.observedPrompt chain then. */
+  readoutMeasured?: boolean;
   summaryTokens?: number;
   lastSavedTokens?: number;
   /** @deprecated always 0; use triggerTokens */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { app } from "../lib/bridge";
 import { contextWindowPercentages } from "../lib/contextWindow";
-import { contextReadoutSource, contextReadoutSourceKey } from "../lib/contextPanelUtils";
+import { contextReadoutSourceResolved, contextReadoutSourceKey } from "../lib/contextPanelUtils";
 import { useI18n } from "../lib/i18n";
 import type { DictKey } from "../locales/en";
 import { formatMoneyBuckets, formatMoneyLocalized } from "../lib/money";
@@ -256,8 +256,10 @@ export function ContextWindowRing({ enabled = true, context, tabId, turnCost, tu
   const ringOffset = RING_C * (1 - usagePct / 100);
   // 任务1025: 读数来源标记——「实测」=上次响应已校准；「估算」=新会话首轮/
   // 切 provider 首轮。与右栏容量卡同一权威值口径与标记。
+  // tl1752 单源收口：maintenance.readoutMeasured 与环读数（used，同一锚覆盖
+  // 链）同源——重启后锚自盘回读即翻「实测」；旧后端回退 legacy observedPrompt。
   const observedPrompt = info?.contextBudget?.observedPrompt ?? context?.contextBudget?.observedPrompt ?? context?.maintenance?.contextBudget?.observedPrompt ?? 0;
-  const readoutSource = contextReadoutSource(observedPrompt);
+  const readoutSource = contextReadoutSourceResolved(context?.maintenance?.readoutMeasured, observedPrompt);
   const readoutSourceLabel = t(contextReadoutSourceKey(readoutSource));
   const readoutSourceTitle = t("context.readoutSourceTitle");
   const elapsed = info?.elapsedMs && info.elapsedMs > 0 ? fmtDuration(info.elapsedMs, t) : undefined;
