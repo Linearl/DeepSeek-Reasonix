@@ -100,10 +100,8 @@ func (e *Engine) BeforeTool(ctx CallContext) GuardDecision {
 		decisions = append(decisions, g.BeforeTool(ctx))
 	}
 	merged := MergeDecisions(decisions...)
-	if merged.Action == GuardAbstain {
-		// Abstain is not authorization; availability stays with the owner.
-		return merged
-	}
+	// merged.Action may be GuardAbstain when no guard claimed the call:
+	// Abstain is not authorization; availability stays with the owner.
 	return merged
 }
 

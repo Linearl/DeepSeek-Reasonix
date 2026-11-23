@@ -1,5 +1,7 @@
 package runjournal
 
+import "strings"
+
 // Projections: pure derivations over journal rows (task 419 design §5,
 // borrowed from zcode's roster discipline). No I/O, no clock, no store —
 // every input including `now` is an argument, so the rules (status-word
@@ -146,7 +148,7 @@ func BuildRoster(run RunRow, members []MemberRow, events []EventRow, now int64) 
 		if e.Kind != EventMemberSettled || e.MemberIdx == 0 {
 			continue
 		}
-		if strings_HasPrefix(e.Detail, "failed") {
+		if strings.HasPrefix(e.Detail, "failed") {
 			failed[e.MemberIdx] = true
 		}
 		settledIdx = append(settledIdx, e.MemberIdx)
@@ -278,12 +280,6 @@ func clampTime(at, now int64) int64 {
 		return now
 	}
 	return at
-}
-
-// strings_HasPrefix avoids an import just for one call in a hot loop file;
-// detail heads are always lowercase status words written by Settled.
-func strings_HasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
 // splitHead returns the first space-separated token and the remainder.
