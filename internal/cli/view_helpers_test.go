@@ -4,8 +4,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"reasonix/internal/command"
+	"reasonix/internal/control"
 	"reasonix/internal/hook"
 	"reasonix/internal/memory"
 	"reasonix/internal/outputstyle"
@@ -59,11 +61,11 @@ func TestRenderMemoryGroupsDocsAndStore(t *testing.T) {
 	if _, err := store.Save(memory.Memory{Name: "saved-fact", Title: "Saved Fact", Description: "remembered fact"}); err != nil {
 		t.Fatalf("save memory: %v", err)
 	}
-	got := renderMemory(width, &memory.Set{
+	got := viewProtectLines(control.RenderMemorySummary(&memory.Set{
 		Docs:  []memory.Source{{Path: "/Users/me/project/REASONIX.md", Scope: memory.ScopeProject}},
 		Store: store,
 		Index: store.Index(),
-	})
+	}, time.Now().UTC()), width)
 	for _, want := range []string{
 		"memory", "instructions", "precedence=1", "scope=project", "REASONIX.md",
 		"saved memories", "saved-fact", "Saved Fact", "revision=1", "freshness=fresh",

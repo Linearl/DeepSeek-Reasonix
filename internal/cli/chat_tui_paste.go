@@ -50,10 +50,6 @@ func shouldFoldPastedText(s string) bool {
 	return len([]rune(s)) >= foldedPasteMinChars || pastedLineCount(s) >= foldedPasteMinLines
 }
 
-func (m *chatTUI) shouldFoldPaste(s string) bool {
-	return shouldFoldPastedText(s)
-}
-
 func (m *chatTUI) insertFoldedPaste(s string) {
 	m.deleteComposerSelection()
 	label := foldedPasteLabel(m.takeNextPasteID(), pastedLineCount(s))
@@ -217,14 +213,10 @@ func foldedPasteLineCount(label string) (int, bool) {
 	return lines, true
 }
 
-// nextPasteIDForHistory prevents labels from being reused after resume or
-// restart. Older sessions may contain duplicate legacy IDs; starting above the
-// maximum keeps every newly created label unambiguous.
-func nextPasteIDForHistory(history []provider.Message) int {
-	next, _ := pasteIDStateForHistory(history)
-	return next
-}
-
+// pasteIDStateForHistory scans history for used paste labels and returns the
+// next free ID plus the used set. Starting above the maximum keeps every newly
+// created label unambiguous after resume or restart (older sessions may
+// contain duplicate legacy IDs).
 func pasteIDStateForHistory(history []provider.Message) (int, map[int]struct{}) {
 	next := 1
 	used := make(map[int]struct{})
@@ -354,7 +346,7 @@ func (m *chatTUI) applyComposerPasteOnce(msg tea.PasteMsg) []tea.Cmd {
 		}
 		return cmds
 	}
-	if !m.chooserTyping() && m.pendingApproval == nil && m.rewind == nil && m.resumePick == nil && m.mcp == nil && m.clearConfirm == nil && m.mcpImport == nil && m.skillPick == nil && m.shouldFoldPaste(msg.Content) {
+	if !m.chooserTyping() && m.pendingApproval == nil && m.rewind == nil && m.resumePick == nil && m.mcp == nil && m.clearConfirm == nil && m.mcpImport == nil && m.skillPick == nil && shouldFoldPastedText(msg.Content) {
 		m.insertFoldedPaste(msg.Content)
 		m.growInputToFit()
 		m.updateCompletion()
@@ -734,16 +726,6 @@ func looksLikeImagePath(path string) bool {
 
 func isDataImage(src string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(src)), "data:image/")
-}
-
-// pastedImagePathForOS returns the preferred syntactic candidate with the OS
-// injected so platform-specific path handling is testable everywhere.
-func pastedImagePathForOS(src, goos string) (string, bool) {
-	candidates := pastedPathCandidates(src, goos, false)
-	if len(candidates) == 0 {
-		return "", false
-	}
-	return candidates[0], true
 }
 
 func hasUnescapedPathWhitespace(s string) bool {

@@ -16,7 +16,6 @@ const (
 	quickPickerModel         quickPickerKind = "model"
 	quickPickerProvider      quickPickerKind = "provider"
 	quickPickerProviderModel quickPickerKind = "provider-model"
-	quickPickerResume        quickPickerKind = "resume"
 )
 
 type quickPickerItem struct {

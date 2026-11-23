@@ -68,9 +68,6 @@ func TestModalOpenDoesNotDisableTailFollow(t *testing.T) {
 
 	// Simulate approval popup (height-only change, no user scroll).
 	cur.pendingApproval = &event.Approval{Tool: "bash", Subject: "echo hi"}
-	if !cur.modalOpen() {
-		t.Fatal("pendingApproval must report modalOpen")
-	}
 	cur = adv(cur, tea.WindowSizeMsg{Width: 80, Height: 12})
 	if !cur.shouldFollowTail() {
 		t.Fatal("modal open must not mark userScrolled")

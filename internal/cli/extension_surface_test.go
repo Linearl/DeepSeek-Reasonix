@@ -137,10 +137,10 @@ func TestExtensionSurfaceLinesDispatch(t *testing.T) {
 }
 
 func TestParseExtensionActionArgs(t *testing.T) {
-	if got := parseExtensionActionArgs(nil); got != nil {
+	if got := control.ParseExtensionActionArgs(nil); got != nil {
 		t.Fatalf("no fields = %v, want nil", got)
 	}
-	got := parseExtensionActionArgs([]string{"k=v", "extra", "empty="})
+	got := control.ParseExtensionActionArgs([]string{"k=v", "extra", "empty="})
 	if got["k"] != "v" || got["arg1"] != "extra" || got["empty"] != "" {
 		t.Fatalf("args = %v", got)
 	}

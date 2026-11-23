@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"reasonix/internal/agent"
 	"reasonix/internal/i18n"
 )
@@ -369,7 +371,7 @@ func (m *chatTUI) resumeArgItems(val string) ([]compItem, int, bool) {
 		if cur != "" && !strings.HasPrefix(idx, cur) {
 			continue
 		}
-		hint := fmt.Sprintf("%s · %s", entry.session.ModTime.Local().Format("01-02 15:04"), sessionSummary(entry.session))
+		hint := fmt.Sprintf("%s · %s", entry.session.ModTime.Local().Format("01-02 15:04"), sessionSummary(entry.session, 0))
 		if entry.project != "" {
 			hint = fmt.Sprintf("[%s] %s", entry.project, hint)
 		}
@@ -379,9 +381,11 @@ func (m *chatTUI) resumeArgItems(val string) ([]compItem, int, bool) {
 }
 
 // sessionSummary is the "N turns · display title" line shared by the /resume
-// list and its argument completion. Explicit session renames win, then topic
-// titles, then the raw preview so the user can identify sessions at a glance.
-func sessionSummary(s agent.SessionInfo) string {
+// list, its argument completion, and the resume picker. Explicit session
+// renames win, then topic titles, then the raw preview so the user can
+// identify sessions at a glance. A positive previewMaxRunes truncates the
+// preview (rune-safe); 0 keeps it whole.
+func sessionSummary(s agent.SessionInfo, previewMaxRunes int) string {
 	preview := s.CustomTitle
 	if preview == "" {
 		preview = s.TopicTitle
@@ -391,6 +395,9 @@ func sessionSummary(s agent.SessionInfo) string {
 	}
 	if preview == "" {
 		preview = "(no user message yet)"
+	}
+	if previewMaxRunes > 0 {
+		preview = ansi.Truncate(preview, previewMaxRunes, "…")
 	}
 	return recoverySessionBadge(s) + fmt.Sprintf("%d turns · %s", s.Turns, preview)
 }

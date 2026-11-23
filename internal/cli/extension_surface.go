@@ -141,13 +141,6 @@ func extensionFormLines(pluginID string, f *event.ExtensionFormView) []string {
 	return lines
 }
 
-// parseExtensionActionArgs maps the trailing fields of a "/<plugin>:<action>
-// args…" line onto the action's string map; the convention lives in the
-// control package so every frontend parses identically.
-func parseExtensionActionArgs(fields []string) map[string]string {
-	return control.ParseExtensionActionArgs(fields)
-}
-
 // matchExtensionAction resolves a typed "/<plugin>:<action>" command against
 // the declared extension actions, returning the matching view. Anything that
 // does not parse as a well-formed action name, or parses but is undeclared,

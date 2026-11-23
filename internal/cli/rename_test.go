@@ -68,13 +68,13 @@ func TestRenameSessionUpdatesCustomTitle(t *testing.T) {
 
 func TestSessionPickerLabelPrefersCustomTitle(t *testing.T) {
 	s := agent.SessionInfo{Turns: 5, Preview: "first user message here", TopicTitle: ""}
-	got := sessionPickerLabel(s)
+	got := sessionSummary(s, 60)
 	if got == "" {
 		t.Fatal("empty label")
 	}
 	s.TopicTitle = "My Topic Name"
 	s.CustomTitle = "My Custom Name"
-	got = sessionPickerLabel(s)
+	got = sessionSummary(s, 60)
 	if !strings.Contains(got, "My Custom Name") {
 		t.Errorf("label %q should contain custom title", got)
 	}

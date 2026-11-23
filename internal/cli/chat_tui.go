@@ -542,18 +542,17 @@ func (m chatTUI) runStatusline() tea.Cmd {
 		"contextWindow": window,
 		"cwd":           cwd,
 	})
-	return func() tea.Msg { return statuslineMsg{out: runStatuslineCmd(cmd, string(payload))} }
+	return func() tea.Msg {
+		return statuslineMsg{out: runStatuslineCmdWithTimeout(cmd, string(payload), statuslineCommandTimeout)}
+	}
 }
 
 const statuslineCommandTimeout = 2 * time.Second
 
-// runStatuslineCmd runs a status-line command with the JSON context on stdin and
-// returns its first stdout line (status lines are a single row). A tight timeout
-// keeps a slow script from stalling the UI; any failure collapses to "".
-func runStatuslineCmd(cmd, stdinPayload string) string {
-	return runStatuslineCmdWithTimeout(cmd, stdinPayload, statuslineCommandTimeout)
-}
-
+// runStatuslineCmdWithTimeout runs a status-line command with the JSON context
+// on stdin and returns its first stdout line (status lines are a single row).
+// A tight timeout keeps a slow script from stalling the UI; any failure
+// collapses to "".
 func runStatuslineCmdWithTimeout(cmd, stdinPayload string, timeout time.Duration) string {
 	res := hook.DefaultSpawner(context.Background(), hook.SpawnInput{
 		Command: cmd,
@@ -4537,7 +4536,7 @@ func (m *chatTUI) runSlashCommand(input string) tea.Cmd {
 		// runs off the event loop and its result lands as a notice.
 		if action, ok := matchExtensionAction(m.ctrl, typedCmd); ok {
 			m.echoLocalCommand(input)
-			return m.runExtensionAction(action.Slash, parseExtensionActionArgs(strings.Fields(input)[1:]))
+			return m.runExtensionAction(action.Slash, control.ParseExtensionActionArgs(strings.Fields(input)[1:]))
 		}
 		// Unknown slash input is prose more often than a typo — send it as a
 		// regular message (matching the controller's behavior for the other
@@ -4989,21 +4988,10 @@ func (m *chatTUI) runExtensionAction(name string, args map[string]string) tea.Cm
 	}
 }
 
-// replaySectionsFor turns a loaded session into scrollback blocks. Normal tool
-// results remain quiet, while interrupted-turn reasoning and tool cards replay
-// from provider-excluded LocalOnly records so restart matches the live view.
-func replaySectionsFor(history []provider.Message, width int) []string {
-	return replaySectionsForWithAssistantRenderer(history, width, renderAssistantMarkdown)
-}
-
-func replaySectionsForWithAssistantRenderer(
-	history []provider.Message,
-	width int,
-	renderAssistant func(string, int) string,
-) []string {
-	return replaySectionsForWithRenderers(history, width, renderAssistant, reasoningBlock)
-}
-
+// replaySectionsForWithRenderers turns a loaded session into scrollback
+// blocks. Normal tool results remain quiet, while interrupted-turn reasoning
+// and tool cards replay from provider-excluded LocalOnly records so restart
+// matches the live view.
 func replaySectionsForWithRenderers(
 	history []provider.Message,
 	width int,
@@ -5030,7 +5018,7 @@ func replaySectionsForWithRenderers(
 				out = append(out, toolCard(call.Name, "", width)+"\n\n")
 			}
 			if m.InterruptedTurn != nil {
-				out = append(out, fmt.Sprintf("  · %s\n\n", interruptedTurnDisplayNotice()))
+				out = append(out, fmt.Sprintf("  · %s\n\n", i18n.M.InterruptedRecovery))
 			}
 			continue
 		}
@@ -5060,10 +5048,6 @@ func replaySectionsForWithRenderers(
 		}
 	}
 	return out
-}
-
-func interruptedTurnDisplayNotice() string {
-	return i18n.M.InterruptedRecovery
 }
 
 // renderTUIBanner is the title + tip + optional missing-key warning printed once

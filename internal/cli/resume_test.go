@@ -214,7 +214,7 @@ func TestSessionPickerLabelIdentifiesRecoveryParent(t *testing.T) {
 		Path: "/sessions/recovery.jsonl", Preview: "keep working", Turns: 3,
 		Recovered: true, ParentID: "20260803-long-parent-id",
 	}
-	label := sessionPickerLabel(session)
+	label := sessionSummary(session, 60)
 	if recoverySessionBadge(session) == "" || !strings.Contains(label, "20260803") {
 		t.Fatalf("recovery picker label = %q, want recovery badge and short parent id", label)
 	}

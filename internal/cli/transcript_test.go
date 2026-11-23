@@ -45,11 +45,11 @@ func TestReplaySectionsKeepAssistantIdentity(t *testing.T) {
 	activeColorProfile = colorprofile.NoTTY
 	configureCLITheme("dark")
 
-	sections := replaySectionsFor([]provider.Message{
+	sections := replaySectionsForWithRenderers([]provider.Message{
 		{Role: provider.RoleUser, Origin: provider.MessageOriginHost, Content: "<pinned_context_revision>private pinned body</pinned_context_revision>"},
 		{Role: provider.RoleUser, Content: "Which version?"},
 		{Role: provider.RoleAssistant, Content: "Version 1.2.3"},
-	}, 48)
+	}, 48, renderAssistantMarkdown, reasoningBlock)
 	if len(sections) != 2 {
 		t.Fatalf("replay sections = %d, want user and assistant", len(sections))
 	}
@@ -66,7 +66,7 @@ func TestReplaySectionsRestoreInterruptedLocalOutput(t *testing.T) {
 	activeColorProfile = colorprofile.NoTTY
 	configureCLITheme("dark")
 
-	sections := replaySectionsFor([]provider.Message{
+	sections := replaySectionsForWithRenderers([]provider.Message{
 		{Role: provider.RoleUser, Content: "change config"},
 		{
 			Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName,
@@ -74,7 +74,7 @@ func TestReplaySectionsRestoreInterruptedLocalOutput(t *testing.T) {
 			ToolCalls:       []provider.ToolCall{{ID: "p1", Name: "write_file"}},
 			InterruptedTurn: &provider.InterruptedTurnRecovery{Pending: true},
 		},
-	}, 64)
+	}, 64, renderAssistantMarkdown, reasoningBlock)
 	plain := ansi.Strip(strings.Join(sections, ""))
 	for _, want := range []string{"change config", "checking config", "partial answer", "Write", "bounded recovery summary"} {
 		if !strings.Contains(plain, want) {
@@ -84,10 +84,10 @@ func TestReplaySectionsRestoreInterruptedLocalOutput(t *testing.T) {
 }
 
 func TestReplaySectionsRestoreFinalReadinessRecoveryHint(t *testing.T) {
-	sections := replaySectionsFor([]provider.Message{{
+	sections := replaySectionsForWithRenderers([]provider.Message{{
 		Role: provider.RoleTool, ToolCallID: provider.LocalOnlyToolID, Name: provider.LocalOnlyToolName, LocalOnly: true,
 		FinalReadinessRecovery: &provider.FinalReadinessRecovery{Pending: true, Missing: []string{"verification"}},
-	}}, 64)
+	}}, 64, renderAssistantMarkdown, reasoningBlock)
 	plain := ansi.Strip(strings.Join(sections, ""))
 	if !strings.Contains(plain, "/continue-checks") {
 		t.Fatalf("replayed readiness pause lacks recovery command: %q", plain)
@@ -412,7 +412,7 @@ func TestReplaySearchMissingSourcesIsExplicitAndKeepsSummary(t *testing.T) {
 		{Role: provider.RoleAssistant, ServerSearch: []provider.ServerSearchCall{{ID: "s", SourcesStatus: provider.SourcesNotProvided}}},
 		{Role: provider.RoleTool, Name: "web_search", Content: `{"sources_status":"not_provided","summary":"retained search summary"}`},
 	} {
-		got := strings.Join(replaySectionsForWithAssistantRenderer([]provider.Message{msg}, 80, render), "")
+		got := strings.Join(replaySectionsForWithRenderers([]provider.Message{msg}, 80, render, reasoningBlock), "")
 		if !strings.Contains(got, i18n.M.SearchSourcesNotProvided) {
 			t.Fatal("missing source notice")
 		}

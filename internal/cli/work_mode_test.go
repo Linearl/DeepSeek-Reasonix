@@ -160,7 +160,7 @@ func TestPresetCommandSwitchesFloorInPlace(t *testing.T) {
 		return control.New(control.Options{Label: "new"}), nil
 	}
 
-	cmd := m.runWorkModeCommand("/preset delivery")
+	cmd := m.runPresetCommand("/preset delivery")
 	if cmd != nil {
 		t.Fatal("/preset must not schedule a controller rebuild")
 	}
@@ -177,7 +177,7 @@ func TestPresetCommandSwitchesFloorInPlace(t *testing.T) {
 		t.Fatalf("applied /preset missing floor notice:\n%s", out)
 	}
 
-	if cmd := m.runWorkModeCommand("/preset light"); cmd != nil {
+	if cmd := m.runPresetCommand("/preset light"); cmd != nil {
 		t.Fatal("second /preset must not rebuild")
 	}
 	if m.ctrl.AgentPreset() != boot.AgentPresetStandard {
@@ -196,7 +196,7 @@ func TestPresetCommandRejectsInvalidValue(t *testing.T) {
 		return control.New(control.Options{Label: "new"}), nil
 	}
 
-	if cmd := m.runWorkModeCommand("/preset unknown"); cmd != nil {
+	if cmd := m.runPresetCommand("/preset unknown"); cmd != nil {
 		t.Fatal("invalid /preset unexpectedly scheduled a rebuild")
 	}
 	out := committedNotices(m)
@@ -222,7 +222,7 @@ func TestPresetCommandSwitchesWhenBusy(t *testing.T) {
 		builds++
 		return control.New(control.Options{Label: "new"}), nil
 	}
-	if cmd := m.runWorkModeCommand("/preset light"); cmd != nil {
+	if cmd := m.runPresetCommand("/preset light"); cmd != nil {
 		t.Fatal("busy /preset must not rebuild")
 	}
 	if m.ctrl.AgentPreset() != boot.AgentPresetStandard {
@@ -255,7 +255,7 @@ func TestPresetCommandSwitchesDuringRunningTurn(t *testing.T) {
 		builds++
 		return control.New(control.Options{}), nil
 	}
-	if cmd := m.runWorkModeCommand("/preset delivery"); cmd != nil {
+	if cmd := m.runPresetCommand("/preset delivery"); cmd != nil {
 		t.Fatal("running-turn /preset must not rebuild")
 	}
 	if m.ctrl.AgentPreset() != boot.AgentPresetDelivery {
