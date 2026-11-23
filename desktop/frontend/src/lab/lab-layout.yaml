@@ -65,6 +65,7 @@ groups:
         labelKey: settings.autopilot
         tier: stable
         onKeys: []
+        alwaysOn: true
       # tl1741 返修：sessionCollab 卡回归（无主开关行——跨会话协作常开，
       # 主键 experimental_session_collab 已退役）。卡灯=审批回投开（815 补灯
       # 口径延续，cascade_approval 活键）；卡内 autoFold 成员行与 pane 子项
@@ -73,6 +74,7 @@ groups:
         labelKey: settings.sessionCollab
         tier: stable
         onKeys: [experimentalCascadeApproval]
+        alwaysOn: true
         members:
           # 任务 722 点3：跨会话协作的展示子项。
           - id: sessionCollabAutoFold
@@ -206,6 +208,7 @@ groups:
         labelKey: settings.collabHub
         tier: stable
         onKeys: []
+        alwaysOn: true
       # tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认瘦
       # 身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪不落
       # IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留 pinned，
@@ -553,6 +556,7 @@ groups:
         labelKey: settings.resourceGovernance
         tier: stable
         onKeys: [experimentalOrphanHandling, experimentalACPListen, experimentalLocalServer]
+        alwaysOn: true
         members:
           # 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。tl1741
           # 返修：无开关展示行（复用池常开，主键退役）。

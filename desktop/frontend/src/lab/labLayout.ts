@@ -176,7 +176,17 @@ function validateLayout(root: unknown, opts: ResolveLabLayoutOptions, warnings: 
         fail(warnings, `entry "${id}" is kind=param and must carry a non-empty fields list`);
       }
 
-      return { id, labelKey: rawEntry.labelKey as DictKey, kind, tier, onKeys, members, fields };
+      // tl1741r2 尾项 — alwaysOn：无主开关的常开卡标记（rail 不变灰/状态点恒
+      // 亮/排序恒启用）。缺省 undefined=按灯语义照旧；非布尔 ⇒ 整份回退默认。
+      let alwaysOn: boolean | undefined;
+      if (rawEntry.alwaysOn != null) {
+        if (typeof rawEntry.alwaysOn !== "boolean") {
+          fail(warnings, `entry "${id}".alwaysOn must be a boolean`);
+        }
+        alwaysOn = rawEntry.alwaysOn as boolean;
+      }
+
+      return { id, labelKey: rawEntry.labelKey as DictKey, kind, tier, onKeys, members, fields, alwaysOn };
     });
     return { key: key as LabGroupKey, labelKey: rawGroup.labelKey as DictKey, entries };
   });

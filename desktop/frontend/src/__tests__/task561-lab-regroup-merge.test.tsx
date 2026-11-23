@@ -372,6 +372,24 @@ for (const family of families) {
   const fullAccess = cardSlice('{selected === "fullAccess" && (', '{selected === "updateFeedback" && (');
   ok(fullAccess.includes("labStableLocked(\"fullAccess\")") && fullAccess.includes("app.SetExperimentalFullAccess("),
     "fullAccess remains the ONLY stable card with a master switch");
+  // tl1741r2 尾项（用户裁定 20261123：常开不该置灰）——四张无主开关 stable 卡
+  // 携带 alwaysOn 标记（rail 行不挂 --off 变灰/状态点恒亮/排序恒启用）；
+  // fullAccess 不带（真开关卡关态照常变灰）。
+  {
+    const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
+    ok((labDefault.match(/alwaysOn: true/g) ?? []).length === 4,
+      "exactly the four master-switch-free stable cards carry alwaysOn (no others)");
+    for (const id of ["autopilot", "sessionCollab", "collabHub", "resourceGovernance"]) {
+      const at = labDefault.indexOf(`id: "${id}"`);
+      ok(at >= 0 && labDefault.slice(at, at + 1600).includes("alwaysOn: true"),
+        `M8 ${id} carries the alwaysOn flag (no gray/dimmed rail row)`);
+    }
+    const fa = labDefault.indexOf('id: "fullAccess"');
+    ok(fa >= 0 && !labDefault.slice(fa, fa + 200).includes("alwaysOn"),
+      "fullAccess stays a real switch card (no alwaysOn flag — off still dims)");
+    ok(panel.includes("Boolean(entry.alwaysOn) || labEntryLightOn(entry, s)"),
+      "the rail folds alwaysOn into the on flag (row class + dot + enabled-first sort)");
+  }
 }
 
 // ④ folded member ids are gone from union + features array + pane branches.
