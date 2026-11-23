@@ -884,6 +884,13 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// (`bash -c true`, a 3s budget per candidate on Windows) and the reuse
 	// branch serves the previous prompt anyway — so a reused build reuses
 	// the previous resolution instead of paying the probe again.
+	//
+	// tl1771: point shell probe persistence at the per-user cache root before
+	// the first resolution, so this boot's discovery verifies last boot's
+	// successful bash path first instead of re-walking all three routes. Must
+	// precede ResolveShell below; empty CacheDir keeps persistence disabled
+	// (best-effort like every cache-root consumer).
+	sandbox.SetShellProbeCacheDir(config.CacheDir())
 	shell := sandbox.Shell{}
 	shellReused := false
 	if reusePrompt && opts.ReuseAssembly.Shell.Path != "" {
