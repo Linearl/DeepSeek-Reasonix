@@ -17,7 +17,12 @@ func writePortableFixture(t *testing.T, dir, name, content string) {
 }
 
 func TestVerifyWindowsPortableVersionedLayout(t *testing.T) {
-	verify := filepath.Join("..", "scripts", "verify-windows-portable.sh")
+	// tl1789: the script path reaches a POSIX bash. filepath.Join emits
+	// backslashes on Windows, and a WSL-hosted bash eats them as escape
+	// characters ("..scriptsverify-windows-portable.sh", exit 127). ToSlash
+	// keeps the relative path resolvable for WSL bash, MSYS (Git Bash) and
+	// native Linux/macOS bash alike.
+	verify := filepath.ToSlash(filepath.Join("..", "scripts", "verify-windows-portable.sh"))
 	good := t.TempDir()
 	// versioned-v1 root entries
 	writePortableFixture(t, good, "reasonix-launcher.exe", "launcher")
