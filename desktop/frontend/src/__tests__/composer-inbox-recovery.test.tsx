@@ -23,7 +23,12 @@ function flushTimers(): Promise<void> {
 }
 
 async function waitFor(label: string, check: () => boolean) {
-  for (let attempt = 0; attempt < 30; attempt += 1) {
+  // tl1739r2 drive-by: 30 flush rounds sat exactly at the mount margin — the
+  // recovery banner landed one round AFTER the window in jitter runs (observed
+  // 20261123 while landing the replay turn-id dedupe: the waitFor verdict said
+  // FAIL and the very next ok() saw the banner already there). 80 rounds keep
+  // the wait semantics (bail-out verdict unchanged) and absorb mount jitter.
+  for (let attempt = 0; attempt < 80; attempt += 1) {
     if (check()) return;
     await act(async () => { await flushTimers(); });
   }

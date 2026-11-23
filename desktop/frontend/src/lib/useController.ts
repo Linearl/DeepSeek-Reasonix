@@ -35,7 +35,7 @@ import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./ru
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
 import { currentSwitchSeq, noteBeginSwitch, noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
-import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
+import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems, replayDuplicatesRenderedTurn } from "./assistantItems";
 import { getTranscriptStore } from "./transcriptStore";
 import { recordFrontendDiagnostic } from "./frontendDiagnosticBridge";
 import { setDraftRewriteTraceSink } from "./draftRewriteTraceBridge";
@@ -5458,6 +5458,26 @@ export function useController() {
       if (e.runtimeEpoch && !acceptedEpoch) runtimeEpochByTabRef.current.set(targetTabId, e.runtimeEpoch);
       if (e.sessionGeneration !== undefined && (!currentMeta || currentMeta.sessionGeneration === undefined || e.sessionGeneration !== currentMeta.sessionGeneration)) return;
       if (!turnEventProjector.acceptLive(targetTabId, e, acceptedEpoch)) return;
+      // tl1739r2: 渲染入口按 turn id 去重——reconcile 重放不重复 append。重放
+      // 通道上，非表面活跃 turn 且表面已有该 turn 渲染行（a:<turnId>:*）的事件
+      // 是 display 层双写：seq 水位线通常裁决它，但账本重启判定（tl1739 收紧
+      // 后的 ledgerRestarted → appliedEventSeq 归零）会把小 seq 重新放行，整段
+      // 已结算 turn 重灌上屏（20261120 切2tab / 20261121 重启注入 / 20261123
+      // 回合结束切tab 三例复发，数据层无重复）。活跃 turn 回填（fence 吞增量
+      // 的权威重放）不受影响：activeTurnId 相等即放行。投影器游标照常推进，
+      // 丢弃只发生在渲染入口（657 水位线同层裁决，数据位不动）。
+      if (
+        turnEventProjector.isProjectingReplay(targetTabId) &&
+        replayDuplicatesRenderedTurn(statesRef.current.get(targetTabId), e.turnId)
+      ) {
+        reportFrontendLog(
+          "stream-fence",
+          "replay skipped: turn already rendered",
+          `tab=${targetTabId} kind=${e.kind} turn=${e.turnId ?? "-"}`,
+          "info",
+        );
+        return;
+      }
       uiPerfTracker.onWireEvent(targetTabId, e.kind);
       if (TURN_ACTIVITY_KINDS.has(e.kind)) lastTurnActivityAtByTab.current.set(targetTabId, Date.now());
       // tl1303 ③: the steer's own injection event or any turn activity after
