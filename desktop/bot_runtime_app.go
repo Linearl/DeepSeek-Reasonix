@@ -48,17 +48,24 @@ func desktopBotChannelsWithLegacyQQ(qq config.QQBotConfig, channels map[bot.Plat
 	if channel.Model == "" && channel.ToolApprovalMode == "" && channel.WorkspaceRoot == "" {
 		return channels, connectionChannels
 	}
+	return appendLegacyBotChannel(bot.PlatformQQ, channel, channels, connectionChannels)
+}
+
+// appendLegacyBotChannel 是 legacy QQ / Dingtalk 直配合成的共同落盘体
+// （tl1780 参数化合并）：把已合成的 channel 在两个 map（按平台键 / 按连接键）
+// 里做 nil 初始化 + 首写不覆盖，镜像双份只留这一份。
+func appendLegacyBotChannel(platform bot.Platform, channel bot.ChannelConfig, channels map[bot.Platform]bot.ChannelConfig, connectionChannels map[string]bot.ChannelConfig) (map[bot.Platform]bot.ChannelConfig, map[string]bot.ChannelConfig) {
 	if channels == nil {
 		channels = make(map[bot.Platform]bot.ChannelConfig)
 	}
-	if _, ok := channels[bot.PlatformQQ]; !ok {
-		channels[bot.PlatformQQ] = channel
+	if _, ok := channels[platform]; !ok {
+		channels[platform] = channel
 	}
 	if connectionChannels == nil {
 		connectionChannels = make(map[string]bot.ChannelConfig)
 	}
-	if _, ok := connectionChannels[string(bot.PlatformQQ)]; !ok {
-		connectionChannels[string(bot.PlatformQQ)] = channel
+	if _, ok := connectionChannels[string(platform)]; !ok {
+		connectionChannels[string(platform)] = channel
 	}
 	return channels, connectionChannels
 }
@@ -76,19 +83,7 @@ func desktopBotChannelsWithLegacyDingtalk(dt config.DingtalkBotConfig, channels 
 	if channel.Model == "" && channel.ToolApprovalMode == "" && channel.WorkspaceRoot == "" && len(channel.SessionMappings) == 0 {
 		return channels, connectionChannels
 	}
-	if channels == nil {
-		channels = make(map[bot.Platform]bot.ChannelConfig)
-	}
-	if _, ok := channels[bot.PlatformDingtalk]; !ok {
-		channels[bot.PlatformDingtalk] = channel
-	}
-	if connectionChannels == nil {
-		connectionChannels = make(map[string]bot.ChannelConfig)
-	}
-	if _, ok := connectionChannels[string(bot.PlatformDingtalk)]; !ok {
-		connectionChannels[string(bot.PlatformDingtalk)] = channel
-	}
-	return channels, connectionChannels
+	return appendLegacyBotChannel(bot.PlatformDingtalk, channel, channels, connectionChannels)
 }
 
 func (a *App) refreshBotRuntimeAsync() {
