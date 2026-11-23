@@ -88,8 +88,122 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		"last_turn_gap_min", a.lastTurnGapMinutes(),
 		"split_active", tele.SplitActive,
 		"compaction_interval_min", compactionIntervalMin)
+	// tl1770 日志增强（用户令 20261123 15:19，与 cache 读数同批）: the view's
+	// composition enters the log before AND after the fold — the 641K 现场's
+	// 『消息』桶 and the gauge's remainder『其他』桶 were un-attributable without
+	// it (the events-replace census proved the projection carries ~85%
+	// session-context carrier weight, but only per-view logs can show it live).
+	// Bucket sums equal the view's own total (LocalOnly / pinned revisions are
+	// skipped on both sides); transient_blocks and images are sub-readouts
+	// (already inside their host buckets, never additive).
+	sb := a.compactionViewBuckets(in.msgs)
+	slog.Info("agent: compaction source buckets", append([]any{
+		"trigger", in.trigger, "stage", "buckets_pre",
+		"session", a.sessionLogRef(), "messages", len(in.msgs), "total_tokens", in.sourceTokens,
+	}, sb.fields()...)...)
+	pb := a.compactionViewBuckets(spliced)
+	slog.Info("agent: compaction projection buckets", append([]any{
+		"trigger", in.trigger, "stage", "buckets_post",
+		"session", a.sessionLogRef(), "messages", len(spliced), "total_tokens", projTokens,
+	}, pb.fields()...)...)
 	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
 	// same way the explicit tool does (shared helper, both entry points).
 	a.logCompactionMissAttribution(in.trigger, tele, in.sourceTokens)
 	return CompactionInstalled, nil
+}
+
+// compactionViewBuckets prices one compaction view's composition by message
+// class (tl1770 日志增强, 用户令 20261123 15:19). One ruler — messageTokens,
+// the calibrated per-message estimate the fold planner and the done line
+// already read — so the buckets reconcile against source_tokens /
+// projection_tokens on the same line. Classification is first-match:
+// system → compaction summary → session-context carrier → role. LocalOnly
+// and pinned-context revisions never reach the wire and stay out of every
+// bucket. transient_blocks prices the host-injected per-turn blocks riding a
+// user turn's head (the 92 条 <context-state> occupancy snapshots the 641K
+// 现场 exposed) as a SUBSET readout of bucket_real_user, not an additive
+// class; images likewise price inside their owning message's bucket and are
+// reported once more as a cross-cut line (Q1 构成表口径: 已含在上面各类内).
+type compactionViewBuckets struct {
+	system, realUser, carrier, assistant, tool, summary, other int
+	transient                                                  int
+	images, imageCount                                         int
+	messages                                                   int
+}
+
+func (a *Agent) compactionViewBuckets(msgs []provider.Message) compactionViewBuckets {
+	var b compactionViewBuckets
+	for _, m := range msgs {
+		if m.LocalOnly || IsPinnedContextRevision(m) {
+			continue
+		}
+		b.messages++
+		tok := a.messageTokens(m)
+		for _, img := range m.Images {
+			b.images += imageEstimateTokens(img)
+		}
+		b.imageCount += len(m.Images)
+		switch {
+		case m.Role == provider.RoleSystem:
+			b.system += tok
+		case isCompactionSummary(m):
+			b.summary += tok
+		case isSessionContextMessage(m):
+			b.carrier += tok
+		case m.Role == provider.RoleUser:
+			b.realUser += tok
+			b.transient += a.transientBlockTokens(m)
+		case m.Role == provider.RoleAssistant:
+			b.assistant += tok
+		case m.Role == provider.RoleTool:
+			b.tool += tok
+		default:
+			// The remainder bucket the gauge's『其他』rounded everything into —
+			// with the classes above it should read ~0, and a nonzero value
+			// names an unclassified role for the next diagnosis.
+			b.other += tok
+		}
+	}
+	return b
+}
+
+// transientBlockTokens prices the host-injected transient blocks riding one
+// user turn's head (context-state 快照 etc.) on the same calibrated ruler:
+// the message against its own stripTransientUserBlocks copy — everything but
+// the content differs never, so the difference is exactly the blocks' share.
+func (a *Agent) transientBlockTokens(m provider.Message) int {
+	if m.Role != provider.RoleUser {
+		return 0
+	}
+	stripped := m
+	stripped.Content = StripTransientUserBlocks(m.Content)
+	if d := a.messageTokens(m) - a.messageTokens(stripped); d > 0 {
+		return d
+	}
+	return 0
+}
+
+// total sums the seven additive buckets: the view's own ruler total, so the
+// log line reconciles against source_tokens / projection_tokens.
+func (b compactionViewBuckets) total() int {
+	return b.system + b.realUser + b.carrier + b.assistant + b.tool + b.summary + b.other
+}
+
+// fields renders the bucket readout for one compaction view log line. Bucket
+// sums equal total_tokens; transient_blocks ⊆ bucket_real_user_tokens and
+// image_tokens ⊆ the host buckets (cross-cut annotations, per the Q1 构成表
+// 口径).
+func (b compactionViewBuckets) fields() []any {
+	return []any{
+		"bucket_system_tokens", b.system,
+		"bucket_real_user_tokens", b.realUser,
+		"bucket_session_context_tokens", b.carrier,
+		"bucket_assistant_tokens", b.assistant,
+		"bucket_tool_tokens", b.tool,
+		"bucket_summary_tokens", b.summary,
+		"bucket_other_tokens", b.other,
+		"transient_blocks_tokens", b.transient,
+		"image_tokens", b.images,
+		"image_count", b.imageCount,
+	}
 }
