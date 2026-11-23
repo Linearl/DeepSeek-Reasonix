@@ -14,7 +14,24 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"reasonix/internal/config"
 )
+
+// skipUntilTelemetryGateReopens guards the upload-asserting crash tests.
+// tl1665 fork policy pinned DesktopTelemetry=false at the single choke point
+// (internal/config), so every flush/report upload path no-ops and clears
+// pending crashes BY DESIGN — the tests below are structurally red since
+// that pin (baseline evidence: tl1766 round + tl1789 detached-base run at
+// 131fe20a92, same 9 FAILs, signatures hits=0 / install id empty). Skip them
+// while the gate is closed; they stay in the tree as the revival harness for
+// a deliberate telemetry reopen (tl1789 baseline-red governance).
+func skipUntilTelemetryGateReopens(t *testing.T) {
+	t.Helper()
+	if !config.Default().DesktopTelemetry() {
+		t.Skip("tl1665: desktop telemetry upload gate pinned false by fork policy; upload-asserting crash tests are dead until it reopens (tl1789)")
+	}
+}
 
 func readPending(t *testing.T) (crashReport, bool) {
 	t.Helper()
@@ -159,6 +176,7 @@ func TestWritePendingCrashScrubsSensitiveText(t *testing.T) {
 }
 
 func TestFlushPendingCrashSendsAndClears(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
 		version, crashEndpoint = oldVersion, oldEndpoint
@@ -202,6 +220,7 @@ func TestFlushPendingCrashDevGuard(t *testing.T) {
 }
 
 func TestFlushPendingCrashIgnoresSafeModeEnv(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	// v1.20+: REASONIX_SAFE_MODE no longer blocks crash flush.
 	t.Setenv("REASONIX_SAFE_MODE", "1")
 	oldVersion, oldEndpoint := version, crashEndpoint
@@ -251,6 +270,7 @@ func TestPendingCrashDoesNotPersistInstallID(t *testing.T) {
 }
 
 func TestFlushPendingCrashDeduplicatesSameVersionAndResendsAfterUpgrade(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
@@ -300,6 +320,7 @@ func TestFlushPendingCrashDeduplicatesSameVersionAndResendsAfterUpgrade(t *testi
 }
 
 func TestConcurrentFlushPendingCrashUsesOneCrossProcessLedgerOwner(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
@@ -332,6 +353,7 @@ func TestConcurrentFlushPendingCrashUsesOneCrossProcessLedgerOwner(t *testing.T)
 }
 
 func TestFlushPendingCrashFailureDoesNotRecordOrDelete(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
@@ -368,6 +390,7 @@ func TestFlushPendingCrashFailureDoesNotRecordOrDelete(t *testing.T) {
 }
 
 func TestFlushPendingCrashBackfillsOldIdentityAndPreservesFutureSchema(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
@@ -412,6 +435,7 @@ func TestFlushPendingCrashBackfillsOldIdentityAndPreservesFutureSchema(t *testin
 }
 
 func TestFlushPendingCrashUploadsCurrentSchemaThree(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {

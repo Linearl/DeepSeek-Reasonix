@@ -71,6 +71,7 @@ func TestScrubSensitiveTextKeepsFrameNames(t *testing.T) {
 }
 
 func TestPostCrashReport(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	var got crashReport
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

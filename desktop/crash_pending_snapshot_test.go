@@ -135,6 +135,7 @@ func TestPendingCrashAnalysisPayloadsAcceptsCurrentSchemaVariants(t *testing.T) 
 // (telemetry on, this test) or drops (telemetry off) the queue files either
 // way, and the boot snapshot taken before it is the only copy the entry has.
 func TestPendingCrashSnapshotSurvivesFlush(t *testing.T) {
+	skipUntilTelemetryGateReopens(t)
 	removeAllPendingCrashes()
 	oldVersion, oldEndpoint := version, crashEndpoint
 	t.Cleanup(func() {
