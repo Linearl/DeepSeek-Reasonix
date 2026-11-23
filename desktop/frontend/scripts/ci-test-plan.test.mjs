@@ -23,7 +23,9 @@ test("asset loaders and the isolated performance benchmark retain their invocati
   const plan = testPlan(scripts, files);
   for (const [file, loader] of [["remote-connect-wizard", "css"], ["remote-server-panel", "svg"]]) {
     const entry = plan.find(entry => entry.key === `src/__tests__/${file}.test.tsx`);
-    assert.ok(entry.args.includes(`./scripts/${loader}-stub-register.mjs`));
+    // tl1788 normalization: stubs are attached via the canonical absolute
+    // face, so match on the register file name rather than its exact form.
+    assert.ok(entry.args.some(arg => String(arg).endsWith(`${loader}-stub-register.mjs`)));
   }
   assert.deepEqual(plan.filter(entry => entry.serial).map(entry => entry.key), ["src/__tests__/history-performance-benchmark.tsx"]);
 });
@@ -40,4 +42,15 @@ test("deduplication cannot silently discard different explicit loaders", () => {
   assert.throws(() => testPlan({ ...scripts,
     "test:mcp-app": "node --import ./scripts/svg-stub-register.mjs --import tsx src/__tests__/terminal-events.test.ts",
   }, files), /conflicting test invocation/);
+});
+
+test("every tsx entry runs the canonical governed face (tl1788)", () => {
+  const plan = testPlan(scripts, files);
+  for (const entry of plan) {
+    if (entry.args[0] !== "tsx") continue;
+    assert.ok(entry.args.some(arg => String(arg).endsWith("tsconfig.tsx-runner.json")), entry.key);
+    assert.ok(entry.args.some(arg => String(arg).endsWith("css-stub-register.mjs")), entry.key);
+    assert.ok(entry.args.some(arg => String(arg).endsWith("svg-stub-register.mjs")), entry.key);
+    assert.ok(entry.args.some(arg => /\.(?:test\.tsx?|tsx)$/.test(String(arg))), entry.key);
+  }
 });

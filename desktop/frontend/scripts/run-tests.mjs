@@ -7,16 +7,10 @@
 // coverage. Fail-fast by default; --keep-going runs everything and summarizes.
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
-import { createRequire } from "node:module";
-import { join, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
-
-// Resolve the local tsx entry directly so the runner works both under pnpm
-// scripts and when invoked as plain `node scripts/run-tests.mjs`.
-const tsxCli = createRequire(import.meta.url).resolve("tsx/cli");
+import { join } from "node:path";
+import { suiteArgv } from "./tsx-test.mjs";
 
 const TESTS_DIR = "src/__tests__";
-const SCRIPTS_DIR = "scripts";
 
 const OWNED_ELSEWHERE = new Map(Object.entries({
   "terminal-events.test.ts": "test:terminal",
@@ -93,23 +87,11 @@ for (const [name, owner] of OWNED_ELSEWHERE) {
   }
 }
 
-// CSS/SVG/PNG are browser assets, not executable Node code. All discovered
-// component graphs share this loader contract (css-stub + svg-stub, same face
-// test:remote uses for asset-pulling suites), including transitive imports
-// after region extraction. CSS/layout correctness remains owned by syntax and
-// browser gates.
-const assetArgs = [
-  "--import", pathToFileURL(resolve(SCRIPTS_DIR, "css-stub-register.mjs")).href,
-  "--import", pathToFileURL(resolve(SCRIPTS_DIR, "svg-stub-register.mjs")).href,
-];
-
-// 768b ③: every discovered suite runs through tsconfig.tsx-runner.json (same
-// face test:motion has been explicit about since task 745). The main
-// tsconfig.json excludes src/__tests__, so without this flag tsx falls back
-// to esbuild's classic-JSX default for exactly the files it runs — the
-// two-transpile-runtimes split 745 fixed for one script, here closed for the
-// whole discovery family.
-const tsxArgs = ["--tsconfig", resolve("tsconfig.tsx-runner.json")];
+// CSS/SVG/PNG browser assets, the tsx-runner tsconfig (768b ③) and the
+// locale pin now live in ONE canonical face: suiteArgv() from tsx-test.mjs
+// (tl1788). Discovery previously built its own copy of that face; the two
+// copies drifting apart is exactly how loader holes (ERR_UNKNOWN_FILE_
+// EXTENSION `.css`/`.svg` crash family) reopened in dispatch paths.
 
 const suites = files.filter((name) => !OWNED_ELSEWHERE.has(name));
 console.log(`run-tests: ${suites.length} discovered suites (${OWNED_ELSEWHERE.size} owned by dedicated scripts)`);
@@ -122,7 +104,7 @@ for (const name of suites) {
   // Node's built-in navigator.language follows the machine's ICU locale, and
   // suites assert English UI strings.
   const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" };
-  const result = spawnSync(process.execPath, [tsxCli, ...tsxArgs, ...assetArgs, path], {
+  const result = spawnSync(process.execPath, suiteArgv(path), {
     stdio: "inherit",
     env,
     timeout: suiteTimeoutMs > 0 ? suiteTimeoutMs : undefined,
