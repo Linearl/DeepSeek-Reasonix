@@ -16,7 +16,25 @@ func writePortableFixture(t *testing.T, dir, name, content string) {
 	}
 }
 
+// skipIfWSLBash gates the bash-driven packaging verification. The fixtures
+// use Windows paths; a WSL-hosted bash (System32\bash.exe) cannot open them
+// directly (backslash mangling / no /mnt translation inside the script), so
+// the outcome depends on which bash PATH resolves — a machine property, not a
+// layout regression. Evidence (tl1789): baseline run FAIL via WSL bash
+// (exit 127 / staging-missing), standalone PASS via Git Bash.
+func skipIfWSLBash(t *testing.T) {
+	t.Helper()
+	out, err := exec.Command("bash", "-c", "uname -r").CombinedOutput()
+	if err != nil {
+		t.Skipf("no usable bash on PATH: %v", err)
+	}
+	if strings.Contains(strings.ToLower(string(out)), "microsoft") {
+		t.Skip("bash resolves to a WSL host, which cannot open Windows fixture paths directly (tl1789)")
+	}
+}
+
 func TestVerifyWindowsPortableVersionedLayout(t *testing.T) {
+	skipIfWSLBash(t)
 	// tl1789: the script path reaches a POSIX bash. filepath.Join emits
 	// backslashes on Windows, and a WSL-hosted bash eats them as escape
 	// characters ("..scriptsverify-windows-portable.sh", exit 127). ToSlash
