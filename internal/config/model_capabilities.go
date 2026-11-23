@@ -63,6 +63,16 @@ type ResolvedModelCapability struct {
 	// per-model override. It feeds boot's Extra["audio"] and the desktop
 	// attachment entry; it never feeds tools or the system prompt.
 	AudioInputEnabled bool
+	// VideoInputEnableAllowed is the protocol-level gate (tl1767): the Anthropic
+	// protocol has no video content part, so video stays hard-blocked there
+	// regardless of metadata. VideoInputBlockReason names the cause.
+	VideoInputEnableAllowed bool
+	VideoInputBlockReason   string
+	// VideoInputEnabled is the final decision: protocol gate AND the video
+	// modality present after merging the automatic facts with the user's
+	// per-model override. It feeds boot's Extra["video"] and the desktop
+	// attachment entry; it never feeds tools or the system prompt.
+	VideoInputEnabled bool
 }
 
 type ModelCapabilityCacheFile struct {
@@ -133,6 +143,13 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	if resolved.AudioInputBlockReason == "" && entry != nil && !resolved.AudioInputEnableAllowed {
 		resolved.AudioInputBlockReason = audioProtocolBlockReason(entry.Kind)
 	}
+	// tl1767: the video protocol gate mirrors audio — the Anthropic protocol
+	// has no video content part, so video stays hard-blocked there regardless
+	// of metadata or overrides.
+	resolved.VideoInputEnableAllowed = entry != nil && !strings.EqualFold(strings.TrimSpace(entry.Kind), "anthropic")
+	if resolved.VideoInputBlockReason == "" && entry != nil && !resolved.VideoInputEnableAllowed {
+		resolved.VideoInputBlockReason = videoProtocolBlockReason(entry.Kind)
+	}
 	if entry == nil {
 		return resolved
 	}
@@ -140,10 +157,11 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	// through Config.ResolveModel. Never reuse another selected model's value.
 	override := entry.visionOverride
 	audioOverride := entry.audioOverride
+	videoOverride := entry.videoOverride
 	if len(entry.ModelOverrides) > 0 {
-		override, audioOverride = nil, nil
+		override, audioOverride, videoOverride = nil, nil, nil
 		if ov, ok := entry.modelOverrideForModel(entry.Model); ok {
-			override, audioOverride = ov.Vision, ov.Audio
+			override, audioOverride, videoOverride = ov.Vision, ov.Audio, ov.Video
 		}
 	}
 	if override != nil {
@@ -158,13 +176,21 @@ func (r *ModelCapabilityResolver) resolveWithCredentialRevision(entry *ProviderE
 	if audioOverride != nil {
 		resolved.InputModalities = mergeModalityOverride(resolved.InputModalities, provider.ModalityAudio, *audioOverride, nil)
 	}
+	if videoOverride != nil {
+		resolved.InputModalities = mergeModalityOverride(resolved.InputModalities, provider.ModalityVideo, *videoOverride, nil)
+	}
 	// The protocol blacklist wins over metadata and overrides alike: strip the
 	// audio modality so every downwind gate (adapter, UI) sees the same fact.
 	if !resolved.AudioInputEnableAllowed {
 		resolved.InputModalities = stripModality(resolved.InputModalities, provider.ModalityAudio)
 	}
+	if !resolved.VideoInputEnableAllowed {
+		resolved.InputModalities = stripModality(resolved.InputModalities, provider.ModalityVideo)
+	}
 	resolved.AudioInputEnabled = resolved.AudioInputEnableAllowed &&
 		slices.Contains(resolved.InputModalities, provider.ModalityAudio)
+	resolved.VideoInputEnabled = resolved.VideoInputEnableAllowed &&
+		slices.Contains(resolved.InputModalities, provider.ModalityVideo)
 	requestURL := entry.RequestURL
 	if requestURL == "" && entry.Kind == "openai" {
 		requestURL = entry.ChatURL
@@ -235,6 +261,10 @@ func audioProtocolBlockReason(kind string) string {
 	return fmt.Sprintf("the %q provider protocol does not support audio input (no audio content part on the wire)", kind)
 }
 
+func videoProtocolBlockReason(kind string) string {
+	return fmt.Sprintf("the %q provider protocol does not support video input (no video content part on the wire)", kind)
+}
+
 // EffectiveAudioInput resolves the selected model's audio-input decision
 // (task 1008): protocol gate AND resolved audio modality, with the user's
 // per-model override already folded in. Fallback for callers without a
@@ -245,6 +275,17 @@ func EffectiveAudioInput(e *ProviderEntry) bool {
 		return false
 	}
 	return NewModelCapabilityResolver().Resolve(e).AudioInputEnabled
+}
+
+// EffectiveVideoInput resolves the selected model's video-input decision
+// (tl1767): protocol gate AND resolved video modality, with the user's
+// per-model override already folded in. Fallback for callers without a
+// controller-owned resolver, mirroring EffectiveAudioInput.
+func EffectiveVideoInput(e *ProviderEntry) bool {
+	if e == nil {
+		return false
+	}
+	return NewModelCapabilityResolver().Resolve(e).VideoInputEnabled
 }
 
 func (r *ModelCapabilityResolver) resolveAutomatic(entry *ProviderEntry, credentialsRevision string) ResolvedModelCapability {
@@ -393,7 +434,7 @@ func normalizeInputModalities(values []provider.ModelModality) []provider.ModelM
 	out := make([]provider.ModelModality, 0, len(values))
 	for _, value := range values {
 		value = provider.ModelModality(strings.ToLower(strings.TrimSpace(string(value))))
-		if value != provider.ModalityText && value != provider.ModalityImage && value != provider.ModalityAudio {
+		if value != provider.ModalityText && value != provider.ModalityImage && value != provider.ModalityAudio && value != provider.ModalityVideo {
 			return nil
 		}
 		if !seen[value] {
