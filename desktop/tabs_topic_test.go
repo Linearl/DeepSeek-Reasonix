@@ -288,7 +288,19 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 	}
 	app := NewApp()
 	nodes := app.ListProjectTree()
-	if got := []string{nodes[0].Children[0].TopicID, nodes[0].Children[1].TopicID}; got[0] != "topic_a" || got[1] != "topic_b" {
+	// tl1655 tree composition includes the Global folder node; select the
+	// project node by kind instead of assuming nodes[0] (tl1789: an unguarded
+	// nodes[0].Children[0] panicked on the Global node's empty children).
+	projectNode := func() ProjectNode {
+		for _, n := range nodes {
+			if n.Kind == "project" {
+				return n
+			}
+		}
+		t.Fatalf("project tree = %#v, want one project node", nodes)
+		return ProjectNode{}
+	}
+	if got := []string{projectNode().Children[0].TopicID, projectNode().Children[1].TopicID}; got[0] != "topic_a" || got[1] != "topic_b" {
 		t.Fatalf("initial topic order = %v, want [topic_a topic_b]", got)
 	}
 
@@ -296,10 +308,10 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 		t.Fatalf("pin topic: %v", err)
 	}
 	nodes = app.ListProjectTree()
-	if got := []string{nodes[0].Children[0].TopicID, nodes[0].Children[1].TopicID}; got[0] != "topic_b" || got[1] != "topic_a" {
+	if got := []string{projectNode().Children[0].TopicID, projectNode().Children[1].TopicID}; got[0] != "topic_b" || got[1] != "topic_a" {
 		t.Fatalf("pinned topic order = %v, want [topic_b topic_a]", got)
 	}
-	if !nodes[0].Children[0].Pinned {
+	if !projectNode().Children[0].Pinned {
 		t.Fatalf("pinned topic should expose pinned=true")
 	}
 
@@ -307,8 +319,8 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 		t.Fatalf("unpin topic: %v", err)
 	}
 	nodes = app.ListProjectTree()
-	if nodes[0].Children[0].Pinned || nodes[0].Children[1].Pinned {
-		t.Fatalf("unpin should clear pinned flags: %#v", nodes[0].Children)
+	if projectNode().Children[0].Pinned || projectNode().Children[1].Pinned {
+		t.Fatalf("unpin should clear pinned flags: %#v", projectNode().Children)
 	}
 }
 
