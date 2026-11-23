@@ -444,6 +444,8 @@ export type ProjectTreeTopicHoverCard = {
   projectLabel: string;
   // 938：会话登记的职责（sidecar purpose，hover 时按需拉取；空=未登记，不渲染行）。
   purpose: string;
+  // tl1769：首行完整对话名之外的最近消息预览（与名同文或缺省为空，不渲染行）。
+  preview: string;
 };
 
 // Activity labels older than a week are already the calendar date (always the
@@ -456,13 +458,19 @@ export function projectTreeTopicHoverCardModel(node: ProjectNode, t: Translator,
   const activityAt = node.lastActivityAt || node.createdAt || 0;
   const metaLine = projectTreeTopicMetaLine(node, t);
   const exactTime = activityAt ? topicActivityDateLabel(activityAt) : "";
+  // tl1769（20261123 用户截图报）：hover 首行必须是完整对话名——原先 preview
+  // 顶替 title，长名会话（行内省略号截断、运行符号再挤一截）hover 后仍看不到
+  // 全名。预览降级为独立补充行，与名同文时不重复渲染。
+  const title = (node.label || node.preview || node.topicId || "Untitled").replace(/^●\s*/, "");
+  const preview = (node.preview || "").replace(/^●\s*/, "");
   return {
-    title: (node.preview || node.label || node.topicId || "Untitled").replace(/^●\s*/, ""),
+    title,
     statusLabel: topicStatusLabel(node, t),
     metaLine,
     exactTime: projectTreeDedupedExactTime(metaLine, exactTime),
     projectLabel,
     purpose: purpose.trim(),
+    preview: preview && preview !== title ? preview : "",
   };
 }
 
