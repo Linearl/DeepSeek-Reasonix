@@ -52,6 +52,13 @@ func TestDesktopE2EBlocksRepeatedSuccessfulBashFileWrite(t *testing.T) {
 		agenttest.Turn{ToolCalls: []provider.ToolCall{{ID: "c1", Name: "bash", Arguments: args}}},
 		agenttest.Turn{ToolCalls: []provider.ToolCall{{ID: "c2", Name: "bash", Arguments: args}}},
 		agenttest.Turn{ToolCalls: []provider.ToolCall{{ID: "c3", Name: "bash", Arguments: args}}},
+		// The controller's stop review keeps continuing a turn while todos are
+		// pending (continuation budget 5). The model under test must therefore
+		// CLOSE the scripted todo before ending, or the review exhausts the
+		// mock's scripted turns and the turn fails with a provider error
+		// (tl1789: turn-lifecycle contract drift, the repeat-guard assertions
+		// below were already passing).
+		agenttest.Turn{ToolCalls: []provider.ToolCall{{ID: "todo-2", Name: "todo_write", Arguments: `{"todos":[{"content":"update the prompt file","status":"completed"}]}`}}},
 		agenttest.Turn{Text: "done"},
 	)
 	events := make(chan event.Event, 32)
