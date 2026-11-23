@@ -283,7 +283,7 @@ func (a *Agent) compressVisibleRange(
 		return result, nil
 	}
 
-	res, err := a.foldToSummaryMode(ctx, prepared.fold, prepared.instructions, prepared.inputMode)
+	res, err := a.foldToSummaryMode(ctx, prepared.fold, prepared.instructions, prepared.inputMode, nil)
 	summary := res.Text
 	tele := compactionTelemetryFromSummary(trigger, a.CacheState(), result.SourceTokens, res)
 	if err != nil {
@@ -527,8 +527,8 @@ func compactionTelemetryFromSummary(trigger, cacheState string, sourceTokens int
 
 // foldSummaryWithChunkedFallback retries summary size failures through the
 // resilient fragment/tree-reduce path used for over-length sessions.
-func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string) (foldSummary, CompactionTelemetry, error) {
-	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+func (a *Agent) foldSummaryWithChunkedFallback(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string, fullSend []provider.Message) (foldSummary, CompactionTelemetry, error) {
+	res, tele, err := a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode, fullSend)
 	if err == nil || !chunkedFallbackApplies(err, inputMode) {
 		return res, tele, err
 	}
@@ -1031,6 +1031,11 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 		// and the maxChunkedSummaryCalls budget bounds the whole run.
 		allowChunked := req.allowChunked ||
 			trigger == CompactionTriggerOverflow || trigger == CompactionTriggerPressure
+		// tl1770 拍板②: the regular lane's single-request legs carry the whole
+		// view (req.fullSend, admitted at the planning site); the segmented
+		// lane keeps fragmenting the FOLD region — fragments stay the
+		// over-length recovery shape the 拍板 did not touch.
+		fullSend := req.fullSend
 		switch {
 		case allowChunked && segmented:
 			if segmentViaLatch && !latchEntryLogged {
@@ -1052,9 +1057,9 @@ func (a *Agent) summarizeFold(ctx context.Context, trigger string, fold []provid
 			}
 			res, tele, err = a.foldSummarySegmented(ctx, trigger, fold, instructions, sourceTokens, inputMode)
 		case allowChunked:
-			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+			res, tele, err = a.foldSummaryWithChunkedFallback(ctx, trigger, fold, instructions, sourceTokens, inputMode, fullSend)
 		default:
-			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode)
+			res, tele, err = a.foldSummaryWithTelemetry(ctx, trigger, fold, instructions, sourceTokens, inputMode, fullSend)
 		}
 		if err == nil {
 			if rateWaits > 0 {
@@ -1341,15 +1346,43 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 		return CompactionNoop, nil
 	}
 	originalFoldHash := providerVisibleFingerprint(modelInputMessages(fold))
+	// tl1770 拍板②: one compaction.prepare dispatch per pass, on the region the
+	// summarizer will actually read — the whole view on the full-send lane (the
+	// 拍板 sends the view, so a hook's replacement must shape the view's
+	// request), the fold region otherwise (byte-identical to the pre-1770
+	// dispatch). The rewritten label reads that same region; the fold-form
+	// consumers below (safe guard, fold sizing, chunked fragments) keep
+	// reading the fold.
+	hookRegion, hookOriginalHash := fold, originalFoldHash
+	if !req.slim {
+		hookRegion = msgs
+		hookOriginalHash = providerVisibleFingerprint(modelInputMessages(msgs))
+	}
 	var err error
-	fold, instructions, err = a.interceptCompactionPrepare(ctx, fold, instructions)
+	var hooked []provider.Message
+	hooked, instructions, err = a.interceptCompactionPrepare(ctx, hookRegion, instructions)
 	if err != nil {
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, err
 	}
-	if len(fold) == 0 {
+	if len(hooked) == 0 {
 		a.emitCompactionAborted(trigger)
 		return CompactionNoop, nil
+	}
+	rewritten := providerVisibleFingerprint(modelInputMessages(hooked)) != hookOriginalHash
+	if req.slim {
+		fold = hooked
+	}
+	// 任务719/#9572 防线在 tl1770 全量送下的保留形态: a hook-inflated summary
+	// input on the AUTOMATIC lane is rejected before any spend — an extension
+	// cannot force a near-window prefill (the pre-1770 guard contract). Only
+	// the natural view gets the 拍板③ head-trim; manual keeps trimming the
+	// replacement (its pre-1770 behavior too).
+	if !req.slim && rewritten && (req.mustFree || !IsManualClassTrigger(trigger)) {
+		if err := a.validateSafeSummaryRequest(hooked, instructions, false); err != nil {
+			a.emitCompactionAborted(trigger)
+			return CompactionNoop, err
+		}
 	}
 	if req.mustFree || !IsManualClassTrigger(trigger) {
 		if err := a.validateSafeSummaryRequest(fold, instructions, req.slim); err != nil {
@@ -1359,8 +1392,26 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	}
 
 	sourceTokens := a.estimatedVisibleRequestTokens(msgs)
-	inputMode := summaryInputModeFor(req, regionHadPinnedRevision,
-		providerVisibleFingerprint(modelInputMessages(fold)) != originalFoldHash)
+	inputMode := summaryInputModeFor(req, regionHadPinnedRevision, rewritten)
+	// tl1770 拍板②③（用户 20261123 15:05）: the regular lane's summary request
+	// carries the WHOLE view (system + fold region + verbatim D tail) — the
+	// conversation request's own shape, so the provider's prefix cache covers
+	// it end to end (竞品实证 codex=history+追加指令 / opencode=conversation+
+	// prior-summary). The region is admitted HERE, before any spend:
+	// preFoldFullSendInput prices it on the calibrated ruler against the safe
+	// prompt budget and head-trims oldest units when it overflows (拍板③,
+	// codex compact.rs remove_first_item — 保前缀缓存、保最新内容). A provider
+	// billing denser than the session ruler rejects the first shot once; the
+	// recalibration lane (任务 1003) re-plans with the learned factor and the
+	// retry lands. inputMode may flip to Slim (image-only view); the slim
+	// ladder rung (req.slim) keeps the fold-region transcript form, and the
+	// focus 选段道 never reaches this lane at all.
+	// validateSafeSummaryRequest above keeps guarding the FOLD form — the fold
+	// stays inside the segment cap the guard already admits; the SEND form's
+	// admission is preFoldFullSendInput's contract.
+	if !req.slim {
+		req.fullSend = a.preFoldFullSendInput(hooked, instructions, &inputMode)
+	}
 	// tl1691: the canonical span this fold newly hides — [pointerFrom, covered)
 	// — is what the zero-summary lane's index lines address. On the projected
 	// view the prior covered count is the span's start; on the raw transcript

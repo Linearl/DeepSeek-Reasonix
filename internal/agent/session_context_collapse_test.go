@@ -166,7 +166,7 @@ func TestCompactionTelemetryUsesOneRuler(t *testing.T) {
 		t.Fatalf("fixture did not separate the rulers (both %d) — calibration not applied?", guarded)
 	}
 	// foldToSummaryMode 产出的 FoldTokens 必须走校准尺。
-	res, err := a.foldToSummaryMode(t.Context(), fold, "", SummaryInputCachePrefix)
+	res, err := a.foldToSummaryMode(t.Context(), fold, "", SummaryInputCachePrefix, nil)
 	if err != nil {
 		// 无 provider 时摘要请求会失败，但 FoldTokens 在失败前已填。
 		if res.FoldTokens == 0 {
