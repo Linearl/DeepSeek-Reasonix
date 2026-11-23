@@ -671,7 +671,11 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         id: entry.id as ExperimentFeatureId,
         group,
         label: t(entry.labelKey),
-        on: labEntryLightOn(entry, s),
+        // tl1741r2 尾项（用户裁定 20261122：常开不该置灰）：alwaysOn 常开卡
+        // 折入 on——rail 行不挂 --off 变灰、状态点恒亮、enabled-first 排序恒
+        // 视为启用（无主开关卡不存在「关」态，观感与有开关卡一致；
+        // fullAccess 等真开关卡不打标记，关态照常变灰）。
+        on: Boolean(entry.alwaysOn) || labEntryLightOn(entry, s),
         // 任务 774：卡头徽章聚合为单枚最高档（max(卡, members)，推荐>可选
         // >未稳定>已退役）；成员徽章只在卡内详情行可见，不再上卡头。
         badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id),

@@ -60,6 +60,8 @@ interface StrictLabLayoutEntry {
   kind?: "param" | "action";
   tier?: LabTier;
   onKeys: LabLightKey[];
+  /** tl1741r2 尾项：无主开关常开卡标记（缺省 false；见 labLayoutTypes）。 */
+  alwaysOn?: boolean;
   members?: Array<{ id: TierFeatureId; labelKey: DictKey; tier: LabTier }>;
   fields?: Array<{ id: LabParamFieldId; input: LabParamInput }>;
 }
@@ -83,7 +85,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // autopilot：无主开关卡——pane 子项（ask_timeout 族/authorize_* 授权族/
         // askRoundLimit/preapprove 子块）在硬编码分支，键/setter 零变化；
         // max_runtime/approval_grace 护栏键保留 config 手写。
-        { id: "autopilot", labelKey: "settings.autopilot", tier: "stable", onKeys: [] },
+        { id: "autopilot", labelKey: "settings.autopilot", tier: "stable", onKeys: [], alwaysOn: true },
         // sessionCollab：无主开关卡——卡灯=审批回投开（815 补灯口径延续）；
         // 卡内 autoFold 成员行与 pane 子项恢复（722 点3）。
         {
@@ -94,6 +96,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           members: [
             { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "optional" },
           ],
+          alwaysOn: true,
         },
         { id: "fullAccess", labelKey: "settings.fullAccess", tier: "stable", onKeys: ["experimentalFullAccess"] },
         {
@@ -221,7 +224,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // tl1741 返修：collabHub 卡回归（无主开关行——协作中心入口常显，主键
         // experimental_collab_hub 已退役；LAB_FEATURE_DEPS 依赖不回归）。pane
         // 为常开展示行（glmPlanUsage 无开关展示行先例）。
-        { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: [] },
+        { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: [], alwaysOn: true },
         // tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认
         // 瘦身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪
         // 不落 IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留
@@ -561,6 +564,7 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 本地服务（原 infra 独立卡；tl1265 第2轮：未稳定→可选）。
             { id: "localServer", labelKey: "settings.localServer", tier: "optional" },
           ],
+          alwaysOn: true,
         },
         // tl134/tl1487 七组③：路径规则整卡移除（过时技术，用户裁决；存档
         // docs/archive/路径作用域规则tl134-机制存档-20261107.md）。

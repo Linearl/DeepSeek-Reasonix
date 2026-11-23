@@ -53,6 +53,10 @@ export interface LabLayoutEntry {
   tier?: LabTier;
   /** labLightKeys ids whose boolean OR lights the card. */
   onKeys: string[];
+  /** tl1741r2 尾项 — 常开卡（无主开关行）：rail 行不参与 --off 变灰、状态点
+   * 恒亮、enabled-first 排序恒视为启用（缺省=false；fullAccess 等真开关卡
+   * 不打此标记，关态照常变灰）。 */
+  alwaysOn?: boolean;
   /** Folded members (badges + in-card rows), in display order. */
   members?: LabLayoutMember[];
   /** kind=param 专有：卡内字段行（validator 保证非空且引用已登记绑定）。 */
