@@ -44,7 +44,7 @@ func restartUpdateWithContext(t *testing.T, controller tool.AutonomousUpdateCont
 	if controller != nil {
 		ctx = tool.WithAutonomousUpdateController(ctx, controller)
 	}
-	return NewRestartUpdate().Execute(ctx, json.RawMessage(args))
+	return restartUpdate{}.Execute(ctx, json.RawMessage(args))
 }
 
 func TestRestartUpdateDispatchesActions(t *testing.T) {
@@ -87,7 +87,7 @@ func TestRestartUpdateDispatchesActions(t *testing.T) {
 	// execute forwards the calling session for the busy-guard exemption.
 	caller := tool.WithRestartCallerSession(context.Background(), "C:\\sessions\\caller.jsonl")
 	ctx := tool.WithAutonomousUpdateController(caller, controller)
-	if _, err := NewRestartUpdate().Execute(ctx, json.RawMessage(`{"action":"execute"}`)); err != nil {
+	if _, err := (restartUpdate{}).Execute(ctx, json.RawMessage(`{"action":"execute"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if len(controller.execCallers) != 1 || controller.execCallers[0] != `C:\sessions\caller.jsonl` {
@@ -97,7 +97,7 @@ func TestRestartUpdateDispatchesActions(t *testing.T) {
 	// Task 520: restart forwards the SAME exemption to RestartOnly — the
 	// busy-guard semantics are identical to execute (acceptance ⑤), recorded
 	// separately so the two actions can never blur into each other.
-	if _, err := NewRestartUpdate().Execute(ctx, json.RawMessage(`{"action":"restart"}`)); err != nil {
+	if _, err := (restartUpdate{}).Execute(ctx, json.RawMessage(`{"action":"restart"}`)); err != nil {
 		t.Fatal(err)
 	}
 	if len(controller.restartCallers) != 1 || controller.restartCallers[0] != `C:\sessions\caller.jsonl` {
@@ -120,14 +120,14 @@ func TestRestartUpdateRestartActionSurface(t *testing.T) {
 			} `json:"action"`
 		} `json:"properties"`
 	}
-	if err := json.Unmarshal(NewRestartUpdate().Schema(), &schema); err != nil {
+	if err := json.Unmarshal(restartUpdate{}.Schema(), &schema); err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"list_versions", "set_target", "execute", "restart"}
 	if strings.Join(schema.Properties.Action.Enum, ",") != strings.Join(want, ",") {
 		t.Fatalf("action enum = %v, want %v", schema.Properties.Action.Enum, want)
 	}
-	if desc := NewRestartUpdate().Description(); !strings.Contains(desc, "restart relaunches the CURRENT version without switching") {
+	if desc := (restartUpdate{}).Description(); !strings.Contains(desc, "restart relaunches the CURRENT version without switching") {
 		t.Fatalf("description must explain the restart-and-continue action: %s", desc)
 	}
 
@@ -222,7 +222,7 @@ func TestRestartUpdateResolverCoversCapabilityFace(t *testing.T) {
 
 	// Without a resolver the binding-free face degrades to "" (the host then
 	// refuses via the busy guard instead of exempting the wrong session).
-	plain := NewRestartUpdate()
+	plain := restartUpdate{}
 	if _, err := plain.Execute(ctx, json.RawMessage(`{"action":"execute"}`)); err != nil {
 		t.Fatal(err)
 	}

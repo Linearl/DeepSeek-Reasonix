@@ -158,23 +158,6 @@ func FeedbackSummaryBounded(text string, maxLines int) string {
 	return feedbackSummaryBounded(text, maxLines, feedbackSummaryMaxBytes)
 }
 
-// clipRunesRuneSafe truncates s to at most max runes, returning the truncated
-// string. It preserves complete UTF-8 sequences (rune boundaries) so a
-// multi-byte character is never cut mid-sequence.
-func clipRunesRuneSafe(s string, max int) string {
-	if max <= 0 || s == "" {
-		return ""
-	}
-	if utf8.RuneCountInString(s) <= max {
-		return s
-	}
-	runes := []rune(s)
-	if len(runes) <= max {
-		return s
-	}
-	return string(runes[:max])
-}
-
 // clipRunesByteSafe truncates s to at most maxBytes bytes, backing up to the
 // nearest rune boundary so no multi-byte character is split (task 1057).
 func clipRunesByteSafe(s string, maxBytes int) string {

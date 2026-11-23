@@ -31,11 +31,6 @@ type restartUpdate struct {
 	callerSession func() string
 }
 
-// NewRestartUpdate returns the restart_update tool without a caller-session
-// resolver: only the context-injected (agent) path carries the calling
-// session. Boot uses NewRestartUpdateWithCallerSession instead.
-func NewRestartUpdate() tool.Tool { return restartUpdate{} }
-
 // NewRestartUpdateWithCallerSession returns the tool bound to a caller-session
 // resolver. Boot constructs it after the executor exists so capability-routed
 // calls — which never cross the agent's context-binding point — still carry

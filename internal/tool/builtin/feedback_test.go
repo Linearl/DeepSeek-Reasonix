@@ -330,19 +330,6 @@ func TestFeedbackSupersededByRoundTrip(t *testing.T) {
 
 // ---- task 1057: rune-safe summary clipping (UTF-8 multi-byte cut) ----
 
-func TestClipRunesRuneSafeCutsOnRuneBoundary(t *testing.T) {
-	// Chinese text: each rune is 3 bytes. A naive byte-slice at 10 bytes would
-	// split the 4th character (bytes 10..12) mid-sequence → U+FFFD.
-	s := "一二三四五六七八九十"
-	got := clipRunesRuneSafe(s, 4)
-	if got != "一二三四" {
-		t.Fatalf("clipRunesRuneSafe(4 runes) = %q, want %q", got, "一二三四")
-	}
-	if strings.ContainsRune(got, '�') {
-		t.Fatalf("rune-safe clip leaked U+FFFD: %q", got)
-	}
-}
-
 func TestClipRunesByteSafeCutsOnRuneBoundary(t *testing.T) {
 	// 3-byte chars: byte 10 splits the 4th char. clipRunesByteSafe must back up
 	// to byte 9 (= 3 complete runes).

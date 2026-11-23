@@ -211,7 +211,7 @@ func TestLegacySSERejectsCrossOriginEndpoint(t *testing.T) {
 	defer server.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	transport, err := newSSETransport(ctx, Spec{Name: "unsafe", URL: server.URL})
+	transport, err := newSDKSessionTransport(ctx, Spec{Name: "unsafe", Type: "sse", URL: server.URL}, HostProfileCore)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -330,7 +330,7 @@ func TestLegacySSEDisconnectRebuildsBeforeNextCall(t *testing.T) {
 
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	transport, err := newSSETransport(t.Context(), Spec{Name: "disconnect", Type: "sse", URL: server.URL + "/sse"})
+	transport, err := newSDKSessionTransport(t.Context(), Spec{Name: "disconnect", Type: "sse", URL: server.URL + "/sse"}, HostProfileCore)
 	if err != nil {
 		t.Fatal(err)
 	}

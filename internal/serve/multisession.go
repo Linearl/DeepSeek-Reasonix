@@ -381,18 +381,6 @@ func (s *Server) watchDetached(d *detachedSession) {
 	close(d.done)
 }
 
-func (s *Server) WaitForDetachedIdle() {
-	s.detachedMu.Lock()
-	detached := make([]*detachedSession, 0, len(s.detached))
-	for _, d := range s.detached {
-		detached = append(detached, d)
-	}
-	s.detachedMu.Unlock()
-	for _, d := range detached {
-		<-d.done
-	}
-}
-
 func (s *Server) CloseBackground() {
 	s.detachedMu.Lock()
 	detached := make([]*detachedSession, 0, len(s.detached))

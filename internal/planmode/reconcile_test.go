@@ -24,9 +24,8 @@ func TestBuiltinPhaseClassifiersMatchPolicy(t *testing.T) {
 			}
 		}
 		got := (planmode.Policy{}).Decide(planmode.Call{
-			Name:     tl.Name(),
-			ReadOnly: tl.ReadOnly(),
-			Safety:   safety,
+			Name:   tl.Name(),
+			Safety: safety,
 		})
 		if got.Blocked != (safety == planmode.PlanSafetyUnsafe) {
 			t.Errorf("builtin %q safety=%v decision=%+v", tl.Name(), safety, got)
