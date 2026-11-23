@@ -61,10 +61,22 @@ func TestProjectTreeSnapshotReturnsProjectShellWithoutMigratingSessions(t *testi
 	}
 
 	snapshot := NewApp().GetProjectTreeSnapshot()
-	if len(snapshot.Projects) != 1 || snapshot.Projects[0].Root != root {
+	// tl1655 includes the Global folder node unconditionally (first-run
+	// breakage fix); select the project shell by kind instead of asserting a
+	// single-entry snapshot.
+	var project *ProjectNode
+	for i := range snapshot.Projects {
+		if snapshot.Projects[i].Kind == "project" {
+			if project != nil {
+				t.Fatalf("snapshot = %#v, want exactly one project shell", snapshot.Projects)
+			}
+			project = &snapshot.Projects[i]
+		}
+	}
+	if project == nil || project.Root != root {
 		t.Fatalf("snapshot = %#v, want project shell %q", snapshot, root)
 	}
-	if snapshot.Projects[0].Children == nil {
+	if project.Children == nil {
 		t.Fatal("project shell children encoded as null, want []")
 	}
 	if _, err := os.Stat(legacyPath + ".meta"); !os.IsNotExist(err) {
@@ -90,10 +102,21 @@ func TestProjectTreeSnapshotIncludesPinnedTopicsForCollapsedFolders(t *testing.T
 	}
 
 	snapshot := app.GetProjectTreeSnapshot()
-	if len(snapshot.Projects) != 1 {
+	// tl1655 includes the Global folder node unconditionally; select the
+	// project shell by kind instead of asserting a single-entry snapshot.
+	var project *ProjectNode
+	for i := range snapshot.Projects {
+		if snapshot.Projects[i].Kind == "project" {
+			if project != nil {
+				t.Fatalf("project shells = %#v, want exactly one project", snapshot.Projects)
+			}
+			project = &snapshot.Projects[i]
+		}
+	}
+	if project == nil {
 		t.Fatalf("project shells = %#v, want one project", snapshot.Projects)
 	}
-	children := snapshot.Projects[0].Children
+	children := project.Children
 	if len(children) != 1 || children[0].TopicID != "pinned" || !children[0].Pinned {
 		t.Fatalf("collapsed project children = %#v, want only pinned topic shell", children)
 	}
