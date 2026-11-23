@@ -18,9 +18,17 @@ export class TranscriptViewportWriter {
   private frozen = false;
   private readonly follower = new SmoothTailFollower();
   private readonly smoothFollow: () => boolean;
+  /** tl 1776: called whenever a write moves (or starts moving) the viewport.
+   * A same-frame geometry snapshot read BEFORE the write describes the
+   * pre-write scrollTop — serving it to post-write observers is exactly the
+   * stale-facts family the width-reflow branch already guards against by
+   * dropping the per-frame merge cache ("an earlier same-frame read is
+   * stale"). The consumer (the kernel hook) invalidates that cache here. */
+  private readonly onMovedViewport: () => void;
 
-  constructor(options: { smoothFollow?: () => boolean } = {}) {
+  constructor(options: { smoothFollow?: () => boolean; onMovedViewport?: () => void } = {}) {
     this.smoothFollow = options.smoothFollow ?? (() => labFlagEnabled("smoothScrollFollow"));
+    this.onMovedViewport = options.onMovedViewport ?? (() => {});
   }
 
   attach(element: HTMLElement | null, generation: number): void {
@@ -88,6 +96,9 @@ export class TranscriptViewportWriter {
       const floorGap = maximum - before;
       if (floorGap > 4) {
         this.follower.follow(element);
+        // tl 1776: native motion (or the follower's internal instant jump)
+        // starts here — same-frame snapshot reads are stale from this point.
+        this.onMovedViewport();
         noteTranscriptScrollWrite({
           session: request.session,
           transaction: request.transactionId,
@@ -113,7 +124,11 @@ export class TranscriptViewportWriter {
       // identical to the pre-1165 path (DSH positions near arrivals directly).
     }
     const noOp = Math.abs(before - accepted) <= 0.5;
-    if (!noOp) element.scrollTop = accepted;
+    if (!noOp) {
+      element.scrollTop = accepted;
+      // tl 1776: the viewport moved — same-frame snapshot reads are stale.
+      this.onMovedViewport();
+    }
     const landed = element.scrollTop;
     const acceptedByNative = Math.abs(landed - accepted) <= 4;
     noteTranscriptScrollWrite({

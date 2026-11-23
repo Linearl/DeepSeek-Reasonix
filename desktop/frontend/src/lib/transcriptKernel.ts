@@ -392,11 +392,21 @@ export class TranscriptKernel {
     // expresses user intent, so gate the verdict on displacement; otherwise
     // streaming silently corrupts "was at the bottom" and the next tab switch
     // restores a stale block anchor instead of the tail.
+    //
+    // tl 1776: the SAME gate now covers the intent/anchor re-derivation. A
+    // stale same-frame snapshot (a read taken before this kernel's own tail
+    // write, served from the per-frame merge cache) can defeat the writeTop
+    // echo check above: the observation then carries a pre-write scrollTop
+    // with a post-append scrollHeight, measures "not at the bottom", and —
+    // with the derivation running unconditionally — demoted a tail view to a
+    // reader view WITHOUT any real user displacement (the sticky-bottom
+    // follow died mid-stream). A non-displaced observation describes our own
+    // writes or layout noise, never reader intent: keep the current
+    // intent/anchor and the sticky verdict untouched.
     const displaced = snapshot.scrollTop !== this.lastScrollTop;
-    if (displaced) {
-      this.lastScrollTop = snapshot.scrollTop;
-      this.atBottomValue = atBottom;
-    }
+    if (!displaced) return true;
+    this.lastScrollTop = snapshot.scrollTop;
+    this.atBottomValue = atBottom;
     this.intentValue = atBottom ? "tail" : "reader";
     this.anchorValue = this.intentValue === "tail" ? { kind: "tail" } : this.capture(snapshot);
     this.anchors.set(this.session, this.anchorValue);

@@ -342,7 +342,15 @@ export function useTranscriptKernel({
       clock,
       emit: (event) => recordTranscriptScrollDiagnostic("kernel", event),
     });
-    writerRef.current = new TranscriptViewportWriter();
+    // tl 1776: a write that moves the viewport makes every same-frame
+    // snapshot read stale (the cached scrollTop predates the write while the
+    // appended scrollHeight may already be in — the mixed geometry is what
+    // poisoned capturePreReflowFacts and defeated the writeTop echo check).
+    // Same remedy, same rationale as the width-reflow branch's
+    // `frameSnapshot = null` below.
+    writerRef.current = new TranscriptViewportWriter({
+      onMovedViewport: () => { frameSnapshot = null; },
+    });
   }
   const kernel = kernelRef.current;
   const writer = writerRef.current!;
