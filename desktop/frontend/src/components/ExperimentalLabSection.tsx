@@ -2067,6 +2067,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   <ul className="set-lab-brief__list">
                     {([
                       "decisionPatterns",
+                      "decisionPatternsLayered",
                       "heartbeatBackground",
                       "stalledIntentNudge",
                       "standardContinuation",
@@ -2109,6 +2110,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                         onClick={() => void apply(() => app.SetExperimentalDecisionPatterns(on))}
                       >
                         {t(on ? "settings.decisionPatterns.on" : "settings.decisionPatterns.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                {/* tl1772：注入分层伴生开关（decisionPatterns 行下方）。开=注入
+                    只带索引行+按需读全文硬指令（省 85%+），关=原全量注入逐字
+                    节一致（回退路径）。注入面现读 config，保存即生效。 */}
+                <SettingsField label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))} hint={t("settings.decisionPatternsLayeredHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalDecisionPatternsLayered) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalDecisionPatternsLayered(on))}
+                      >
+                        {t(on ? "settings.decisionPatternsLayered.on" : "settings.decisionPatternsLayered.off")}
                       </button>
                     ))}
                   </SettingsOptions>
@@ -2395,27 +2413,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               随整卡移除——结构化路径作用域判定为过时技术（从未接线，生产走
               confine+allow_write+写入审批），用户 20261107 裁决移除；机制存档
               docs/archive/路径作用域规则tl134-机制存档-20261107.md。 */}
-          {selected === "memoryIndexSlim" && (
-            /* tl1733: 记忆注入瘦身. Efficiency group, optional tier, default
-               off; boot resolves the saved switch into the memory gate before
-               the first Load, so a flip applies on restart. ON = emergency
-               bypass (background index stops injecting, pinned only); OFF =
-               the default slimmed injection pipeline. */
-            <SettingsField label={labLabel("memoryIndexSlim", t("settings.memoryIndexSlim"))} hint={t("settings.memoryIndexSlim.hint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalMemoryIndexSlim) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetMemoryIndexSlim(on))}
-                  >
-                    {t(on ? "settings.memoryIndexSlim.on" : "settings.memoryIndexSlim.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
+          {/* tl1772：memoryIndexSlim 独立 pane 退役——开关行移入 safetyCostControl
+              卡（用户拍板「从提效组移到安全/成本控制组」；键/setter 零变化，
+              messageMerge/722 点5 先例）。 */}
                     {/* 任务 961：traceAsState 独立 pane 退役——并入「交互与呈现」合并卡
               （interactionPresentation，卡内成员行承载）。
               tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——
@@ -2593,6 +2593,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       onClick={() => void apply(() => app.SetSentinelPenetrationGuard(on))}
                     >
                       {t(on ? "settings.sentinelPenetrationGuard.on" : "settings.sentinelPenetrationGuard.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* tl1772（原 tl1733 独立卡移组）：记忆注入瘦身——独立入口并入本卡
+                  为成员行（用户拍板「从提效组移到安全/成本控制组」）；键
+                  experimental_memory_index_slim 与 setter 零变化，boot 快照
+                  消费重启生效。 */}
+              <SettingsField label={labLabel("memoryIndexSlim", t("settings.memoryIndexSlim"))} hint={t("settings.memoryIndexSlim.hint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalMemoryIndexSlim) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetMemoryIndexSlim(on))}
+                    >
+                      {t(on ? "settings.memoryIndexSlim.on" : "settings.memoryIndexSlim.off")}
                     </button>
                   ))}
                 </SettingsOptions>

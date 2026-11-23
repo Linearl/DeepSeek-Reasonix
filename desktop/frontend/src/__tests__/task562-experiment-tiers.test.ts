@@ -166,13 +166,16 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
   // tl1746：tasklistPanel（未稳定）入表——未稳定 3→4、总数 88→89。
   // tl1718：composerToolsFold（composer 工具组默认折叠，推荐档）入表——
-  // 推荐 50→51、总数 89→90。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 4 && counts.retired === 0,
-    `register counts are 9 稳定/51/26/4/0 (got ${JSON.stringify(counts)})`);
+  // 推荐 50→51、总数 89→90。tl1772：decisionPatternsLayered（决策模式注入
+  // 分层伴生开关，可选档）入表——可选 26→27、总数 90→91（同件 memoryIndexSlim
+  // 移组不改注册表计数）。
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 27 && counts.unstable === 4 && counts.retired === 0,
+    `register counts are 9 稳定/51/27/4/0 (got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 90, `register holds exactly 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/26/4/0 (tl1718 composerToolsFold 入推荐档)");
+  // tl1772：decisionPatternsLayered 入表 → 90→91。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 91, `register holds exactly 91 features (tl1772 decisionPatternsLayered added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 27 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/27/4/0 (tl1772 decisionPatternsLayered 入可选档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -261,7 +264,8 @@ console.log("\ntask 562 lab three-tier badges");
   // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
   // tl1741 撤七条(autopilot/sessionCollab/collabHub/workflowPanel/cdpDebugPort/sessionStorage/runtimeReuse) + tl1746 加 tasklistPanel：76-7+1=70。
   // tl1718：composerToolsFold 两侧共享入表——70→71。
-  ok(Object.keys(goTiers).length === 71, `Go registry parses to 71 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold; got ${Object.keys(goTiers).length})`);
+  // tl1772：decisionPatternsLayered 两侧共享入表——71→72。
+  ok(Object.keys(goTiers).length === 72, `Go registry parses to 72 entries (tl1772 added decisionPatternsLayered after tl1741 retired seven / tl1746 added tasklistPanel / tl1718 added composerToolsFold; got ${Object.keys(goTiers).length})`);
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -336,7 +340,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1718 composerToolsFold +1；tl1741r2 打回返修：五成员行随卡体回归 +
   // resourceGovernance 六成员回卡（runtimeReuse=无开关展示行）——merged
   // cards 成员数以合并态实测为准（ok 值首猜 63，跑批校正）。
-  ok(members.length === 63, `merged cards carry 63 member features (tl1741r2 card bodies restored; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1772：decisionPatternsLayered 成员行入 smartAutomation 卡（+1）；
+  // memoryIndexSlim 独立卡移入 safetyCostControl 卡成员行（+1）——63→65。
+  ok(members.length === 65, `merged cards carry 65 member features (tl1772 decisionPatternsLayered row + memoryIndexSlim re-homed as a safetyCostControl member; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -361,7 +367,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1733：memoryIndexSlim rail 入口计入 → 87→88。
   // tl1746：tasklistPanel rail 入口计入 → 88→89。
   // tl1718：composerToolsFold 入表计入 → 89→90。
-  ok(covered.size === 90, "rail entries cover all 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added)");
+  // tl1772：decisionPatternsLayered 入表计入 → 90→91（memoryIndexSlim 移组
+  // 不改 covered——rail 入口转成员行，id 仍覆盖）。
+  ok(covered.size === 91, "rail entries cover all 91 features (tl1772 decisionPatternsLayered added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

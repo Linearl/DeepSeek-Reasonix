@@ -70,6 +70,7 @@ function familySlice(titleKey: string): string {
   // tl1453：梦境族卡（整理开关 + 创建自动任务两行）随实验退役，切片断言摘除。
   const dp = familySlice("settings.lab.family.decisionPatterns");
   ok(dp.includes('label={labLabel("decisionPatterns", t("settings.decisionPatterns"))}'), "decision family card hosts the 决策模式提取 row");
+  ok(dp.includes('label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))}'), "tl1772: decision family card hosts the 注入分层 row right below the extraction row");
   ok(dp.includes('label={t("settings.decisionPatternsCreateTask")}'), "decision family card hosts the 创建自动任务 row");
   ok(dp.includes('label={t("settings.decisionPatternsThreshold")}'), "decision family card hosts the 聚合阈值 row");
   ok(dp.includes('label={t("settings.decisionPatternsFilePath")}'), "decision family card hosts the 决策模式文件位置 row");
@@ -83,7 +84,7 @@ function familySlice(titleKey: string): string {
 
 // ③ 徽章语义不变（源码计数，621 口径：成员徽章各恰一次；卡头恰一次）。
 {
-  for (const id of ["decisionPatterns", "heartbeatBackground", "stalledIntentNudge", "standardContinuation", "smartAutomation"]) {
+  for (const id of ["decisionPatterns", "decisionPatternsLayered", "heartbeatBackground", "stalledIntentNudge", "standardContinuation", "smartAutomation"]) {
     const n = (smartCard.match(new RegExp(`labLabel\\("${id}"`, "g")) ?? []).length;
     ok(n === 1, `member badge stays exactly once on its own row (${id} × ${n})`);
   }
@@ -93,6 +94,7 @@ function familySlice(titleKey: string): string {
 {
   const wirings: Array<[string, string]> = [
     ["decisionPatterns", "app.SetExperimentalDecisionPatterns(on)"],
+    ["decisionPatternsLayered", "app.SetExperimentalDecisionPatternsLayered(on)"],
     ["heartbeatBackground", "app.SetExperimentalHeartbeatBackground(on)"],
     ["stalledIntentNudge", "app.SetStalledIntentNudge(on)"],
     ["standardContinuation", "app.SetStandardContinuation(on)"],

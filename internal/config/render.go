@@ -70,6 +70,11 @@ var labFeatureTiers = []labFeatureTier{
 	// 家族子键（477 ask-timeout 先例）。tl1453：同族的 dream 卡随
 	// experimental_dream 实验退役（宪法 Q1），出表。
 	{"decisionPatterns", LabTierOptional, []string{"experimental_decision_patterns", "decision_pattern_file_path", "decision_pattern_threshold", "decision_pattern_auto_approve"}},
+	// tl1772：决策模式注入分层（decisionPatterns 档位族伴生开关，可选档，
+	// 默认关）。开=注入只带索引行（编号 场景→决策，18 条 ≈1.5KB）+ 按需读
+	// 全文硬指令；关=原全量注入逐字节一致（回退路径）。注入面现读 config，
+	// 拨动对下一条 autopilot 消息生效（无 boot 快照）。
+	{"decisionPatternsLayered", LabTierOptional, []string{"experimental_decision_patterns_layered"}},
 	// 任务 1070：Standard 流续跑总闸（hostContinuationEnabled 解除专用流限制）。
 	// 与 1069（stalledIntent 判定器改造）同实验室-自动化族；默认关=关态逐字
 	// 等价现状（铁律 2）。开启后 Standard 会话续跑通道可达，但既有边界不变：
@@ -947,6 +952,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "decision_pattern_file_path = %q   # task 801: solidified decision-patterns file (empty = default global-workspace/docs path; backups and injection follow it)\n", decisionPatternFile)
 	fmt.Fprintf(&b, "decision_pattern_threshold = %d   # task 801: new decision memories needed before the heartbeat consolidation runs (0 = default 5)\n", c.Agent.DecisionPatternThreshold)
 	fmt.Fprintf(&b, "decision_pattern_auto_approve = %v   # task 801: skip the human approval gate before the heartbeat writes decision-patterns.md (default off = report and wait)\n", c.Agent.DecisionPatternAutoApprove)
+	// tl1772：注入分层开关。显式渲染——同 81/123 丢档教训。关=原全量注入
+	// 逐字节一致（回退路径）；注入面现读 config，拨动对下一条消息生效。
+	fmt.Fprintf(&b, "experimental_decision_patterns_layered = %v   # tl1772: ON = inject the per-entry index only (DP id + scene→decision, ≈1.5KB/18 entries) with a read-full-text hard instruction; OFF = legacy full-content injection byte-for-byte\n", c.Agent.ExperimentalDecisionPatternsLayered)
 	// tl1193b：pinned 常驻层索引化总闸。显式渲染——omit-on-off 会在下一次
 	// 渲染时把已保存的开关静默弹回（81/123 丢档教训）。boot 快照消费，重启
 	// 生效；关=常驻层 body 全量注入与引入前逐字节一致。

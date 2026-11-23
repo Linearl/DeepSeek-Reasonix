@@ -111,9 +111,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"traceAsState":       func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
 	"compactModel":       func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
 	// tl1397: ranges 小段增量压缩（未稳定档，默认关）。
-	"rangesCompact":         func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
+	"rangesCompact": func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
 	// tl1691: 零摘要折叠道（未稳定档，默认关）。
-	"zeroSummaryCompact":    func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
+	"zeroSummaryCompact": func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
 	// tl1691: recall 回读工具注册（boot 门控，默认关）。
 	"recallTool":            func(c *Config, on bool) error { return c.SetExperimentalRecallTool(on) },
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
@@ -164,6 +164,10 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"subagentTps": func(c *Config, on bool) error { return c.SetExperimentalSubagentTps(on) },
 	// ── automation（自动化族；tl1453：dream 随 experimental_dream 实验退役出批量面）──
 	"decisionPatterns": func(c *Config, on bool) error { return c.SetExperimentalDecisionPatterns(on) },
+	// tl1772：决策模式注入分层（可选档，默认关=原全量注入逐字节一致）。注入
+	// 面每次提交现读 config（无 boot 快照依赖），批量翻档对下一条 autopilot
+	// 消息即生效，无护栏冲突。
+	"decisionPatternsLayered": func(c *Config, on bool) error { return c.SetExperimentalDecisionPatternsLayered(on) },
 	// 任务 1070：Standard 流续跑总闸（默认关；见 render.go lab 表注释）。
 	"standardContinuation": func(c *Config, on bool) error { return c.SetStandardContinuation(on) },
 	// tl 1105：中断自动续轮（默认关；outcome_unknown 中断→一次宿主续轮）。

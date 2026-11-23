@@ -2161,6 +2161,10 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetStalledIntentNudge(enabled: boolean): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
   SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
+  // tl1772: injection-layering companion switch (experimental; the injection
+  // face reads config live per submission, so a flip applies on the next
+  // autopilot message; off = legacy full-content injection byte-for-byte).
+  SetExperimentalDecisionPatternsLayered(enabled: boolean): Promise<void>;
   // tl1193b: plan-E pinned standing-tier index mode (experimental; boot
   // resolves the saved switch, so a flip applies on restart).
   SetExperimentalPinnedIndex(enabled: boolean): Promise<void>;
@@ -7422,6 +7426,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalTraceAsState() {},
     async SetStalledIntentNudge() {},
     async SetExperimentalDecisionPatterns() {},
+    async SetExperimentalDecisionPatternsLayered() {},
     async SetExperimentalPinnedIndex() {},
     async SetMemoryIndexSlim() {},
     async SetDecisionPatternFilePath() {},

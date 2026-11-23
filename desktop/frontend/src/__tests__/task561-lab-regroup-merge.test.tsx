@@ -126,7 +126,10 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1746 tasklistPanel +1；tl1741r2 打回返修：四卡体回归（散条回收），
   // 三 rail 卡（autopilot/sessionCollab/collabHub）回归为无主开关卡——
   // rail census 以合并态 yaml 实测为准（见 ok 断言值）。
-  ok(defEntries.length === 29, `default layout carries exactly 29 rail entries (tasklistPanel + 8 card bodies restored, no master switches; got ${defEntries.length})`);
+  // tl1772：memoryIndexSlim 独立卡移出提效组——并入「安全/成本控制」卡
+  // 成员行（decisionPatternsLayered 为 smartAutomation 卡成员行，不占
+  // rail 入口）→ 29→28。
+  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (tl1772 re-homed memoryIndexSlim as a safetyCostControl member; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -165,10 +168,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // （collabHub 撤）、infra 拆卡回散条 2→6（orphan/idleRelease/gcPercent/
   // acpListen/localServer/toolOptimizations）。
   // tl1746：tasklistPanel 卡入可观测性组 → observability 3→4 → 2/5/8/4/1/3/6/1。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 6 && groups["ui"] === 8 &&
+  // tl1772：memoryIndexSlim 出提效组（并入安全/成本控制卡成员行）→
+  // efficiency 6→5 → 2/4/8/4/1/3/6/1。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
      groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
      groups["memory-context"] === 1,
-    `group counts are 4/6/8/4/1/3/2/1 (tl1746 tasklistPanel + tl1741r2 card bodies restored; got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/8/4/1/3/2/1 (tl1772 memoryIndexSlim re-homed as a safetyCostControl member; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -177,6 +182,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   const memberIds = (safety!.members ?? []).map((m: { id: string }) => m.id);
   ok(["messageMerge", "compactModel", "heartbeatRotation"].every((x) => memberIds.includes(x)),
     "safetyCostControl members carry messageMerge + compactModel + heartbeatRotation (722 点5/6 + 727)");
+  // tl1772：memoryIndexSlim 移组收口——提效组顶层条目消失、成员行落位
+  // 安全/成本控制卡（档位与键不动）。
+  ok(memberIds.includes("memoryIndexSlim") && safety!.members!.find((m: { id: string }) => m.id === "memoryIndexSlim")?.tier === "optional",
+    "tl1772: memoryIndexSlim rides as an optional safetyCostControl member (tier unchanged)");
+  ok(!eff!.entries.some((e: { id: string }) => e.id === "memoryIndexSlim"),
+    "tl1772: no standalone memoryIndexSlim entry remains in the efficiency group");
   // tl1741：sessionCollab 卡随撤开关退役（autoFold 随宿主卡入 storage 组）——
   // 原断言「sessionCollab hosts the auto-fold member」随卡摘除。
 }
@@ -290,6 +301,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   { id: "smartAutomation", endMarker: '{selected === "searchHistory" && (', members: [
     // tl1453：dream 成员行随 dream/distill 实验退役（宪法 Q1）摘除。
     { label: "961 decisionPatterns", field: "s.experimentalDecisionPatterns", setter: "app.SetExperimentalDecisionPatterns(on)" },
+    // tl1772：注入分层伴生开关（decisionPatterns 行下方）。
+    { label: "tl1772 decisionPatternsLayered", field: "s.experimentalDecisionPatternsLayered", setter: "app.SetExperimentalDecisionPatternsLayered(on)" },
     { label: "961 heartbeatBackground", field: "s.experimentalHeartbeatBackground", setter: "app.SetExperimentalHeartbeatBackground(on)" },
   ] },
   { id: "interactionPresentation", endMarker: '{selected === "devDebug" && (', members: [
@@ -425,6 +438,9 @@ for (const id of [
   "sessionWall",
   "workflowPanel",
   "completionSummary",
+  // tl1772：memoryIndexSlim 独立卡/pane/union id 摘除——safetyCostControl 卡
+  // 成员行承载（档位与键不动，只移组；messageMerge 722 点6 同款）。
+  "memoryIndexSlim",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -473,8 +489,23 @@ for (const setter of [
   "app.SetExperimentalRestartUpdate(on)",
   "app.SetExperimentalFeedback(on)",
   "app.SetSessionStorage(mode)",
+  // tl1772：新伴生开关与移组行各自的 setter 接线随行落位（丢 setter=静默丢档）。
+  "app.SetExperimentalDecisionPatternsLayered(on)",
+  "app.SetMemoryIndexSlim(on)",
 ]) {
   ok(panel.includes(setter), `setter wiring survives the merge: ${setter}`);
+}
+
+// ⑤ tl1772 注入分层开关 + memoryIndexSlim 移组的落位钉（pane 行面）。
+{
+  const smart = cardSlice('{selected === "smartAutomation" && (', '{selected === "searchHistory" && (');
+  ok(smart.includes('labLabel("decisionPatternsLayered"') && smart.includes("app.SetExperimentalDecisionPatternsLayered(on)"),
+    "tl1772: the injection-layering row lives below decisionPatterns in the smartAutomation card");
+  const safety = cardSlice('{selected === "safetyCostControl" && (', '{selected === "sessionCollab" && (');
+  ok(safety.includes('labLabel("memoryIndexSlim"') && safety.includes("app.SetMemoryIndexSlim(on)"),
+    "tl1772: the memoryIndexSlim switch row rides inside the safetyCostControl card");
+  ok(!smart.includes('labLabel("memoryIndexSlim"') && !safety.includes('{selected === "memoryIndexSlim" &&'),
+    "tl1772: no standalone memoryIndexSlim rail/pane remnant survives the re-home");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

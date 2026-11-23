@@ -2909,7 +2909,7 @@ export const zh: Record<DictKey, string> = {
 "settings.pinnedIndex.on": "开",
 "settings.pinnedIndex.off": "关",
 "settings.memoryIndexSlim": "记忆注入瘦身（仅保留置顶）",
-"settings.memoryIndexSlim.hint": "控制后台记忆索引的注入方式。默认关=瘦身注入管线：每条事实一行有界行（标题 + 范围/类型标记 + 最多 150 字符描述，不含文件引用），创建超 30 天且 30 天窗口内零召回的条目在打点累计满 14 天后不再注入，段落仍超 20K 字符时按最近召回优先保留——memory 工具仍可搜索全量记忆。开启=应急旁路：后台索引段整体停注，仅保留置顶（pinned）记忆，memory search/read 不受影响。档位=可选（提效组）；boot 时读取已保存的开关，改动重启后生效。",
+"settings.memoryIndexSlim.hint": "控制后台记忆索引的注入方式。默认关=瘦身注入管线：每条事实一行有界行（标题 + 范围/类型标记 + 最多 150 字符描述，不含文件引用），创建超 30 天且 30 天窗口内零召回的条目在打点累计满 14 天后不再注入，段落仍超 20K 字符时按最近召回优先保留——memory 工具仍可搜索全量记忆。开启=应急旁路：后台索引段整体停注，仅保留置顶（pinned）记忆，memory search/read 不受影响。档位=可选（安全/成本控制卡）；boot 时读取已保存的开关，改动重启后生效。",
 "settings.memoryIndexSlim.on": "开",
 "settings.memoryIndexSlim.off": "关",
   "settings.tasklistPanel": "任务面板",
@@ -3052,6 +3052,11 @@ export const zh: Record<DictKey, string> = {
   "settings.decisionPatternsNotGeneratedYet": "该文件由首次决策固化轮自动生成（达阈值后出现）——现在可先打开所在文件夹",
 "settings.decisionPatternsAutoApprove": "跳过人工批准直接修改",
 "settings.decisionPatternsAutoApproveHint": "默认关：心跳汇报提取到的模式后等待你批准才写入。开启后整合全自动（写入前仍有 5 版本备份轮转可回滚）。",
+// tl1772：决策模式注入分层（A 方案：索引常驻+全文按需）。
+"settings.decisionPatternsLayered": "注入分层（索引常驻+全文按需）",
+"settings.decisionPatternsLayeredHint": "控制 autopilot 注入决策模式的形态。默认关=全量注入固化文件（12.8KB ≈ 4-5K token/次）。开启=只注入索引行（每条一行「编号 场景关键词→决策一句话」，18 条 ≈1.5KB 省 85%+），并附硬指令：处理裁决类或用户纠正类消息时必须先用文件读取工具读取对应 DP 全文（含完整理由/来源）；索引解析不出条目时自动回退全文形态。注入面现读配置，保存即生效（对下一条 autopilot 消息生效）。",
+"settings.decisionPatternsLayered.on": "开",
+"settings.decisionPatternsLayered.off": "关",
 "settings.sessionCollab": "跨会话协作",
   "settings.sessionCollab.hopLimit": "协作链 hop 上限",
   "settings.sessionCollab.hopLimitHint": "跨会话消息来回轮次的上限，范围 3~1000，默认 5。调低只影响新到达的消息，已在途的链不变；越界值按范围钳制。",
@@ -3667,6 +3672,7 @@ export const zh: Record<DictKey, string> = {
   // tl1741：顶部卡右侧子项概要（拍板 20261121 三条款③——右侧空间改主题概要）。
   "settings.smartAutomation.brief.title": "本卡子项",
   "settings.smartAutomation.brief.decisionPatterns": "决策模式提取：从用户否定/修正 AI 的轮次提取裁决，心跳任务定期固化进决策模式文件。",
+"settings.smartAutomation.brief.decisionPatternsLayered": "注入分层：autopilot 只注入决策模式索引行，裁决类消息按编号读全文（省 85%+）。",
   "settings.smartAutomation.brief.heartbeatBackground": "心跳任务后台化：计划任务提交后转入后台驻留，话题标签不常驻标签栏。",
   "settings.smartAutomation.brief.stalledIntentNudge": "提前结束续轮提醒：模型宣布下一步却停手时，追加一次续轮提醒。",
   "settings.smartAutomation.brief.standardContinuation": "普通对话续跑：「列了待办没收尾」时宿主补一轮有界续跑（无进展即停）。",
