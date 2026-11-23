@@ -46,7 +46,7 @@ import { settingsLoadRetry } from "../lib/settingsLoadRetry";
 import { normalizeLangPref, useI18n, type DictKey, type LangPref } from "../lib/i18n";
 import { createLatestRequestGate, installedProviderCatalogDraft, mergedFetchedProviderModels, mergeProviderModelContextWindows, newlyAddedProviders, providerApiKeyEnvForSave, providerDefaultModel, providerIsConfigured, providerModelCandidates, providerModelContextWindowDrafts, providerRequiresKey, reconcileManualModels } from "../lib/providerModels";
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
-import { providerBaseURLForSave, providerEndpointMismatchDetail, providerRequestURLForCatalogFormatChange, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
+import { providerBaseURLForSave, providerEndpointMismatchDetail, providerPathShapeDetail, providerRequestURLForCatalogFormatChange, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { providerModelVisionCapability, providerVisionModelsForView } from "../lib/providerVisionCapability";
 import { useUpdater } from "../lib/useUpdater";
 import {
@@ -6796,6 +6796,10 @@ export function ProviderEditor({
   const effectiveKind = providerEditorEffectiveKind(isNewCustomProvider, kind, providerKindChoices);
   const effectiveRequestUrl = requestUrl.trim();
   const endpointMismatch = providerEndpointMismatchDetail(effectiveKind, effectiveRequestUrl, editorCatalog);
+  // tl1774 (issue #105): a bare base address passes save silently today and the
+  // 404 only shows up in the session. Warn at the URL field; save stays enabled
+  // so a deliberate custom path can be confirmed as-is.
+  const pathShape = providerPathShapeDetail(effectiveKind, effectiveRequestUrl);
   const effectiveBaseUrl = providerBaseURLForSave(initial, effectiveKind, effectiveRequestUrl);
   const effectiveLegacyChatUrl = effectiveKind.toLowerCase() === "openai" ? effectiveRequestUrl : initial?.chatUrl ?? "";
   const effectiveModelsUrl = modelsUrl.trim();
@@ -7229,6 +7233,10 @@ export function ProviderEditor({
         onChange={(e) => setRequestUrl(e.target.value)}
       />
       <span id={providerUrlHelpId} className="provider-field-help">{t("settings.providerRequestUrlHint")}</span>
+      {!endpointMismatch.mismatch && pathShape.missingProtocolPath && <div role="alert" className="banner banner--warning">
+        <span>{t("settings.providerProtocolPathMissing", { suffix: pathShape.protocolSuffix })}</span>
+        <button type="button" className="btn btn--secondary btn--small" title={pathShape.suggestedUrl} onClick={() => setRequestUrl(pathShape.suggestedUrl)}>{t("settings.providerProtocolPathApply", { suffix: pathShape.protocolSuffix })}</button>
+      </div>}
       </div>
       <div className="provider-connection-field">
       <label className="set-label">{t("settings.providerProtocol")}</label>

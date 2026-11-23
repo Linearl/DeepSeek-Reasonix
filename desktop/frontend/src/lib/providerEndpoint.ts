@@ -160,6 +160,9 @@ export interface ProviderPathShapeDetail {
   // suggestion or confirms the custom path by saving.
   missingProtocolPath: boolean;
   suggestedUrl: string;
+  // The protocol's primary chat path suffix (e.g. /chat/completions) for the
+  // warning copy; empty alongside missingProtocolPath=false.
+  protocolSuffix: string;
 }
 
 // tl1774: expected terminal chat-path suffixes per protocol. openai accepts
@@ -221,7 +224,7 @@ function isKnownVendorCanonicalChatForm(value: string): boolean {
 // are user-owned escape hatches and stay silent; unparseable values stay
 // silent (the URL input already tolerates drafts mid-typing).
 export function providerPathShapeDetail(kind: string, requestUrl: string): ProviderPathShapeDetail {
-  const empty: ProviderPathShapeDetail = { missingProtocolPath: false, suggestedUrl: "" };
+  const empty: ProviderPathShapeDetail = { missingProtocolPath: false, suggestedUrl: "", protocolSuffix: "" };
   const suffixes = protocolPathSuffixes(kind);
   const value = requestUrl.trim();
   if (suffixes.length === 0 || !value) return empty;
@@ -234,7 +237,11 @@ export function providerPathShapeDetail(kind: string, requestUrl: string): Provi
   const path = parsed.pathname.replace(/\/+$/, "");
   if (suffixes.some(suffix => path.endsWith(suffix))) return empty;
   if (isKnownVendorCanonicalChatForm(value)) return empty;
-  return { missingProtocolPath: true, suggestedUrl: suggestedProtocolRequestURL(kind, trimmedBaseURL(value)) };
+  return {
+    missingProtocolPath: true,
+    suggestedUrl: suggestedProtocolRequestURL(kind, trimmedBaseURL(value)),
+    protocolSuffix: suffixes[0],
+  };
 }
 
 export interface ProviderEndpointMismatchDetail {

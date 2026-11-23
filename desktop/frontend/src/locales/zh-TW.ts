@@ -28,6 +28,8 @@ export const zhTW: Record<DictKey, string> = {
   "toolRecovery.unproven": "自動檢查無法確認結果。請核實受影響的工作區或外部服務後再確認。",
   "toolRecovery.rejected": "已按不重試處理。未知效果仍被記錄。",
   "settings.providerProtocolMismatch": "API 位址與所選協定不一致。",
+  "settings.providerProtocolPathMissing": "位址未以 {suffix} 結尾：系統將原樣請求此位址，多數服務商 base 位址會 404。確認服務就在此路徑可直接儲存，或點擊補全。",
+  "settings.providerProtocolPathApply": "補全 {suffix}",
   "settings.imageInputLabel": "圖片輸入",
   "settings.imageInputModeAria": "{model} 的圖片輸入模式",
   "settings.imageInputAuto": "自動",
