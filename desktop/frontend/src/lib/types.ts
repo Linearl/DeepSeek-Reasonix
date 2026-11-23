@@ -2850,6 +2850,12 @@ export interface DesktopStartupSettingsView {
   experimentalSubagentPolicy?: boolean;
   experimentalSubagentTps?: boolean;
   experimentalCompletionSummary?: boolean;
+  /** tl1787 件⑤/A: tl1397/tl1419 ranges 主动局部压缩族（此前仅 config 键，
+   *  无设置面读数）。两开关默认关；窗口两键 0 = 内置默认。 */
+  experimentalRangesCompact?: boolean;
+  experimentalModelRangesCompact?: boolean;
+  modelRangesFoldWindowMinutes?: number;
+  modelRangesFoldWindowMax?: number;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
   /** Task 342: WebView2 CDP debug endpoint (loopback-only random port); ships off; restart to apply. */

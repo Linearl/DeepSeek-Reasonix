@@ -3627,6 +3627,20 @@ export const en = {
 "settings.researchBudgetHint": "Read-only research hits a convergence nudge at 10 rounds (or 2x the rolling median duration); the model may request a doubling with a reason, up to 3 times to 80 rounds. Off keeps only the 10-round nudge and hides the extension tool.",
 "settings.researchBudget.on": "On",
 "settings.researchBudget.off": "Off",
+  // tl1787 piece ⑤/A: tl1397/tl1419 ranges partial-compaction family (new
+  // contextGovernance card rows; previously config keys only, no settings UI).
+  "settings.rangesCompact": "Partial compaction (ranges incremental)",
+  "settings.rangesCompactHint": "Folds the unfolded increment since the last summary boundary into an appended short note: the head prefix stays byte-for-byte (prefix-cache friendly) and the summary input is the increment only, independent of history length. Unstable tier: recent details degrade to summary level and the cache win depends on provider caching; over-the-line runs fall back to full compaction.",
+  "settings.rangesCompact.on": "On",
+  "settings.rangesCompact.off": "Off",
+  "settings.rangesCompact.windowMinutes": "Model-driven fold sliding window (minutes)",
+  "settings.rangesCompact.windowMinutesHint": "Window length for the model-driven ranges fold gate (the switch two rows below); 0 = built-in default of 5 minutes.",
+  "settings.modelRangesCompact": "Model-driven partial compaction (compress_ranges tool)",
+  "settings.modelRangesCompactHint": "Injects the compress_ranges tool so the model decides when/what to fold (executed host-side; requires the ranges lane above). Flood gate: folds per sliding window are capped (default 2 per 5 minutes).",
+  "settings.modelRangesCompact.on": "On",
+  "settings.modelRangesCompact.off": "Off",
+  "settings.modelRangesCompact.windowMax": "Folds per window",
+  "settings.modelRangesCompact.windowMaxHint": "How many model-driven folds the sliding window allows; 0 = built-in default of 2.",
 "settings.preapproveManagedPaths": "Managed-path pre-approval",
 "settings.preapproveManagedPathsHint": "When on, and only under autopilot (unattended runs), the checked sensitive write classes below skip their human approval prompt. Every category ships unchecked: off keeps today's prompts exactly as they are.",
 "settings.preapproveManagedPaths.on": "On",
@@ -5124,10 +5138,10 @@ export const en = {
   // 任务 1368 线2：whole-conversation delete — the main transcript (with its
   // v3 versions and sidecars) and every copy go into the two recoverable
   // trashes (session trash for the main, forced-archive .trash for copies).
-  "settings.recoveryCopiesDeleteConversation": "Delete selected conversations",
-  "settings.recoveryCopiesDeleteConversationTitle": "Delete selected conversations (with every copy)",
-  "settings.recoveryCopiesDeleteConversationLead": "Conversations about to be deleted (main transcript, all versions and copies, sidecars move to the trash together)",
-  "settings.recoveryCopiesDeleteConversationWarn": "The main transcript and every copy move to the recoverable trash (nothing is permanently deleted); tabs holding these conversations are closed.",
+  "settings.recoveryCopiesDeleteConversation": "Archive to Recycle Bin (with every copy)",
+  "settings.recoveryCopiesDeleteConversationTitle": "Archive selected conversations to the Recycle Bin (with every copy)",
+  "settings.recoveryCopiesDeleteConversationLead": "Conversations about to be archived (main transcript, all versions and copies, sidecars move to the trash together)",
+  "settings.recoveryCopiesDeleteConversationWarn": "The main transcript and every copy move to the recoverable trash (nothing is permanently deleted, restorable from the trash); tabs holding these conversations are closed.",
   "settings.recoveryCopiesOutcomeConversationDeleted": "Deleted (main transcript trashed, {copies} copies archived)",
   "settings.recoveryCopiesOutcomeConversationCopiesOnly": "Deleted (main transcript was already gone, {copies} copies archived)",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
@@ -5325,6 +5339,19 @@ export const en = {
   "settings.recoveryCopiesPreRepairDeleteFailed": "deleting the pre-repair backup failed",
   "settings.recoveryCopiesPreRepairRecycleNote": "The backup directory goes to the system recycle bin — restore it from there if the deletion was a mistake. Backups whose inner paths are too long travel through a short-path staging dir first; restoring such an item from the recycle bin lands it in the staging dir (not the original spot), with over-long file names shortened.",
   "settings.recoveryCopiesPreRepairSoleWarn": "The conversation no longer exists and this backup is its only surviving copy. This cannot be undone — delete only if you no longer need it.",
+  // tl1787: the archived shape (the archive chain moved the host and its
+  // backups into the .trash bucket together) row marker and confirm-dialog
+  // disclosure; the merge-back entry copy (piece 3/B, graft reuse).
+  "settings.recoveryCopiesPreRepairArchived": "original conversation is archived",
+  "settings.recoveryCopiesPreRepairArchivedNote": "This backup was moved into the app's trash bucket together with its conversation (archived). Deleting sends this backup to the system recycle bin (restorable); the rest of the bucket is untouched.",
+  "settings.recoveryCopiesPreRepairMerge": "Merge into main",
+  "settings.recoveryCopiesPreRepairMergeHint": "Merge the backup's unique history that the current main is missing back into the main line (purely local, no model calls) — folded/rewritten-away history is not lost.",
+  "settings.recoveryCopiesPreRepairMergeTitle": "Merge pre-repair backup into the main line",
+  "settings.recoveryCopiesPreRepairMergeLead": "The current main is the base; the backup's unique turns missing from the main are grafted back at the head (add-only, duplicates never double).",
+  "settings.recoveryCopiesPreRepairMergeWarn": "The main transcript is rewritten in place (existing lines stay byte-for-byte; the event log folds into one replace record, replayable until the next rotation); the merged history is visible in the conversation.",
+  "settings.recoveryCopiesPreRepairMergeDone": "Grafted {n} messages back into the main line",
+  "settings.recoveryCopiesPreRepairMergeNothing": "The main already contains everything in this backup — nothing to merge",
+  "settings.recoveryCopiesPreRepairMergeFailed": "Merge failed",
   "settings.recoveryCopiesPreRepairCleanSelected": "Clean selected ({n})",
   "settings.recoveryCopiesPreRepairCleanAll": "Clean all",
   "settings.recoveryCopiesPreRepairCleanTitle": "Clean pre-repair backups",

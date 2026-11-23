@@ -148,6 +148,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalContextBudget",
             "experimentalResearchBudget",
             "experimentalProactiveCompact",
+            // tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩族灯。
+            "experimentalRangesCompact",
+            "experimentalModelRangesCompact",
             "experimentalColdCacheCompact",
             "experimentalCurateContext",
             "experimentalReviewHint",
@@ -160,6 +163,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "compactionParallel", labelKey: "settings.compactionParallel", tier: "optional" },
             { id: "budgetControl", labelKey: "settings.contextBudget", tier: "recommended" },
             { id: "compressOpt", labelKey: "settings.proactiveCompact", tier: "recommended" },
+            // tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩两行（此前 Go
+            // 渲染表已登记、前端无处挂——设置页入口落地，未稳定档）。
+            { id: "rangesCompact", labelKey: "settings.rangesCompact", tier: "unstable" },
+            { id: "modelRangesCompact", labelKey: "settings.modelRangesCompact", tier: "unstable" },
             { id: "cacheTuning", labelKey: "settings.cacheTuning", tier: "optional" },
             // tl1309：乐观并行（原独立卡，推荐档，并入本卡尾部；pane 内
             // bash_heavy_guard / reasoning_only_continuation 为其家族伴生行，

@@ -3179,6 +3179,67 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     })}
                   />
                 </SettingsField>
+                {/* tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩两行（此前只有
+                    config 键与 Go 渲染表登记，设置页无处读值、点击无桥=写不进）。
+                    主行=tl1397 迭代一小折通道（未稳定档，labLabel 徽章），随行窗
+                    口旋钮；模型驱动行=tl1419（需 ranges 通道开才有折叠发生），
+                    随行滑动窗口两旋钮（0=内置默认，配置层钳制）。 */}
+                <SettingsField label={labLabel("rangesCompact", t("settings.rangesCompact"))} hint={t("settings.rangesCompactHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalRangesCompact) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalRangesCompact(on))}
+                      >
+                        {t(on ? "settings.rangesCompact.on" : "settings.rangesCompact.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.rangesCompact.windowMinutes")} hint={t("settings.rangesCompact.windowMinutesHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1440}
+                    defaultValue={s.modelRangesFoldWindowMinutes ?? 0}
+                    disabled={busy || !Boolean(s.experimentalRangesCompact)}
+                    onBlur={(e) => {
+                      const v = Math.max(0, Math.min(1440, Math.floor(Number(e.target.value) || 0)));
+                      e.target.value = String(v);
+                      void apply(() => app.SetModelRangesFoldWindowMinutes(v));
+                    }}
+                  />
+                </SettingsField>
+                <SettingsField label={labLabel("modelRangesCompact", t("settings.modelRangesCompact"))} hint={t("settings.modelRangesCompactHint")} icon={<Sparkles size={18} />}>
+                  <SettingsOptions layout="field" className="set-seg">
+                    {[false, true].map((on) => (
+                      <button
+                        key={String(on)}
+                        className={`set-seg__btn${Boolean(s.experimentalModelRangesCompact) === on ? " set-seg__btn--on" : ""}`}
+                        disabled={busy}
+                        onClick={() => void apply(() => app.SetExperimentalModelRangesCompact(on))}
+                      >
+                        {t(on ? "settings.modelRangesCompact.on" : "settings.modelRangesCompact.off")}
+                      </button>
+                    ))}
+                  </SettingsOptions>
+                </SettingsField>
+                <SettingsField label={t("settings.modelRangesCompact.windowMax")} hint={t("settings.modelRangesCompact.windowMaxHint")} icon={<Sparkles size={18} />}>
+                  <input
+                    type="number"
+                    min={0}
+                    max={50}
+                    defaultValue={s.modelRangesFoldWindowMax ?? 0}
+                    disabled={busy || !Boolean(s.experimentalModelRangesCompact)}
+                    onBlur={(e) => {
+                      const v = Math.max(0, Math.min(50, Math.floor(Number(e.target.value) || 0)));
+                      e.target.value = String(v);
+                      void apply(() => app.SetModelRangesFoldWindowMax(v));
+                    }}
+                  />
+                </SettingsField>
                 {/* tl1487 一组④（卡片化合并）：冷缓存压缩主开关 + 触发上下文
                     下限 + 闲置触发时长三行并一卡（1124 聚合子卡先例
                     .set-highrisk-authorize / .set-coldcache-card）——三行各读

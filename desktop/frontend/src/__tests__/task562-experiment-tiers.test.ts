@@ -166,13 +166,16 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1733：memoryIndexSlim（可选）入表——可选 25→26、总数 87→88。
   // tl1746：tasklistPanel（未稳定）入表——未稳定 3→4、总数 88→89。
   // tl1718：composerToolsFold（composer 工具组默认折叠，推荐档）入表——
-  // 推荐 50→51、总数 89→90。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 4 && counts.retired === 0,
-    `register counts are 9 稳定/51/26/4/0 (got ${JSON.stringify(counts)})`);
+  // 推荐 50→51、总数 89→90。tl1787 件⑤/A：rangesCompact + modelRangesCompact
+  // （tl1397/tl1419 ranges 主动局部压缩，未稳定档）入表——未稳定 4→6、
+  // 总数 90→92（两侧共享，Go-only 豁免同步收回两条）。
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 6 && counts.retired === 0,
+    `register counts are 9 稳定/51/26/6/0 (got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 90, `register holds exactly 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/26/4/0 (tl1718 composerToolsFold 入推荐档)");
+  // tl1787 件⑤/A：ranges 两开关入表 → 90→92。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 92, `register holds exactly 92 features (tl1787 rangesCompact + modelRangesCompact added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 6 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/26/6/0 (tl1787 ranges 两开关入未稳定档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -263,6 +266,7 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1718：composerToolsFold 两侧共享入表——70→71。
   ok(Object.keys(goTiers).length === 71, `Go registry parses to 71 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold; got ${Object.keys(goTiers).length})`);
 
+
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
   const goOnly = goIds.filter((id) => !feIds.includes(id));
@@ -272,7 +276,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 加入（同上 config-only 豁免口径，5 条）。tl1733：recallTool /
   // zeroSummaryCompact 两 Go-only 条目补入豁免名单（基点预存红收口，
   // 7 条）；memoryIndexSlim 两侧共享，不入名单。
-  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "modelRangesCompact", "networkRetryBudget", "rangesCompact", "recallTool", "sessionCwdFollow", "zeroSummaryCompact"]),
+  // tl1787 件⑤/A：rangesCompact/modelRangesCompact 设置页入口落地（上下文
+  // 治理卡两行）——豁免收回两条（7→5），两侧转共享。
+  ok(JSON.stringify(goOnly) === JSON.stringify(["interruptedAutoResume", "networkRetryBudget", "recallTool", "sessionCwdFollow", "zeroSummaryCompact"]),
     `Go-only ids are exactly the config-only exemption (got ${JSON.stringify(goOnly)})`);
   // tl 1132：startupLoading（「启动与加载」纯前端容器 id，Go 渲染表无条目，
   // 同 tabManagement 豁免）加入 feOnly。tl1309 卡②：runtimeObservability 加入。
@@ -336,7 +342,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1718 composerToolsFold +1；tl1741r2 打回返修：五成员行随卡体回归 +
   // resourceGovernance 六成员回卡（runtimeReuse=无开关展示行）——merged
   // cards 成员数以合并态实测为准（ok 值首猜 63，跑批校正）。
-  ok(members.length === 63, `merged cards carry 63 member features (tl1741r2 card bodies restored; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1787 件⑤/A：contextGovernance 卡补 rangesCompact + modelRangesCompact
+  // 两成员行——63→65。
+  ok(members.length === 65, `merged cards carry 65 member features (tl1787 ranges two rows added; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -361,15 +369,18 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1733：memoryIndexSlim rail 入口计入 → 87→88。
   // tl1746：tasklistPanel rail 入口计入 → 88→89。
   // tl1718：composerToolsFold 入表计入 → 89→90。
-  ok(covered.size === 90, "rail entries cover all 90 features (tl1746 tasklistPanel + tl1718 composerToolsFold added)");
+  // tl1787 件⑤/A：ranges 两开关入表计入 → 90→92。
+  ok(covered.size === 92, "rail entries cover all 92 features (tl1787 rangesCompact + modelRangesCompact added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
   // 子项档位——它们仍在布局里，只是不上卡头），labEntryBadgeTier 钉「卡头
   // 输出」（单枚=清单首位）。合并卡的多档成员不再让卡头出现两枚徽章。
   const agg = (id: string) => labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, id);
-  ok(JSON.stringify(railTiersForDefault("contextGovernance")) === JSON.stringify(["recommended", "optional"]) && agg("contextGovernance") === "recommended",
-    `contextGovernance: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("contextGovernance"))} → ${String(agg("contextGovernance"))})`);
+  // tl1787 件⑤/A：ranges 两成员行（未稳定档）入卡——聚合输入 [推荐,可选,
+  // 未稳定]，卡头仍单枚推荐（推荐压过未稳定）。
+  ok(JSON.stringify(railTiersForDefault("contextGovernance")) === JSON.stringify(["recommended", "optional", "unstable"]) && agg("contextGovernance") === "recommended",
+    `contextGovernance: input [推荐,可选,未稳定] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("contextGovernance"))} → ${String(agg("contextGovernance"))})`);
   // 任务 1005 → tl1741r2：autopilot 卡体回归（无主开关）——fullAccess 仍是
   // 唯一带主开关的 stable 主卡（其余 stable 卡无开关行，见 561 M8 清单）。
   ok(JSON.stringify(railTiersForDefault("fullAccess")) === JSON.stringify(["stable"]) && agg("fullAccess") === "stable", "standalone entry badges itself (fullAccess, tl1741r2 后唯一带开关的 stable 主卡)");

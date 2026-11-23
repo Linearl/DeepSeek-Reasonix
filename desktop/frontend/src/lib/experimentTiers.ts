@@ -235,7 +235,13 @@ export type TierFeatureId =
   // 参数卡同款豁免）。
   | "gcPercent"
   // tl1309 卡③：后台会话闲置释放（775 首批参数卡）入表——推荐档随迁，同上。
-  | "idleReleaseMinutes";
+  | "idleReleaseMinutes"
+  // tl1787 件⑤/A：tl1397 ranges 主动局部压缩（Go 渲染表既有条目转两侧共享
+  // ——此前 Go-only config-only 豁免，设置页入口落地时收回）。
+  | "rangesCompact"
+  // tl1419 模型驱动 ranges 折叠（同上口径转两侧共享；窗口两键为家族子键，
+  // 不另计条目）。
+  | "modelRangesCompact";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -275,6 +281,11 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   cacheTuning: "optional",
   // tl1733：记忆注入瘦身（默认关=默认瘦身注入管线；开=应急旁路仅 pinned）。
   memoryIndexSlim: "optional",
+  // tl1787 件⑤/A：tl1397 ranges 小段增量压缩（未稳定档，镜像 Go 渲染表——
+  // Go-only config-only 豁免随设置页入口落地收回）。
+  rangesCompact: "unstable",
+  // tl1419：模型驱动 ranges 折叠（未稳定档，同上）。
+  modelRangesCompact: "unstable",
   // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
   // 用户 20261107 八组清单「冷缓存压缩→可选」）。
   coldCacheCompact: "optional",
@@ -592,12 +603,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 3→4、总数 88→89（Go 渲染表同步 76→77，tasklist_db_path 为家族子键不
  * 另计）。
  * tl1718：composerToolsFold（composer 工具组默认折叠，界面组视图布局卡成员，
- * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。 */
+ * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。
+ * tl1787 件⑤/A：rangesCompact + modelRangesCompact（tl1397/tl1419 ranges 主动
+ * 局部压缩两开关，未稳定档）入表——未稳定 4→6、总数 90→92（两侧共享，
+ * Go-only 豁免同步收回两条）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
   optional: 26,
-  unstable: 4,
+  unstable: 6,
   retired: 0,
 };
 
