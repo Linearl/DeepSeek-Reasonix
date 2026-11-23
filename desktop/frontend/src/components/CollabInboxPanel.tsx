@@ -398,6 +398,17 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
   const [chains, setChains] = useState<CollabMailChains | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // tl1768：当前视图内已消除条目的 id 集——批量消除跳过已消除行、批量恢复
+  // 只作用于已消除行（chains 视图展开到链内条目）。必须挂在早退 return 之前的
+  // hooks 区：晚于此处的 useMemo 会在面板开合时钩数漂移（React hooks 顺序
+  // 契约），渲染期读 snapshot 直取，不经 rows（rows 在早退之后才声明）。
+  const dismissedIds = useMemo(() => {
+    const entries =
+      view === "chains"
+        ? (chains?.chains ?? []).flatMap((c) => c.entries)
+        : (snapshot?.entries ?? []);
+    return new Set(entries.filter((e) => e.dismissed).map((e) => e.id));
+  }, [view, chains, snapshot]);
   // 任务 856 ②：删除/清空的二次确认（项目统一 ConfirmDialog，danger 声调）。
   const { confirm, dialog: confirmDialog } = useConfirmDialog();
   // 任务587（失败态与空态分离）：loading = 读取进行中（不得冒充「暂无信件」），
@@ -719,19 +730,22 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
 
   // 任务 856 ②：批量删除——二次确认（带「对话留档不影响已注入内容」语义句，
   // demo v2 钦定文案）→ 物理删除 → 退出多选并刷新。chains 视图把选中的
-  // threadId 展开为链内全部信件 id。
+  // threadId 展开为链内全部信件 id（tl1768：展开规则提为 selectedEntryIDs，
+  // 批量消除/恢复共用同一展开，不造第二份选择语义）。
+  const selectedEntryIDs = (): string[] => {
+    if (view !== "chains") return [...selected];
+    const chainsById = new Map((chains?.chains ?? []).map((c) => [c.threadId, c]));
+    const expanded: string[] = [];
+    for (const tid of selected) {
+      for (const e of chainsById.get(tid)?.entries ?? []) expanded.push(e.id);
+    }
+    return expanded;
+  };
+
   const deleteSelected = async () => {
     if (selected.size === 0) return;
-    let ids = [...selected];
-    if (view === "chains") {
-      const chainsById = new Map((chains?.chains ?? []).map((c) => [c.threadId, c]));
-      const expanded: string[] = [];
-      for (const tid of selected) {
-        for (const e of chainsById.get(tid)?.entries ?? []) expanded.push(e.id);
-      }
-      ids = expanded;
-      if (ids.length === 0) return;
-    }
+    const ids = selectedEntryIDs();
+    if (ids.length === 0) return;
     const ok = await confirm({
       title: t("collabInbox.deleteConfirmTitle", { n: view === "chains" ? ids.length : selected.size }),
       message: (
@@ -757,6 +771,26 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
     } finally {
       setBusy(false);
     }
+  };
+
+  // tl1768：批量消除/恢复——可恢复路径（与逐行消除同一写口 DismissCollabMail
+  // / UndismissCollabMail，无二次确认；不可逆路径仍是带确认的批量删除）。
+  // 已消除的行不再重复消除、未消除的行无需恢复——各按钮只操作交集
+  // （dismissedIds 在 rows 声明之后计算，见下方 useMemo）。
+  const archiveSelected = async () => {
+    const ids = selectedEntryIDs().filter((id) => !dismissedIds.has(id));
+    if (ids.length === 0) return;
+    await act(() => b.DismissCollabMail(ids));
+    setMulti(false);
+    setSelected(new Set());
+  };
+
+  const restoreSelected = async () => {
+    const ids = selectedEntryIDs().filter((id) => dismissedIds.has(id));
+    if (ids.length === 0) return;
+    await act(() => b.UndismissCollabMail(ids));
+    setMulti(false);
+    setSelected(new Set());
   };
 
   // 任务 856 ②：清空全部——并入清理条件区的入口 + 二次确认（不可撤销；
@@ -818,16 +852,32 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
       ? (chains?.chains ?? []).map((chain) => chain.threadId)
       : rows.map((entry) => entry.id);
   const allSelected = selectionKeys.length > 0 && selectionKeys.every((key) => selected.has(key));
-  const toggleAllSelected = () => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (allSelected) {
-        for (const key of selectionKeys) next.delete(key);
-      } else {
-        for (const key of selectionKeys) next.add(key);
+  // tl1768：全选跨页——懒加载下「全选」若只选已加载页，批量清理仍要求用户先
+  // 滚完整个长列表（tl1230 首屏 20 条）；截断态先取一页全量（与 markAllRead
+  // 同款后端 hard max）再选，失败退回已加载页并留痕，不静默吞。全部已选时
+  // 仍按已加载页语义清除（与旧行为一致，只读操作无需重取）。
+  const selectAllMatching = async () => {
+    let keys = selectionKeys;
+    if (snapshot?.truncated && view === "list") {
+      try {
+        const full = await b.ListCollabMail(bucket, from.trim(), to.trim(), state, collabInboxMaxPageSize, showDismissed, order);
+        keys = (full.entries ?? []).map((entry) => entry.id);
+      } catch (err) {
+        reportFrontendLog("collab-inbox", "select-all full fetch failed", String(err), "warn");
       }
-      return next;
-    });
+    }
+    setSelected(new Set(keys));
+  };
+  const toggleAllSelected = () => {
+    if (allSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const key of selectionKeys) next.delete(key);
+        return next;
+      });
+      return;
+    }
+    void selectAllMatching();
   };
 
   // 任务587（失败态与空态分离）：四个展示位互斥——
@@ -1314,7 +1364,11 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
           ))}
       </div>
 
-      {/* 任务 856 ②：批量操作浮动条（选中后浮现：全选/删除/取消）。 */}
+      {/* 任务 856 ②：批量操作浮动条（选中后浮现：全选/消除/删除/取消）。
+          tl1768：增「消除」（可恢复归档，与逐行消除同一写口与词汇；showDismissed
+          视图下加「恢复」），与带二次确认的不可逆「删除」并列成双语义
+          （tl1722 回收/硬删先例）；「全选」升格为跨页全量（懒加载长列表不再
+          要求滚完才能全选）。 */}
       {multi && (
         <div className="collab-inbox-panel__batchbar" role="toolbar" aria-label={t("collabInbox.batchbar")}>
           <span className="collab-inbox-panel__batchcount">{t("collabInbox.selectedCount", { n: selected.size })}</span>
@@ -1322,16 +1376,28 @@ export function CollabInboxPanel({ bindings, directory, embedded }: { bindings?:
             type="button"
             className="btn btn--secondary btn--small"
             disabled={busy}
-            onClick={() => {
-              if (view === "chains") {
-                setSelected(new Set((chains?.chains ?? []).map((c) => c.threadId)));
-              } else {
-                setSelected(new Set(rows.map((entry) => entry.id)));
-              }
-            }}
+            onClick={() => void selectAllMatching()}
           >
             {t("collabInbox.selectAll")}
           </button>
+          <button
+            type="button"
+            className="btn btn--secondary btn--small"
+            disabled={busy || !selectedEntryIDs().some((id) => !dismissedIds.has(id))}
+            onClick={() => void archiveSelected()}
+          >
+            {t("collabInbox.dismiss")}
+          </button>
+          {showDismissed && (
+            <button
+              type="button"
+              className="btn btn--secondary btn--small"
+              disabled={busy || !selectedEntryIDs().some((id) => dismissedIds.has(id))}
+              onClick={() => void restoreSelected()}
+            >
+              {t("collabInbox.restore")}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn--danger btn--small"
