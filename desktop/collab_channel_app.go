@@ -221,7 +221,19 @@ func (a *App) ChannelRemoveMember(ref, contactID string) (collabchannel.Channel,
 // — 任务 803 ⑥ — every line the UI can show is marked read for human:local
 // (UI 可见即已读; no mailbox round-trip exists to drive it).
 // limit <= 0 uses 50; hard max 200 (a chat tail, same as ReadCollabChannel).
+// tl1780: 与 ReadCollabChannel 共用 readCollabChannelView 读主体，仅多传
+// sinceMs 起点并开启已读标记。
 func (a *App) ChannelMessagesForHuman(ref string, sinceMs int64, limit int) (CollabChannelReadView, error) {
+	return readCollabChannelView(ref, sinceMs, limit, true)
+}
+
+// readCollabChannelView 是 ChannelMessagesForHuman 与 ReadCollabChannel 的共同
+// 读主体（tl1780 合并，两 Wails 桥入口各自保留）：打开 store、读频道头、按
+// limit 截尾（<=0 用 50，上限 200）读 recent lines、附 per-recipient fan-out
+// 行。两入口仅差两点：sinceMs 起点与 UI 可见即已读——ReadCollabChannel 是
+// bot/面板侧聊天尾读，固定从头（0）且不触发已读标记；本包的人类入口带调用方
+// sinceMs，并把展示到的行替 human:local 落已读。
+func readCollabChannelView(ref string, sinceMs int64, limit int, markHumanVisible bool) (CollabChannelReadView, error) {
 	out := CollabChannelReadView{Messages: []CollabChannelMessageView{}}
 	store, err := collabchannel.Open(config.SessionCollabMailDir())
 	if err != nil {
@@ -249,12 +261,14 @@ func (a *App) ChannelMessagesForHuman(ref string, sinceMs int64, limit int) (Col
 	// 803 ⑥: UI 可见即已读 — settle any still-queued human rows (visibility
 	// replaces the skipped mail delivery) and mark them read. No-op for lines
 	// without human fan-out rows (e.g. the human's own messages).
-	ids := make([]string, 0, len(messages))
-	for _, m := range messages {
-		ids = append(ids, m.ID)
-	}
-	if len(ids) > 0 {
-		_, _ = store.MarkHumanVisible(ref, ids)
+	if markHumanVisible {
+		ids := make([]string, 0, len(messages))
+		for _, m := range messages {
+			ids = append(ids, m.ID)
+		}
+		if len(ids) > 0 {
+			_, _ = store.MarkHumanVisible(ref, ids)
+		}
 	}
 
 	fanout, err := store.FanoutStates(ref)

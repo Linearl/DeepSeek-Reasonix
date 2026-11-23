@@ -282,45 +282,8 @@ func (a *App) ListCollabChannels() ([]collabchannel.Channel, error) {
 // ReadCollabChannel returns one channel's header plus its recent lines with
 // per-recipient fan-out rows attached (每成员送达/已读标注). limit <= 0 uses
 // 50; hard max 200 (the panel is a chat tail, not an export).
+// tl1780: 与 ChannelMessagesForHuman 共用 readCollabChannelView 读主体——
+// 本入口固定从头（sinceMs=0）读且不触发 human 已读标记，与原实现逐行等价。
 func (a *App) ReadCollabChannel(ref string, limit int) (CollabChannelReadView, error) {
-	out := CollabChannelReadView{Messages: []CollabChannelMessageView{}}
-	store, err := collabchannel.Open(config.SessionCollabMailDir())
-	if err != nil {
-		return out, err
-	}
-	defer store.Close()
-
-	channel, err := store.Channel(ref)
-	if err != nil {
-		return out, err
-	}
-	out.Channel = channel
-
-	if limit <= 0 {
-		limit = 50
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	messages, err := store.Messages(ref, 0, limit)
-	if err != nil {
-		return out, err
-	}
-	fanout, err := store.FanoutStates(ref)
-	if err != nil {
-		return out, err
-	}
-	byMessage := make(map[string][]collabchannel.FanoutRow, len(messages))
-	for _, row := range fanout {
-		byMessage[row.MessageID] = append(byMessage[row.MessageID], row)
-	}
-	out.Messages = make([]CollabChannelMessageView, 0, len(messages))
-	for _, m := range messages {
-		view := CollabChannelMessageView{ID: m.ID, Sender: m.Sender, Body: m.Body, At: m.At, CancelledAt: m.CancelledAt}
-		// FanoutStates orders by (message at, member) — keep that order so the
-		// member annotation reads in the roster's own order.
-		view.Fanout = byMessage[m.ID]
-		out.Messages = append(out.Messages, view)
-	}
-	return out, nil
+	return readCollabChannelView(ref, 0, limit, false)
 }
