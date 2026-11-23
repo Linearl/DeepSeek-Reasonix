@@ -354,9 +354,9 @@ type SettingsView struct {
 	// (task 1053 — the model-level sibling of DefaultEffort). "" / a missing
 	// entry means "auto"; the vocabulary each row offers still rides the
 	// ProviderView.modelOverrides round-trip.
-	ModelEfforts           map[string]string `json:"modelEfforts"`
-	PlannerModel           string            `json:"plannerModel"`
-	GuardianModel          string            `json:"guardianModel"`
+	ModelEfforts  map[string]string `json:"modelEfforts"`
+	PlannerModel  string            `json:"plannerModel"`
+	GuardianModel string            `json:"guardianModel"`
 	// tl1741：Autopilot 偏好键随撤开关退役（新会话恒默认 unattended）；
 	// MaxRuntime/ApprovalGrace 是运行护栏键，保留展示（config 手写可调）。
 	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
@@ -502,6 +502,12 @@ type SettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// tl1787 件⑤/A: tl1397/tl1419 ranges 主动局部压缩族的设置面读数（此前只有
+	// config 键与 Go 渲染表登记，无 desktop 快照字段=设置页无处读值）。
+	ExperimentalRangesCompact      bool `json:"experimentalRangesCompact"`
+	ExperimentalModelRangesCompact bool `json:"experimentalModelRangesCompact"`
+	ModelRangesFoldWindowMinutes   int  `json:"modelRangesFoldWindowMinutes"`
+	ModelRangesFoldWindowMax       int  `json:"modelRangesFoldWindowMax"`
 	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
 	// Loopback-only random port, boot snapshot — restart to apply.
 	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
@@ -895,6 +901,11 @@ type DesktopStartupSettingsView struct {
 	ExperimentalSubagentTps        bool `json:"experimentalSubagentTps"`
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
+	// tl1787 件⑤/A: ranges 主动局部压缩族读数（与上一个 struct 同字段集）。
+	ExperimentalRangesCompact      bool `json:"experimentalRangesCompact"`
+	ExperimentalModelRangesCompact bool `json:"experimentalModelRangesCompact"`
+	ModelRangesFoldWindowMinutes   int  `json:"modelRangesFoldWindowMinutes"`
+	ModelRangesFoldWindowMax       int  `json:"modelRangesFoldWindowMax"`
 	// Task 588: the snippets ride the boot snapshot alongside the gate —
 	// without them applyDesktopPreferences re-filled the composer state with
 	// an empty list on every restart (gate on, entry gone) until a settings
@@ -1761,6 +1772,12 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalSubagentTps = cfg.DesktopSubagentTpsEnabled()
 		view.ExperimentalCompletionSummary = cfg.DesktopCompletionSummaryEnabled()
 		view.ExperimentalQuickCommands = cfg.Desktop.ExperimentalQuickCommands
+		// tl1787 件⑤/A: ranges 主动局部压缩族读数（tl1397 迭代一开关 +
+		// tl1419 模型驱动开关 + 滑动窗口两家族子键；0=内置默认）。
+		view.ExperimentalRangesCompact = cfg.Agent.ExperimentalRangesCompact
+		view.ExperimentalModelRangesCompact = cfg.Agent.ExperimentalModelRangesCompact
+		view.ModelRangesFoldWindowMinutes = cfg.Agent.ModelRangesFoldWindowMinutes
+		view.ModelRangesFoldWindowMax = cfg.Agent.ModelRangesFoldWindowMax
 		// Task 385a: lab 回答风格 gate + persisted output_style readback.
 		view.ExperimentalOutputStyleUI = cfg.Desktop.ExperimentalOutputStyleUI
 		view.OutputStyle = cfg.Agent.OutputStyle
@@ -2004,9 +2021,9 @@ func (a *App) Settings() SettingsView {
 		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
-		ExperimentalTasklistPanel:  cfg.Desktop.ExperimentalTasklistPanel, // tl1746 tasklist panel switch
-		TasklistDBPath:             cfg.Desktop.TasklistDBPath,            // tl1746 db-path family key
-		ExperimentalTrajectoryView: cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
+		ExperimentalTasklistPanel:    cfg.Desktop.ExperimentalTasklistPanel,  // tl1746 tasklist panel switch
+		TasklistDBPath:               cfg.Desktop.TasklistDBPath,             // tl1746 db-path family key
+		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the
 		// switch rendered "off" even with the feature running (the 81/123
@@ -2033,7 +2050,7 @@ func (a *App) Settings() SettingsView {
 		// tl 1165: smooth streaming scroll follow readback (two-view lesson).
 		ExperimentalSmoothScrollFollow: cfg.Desktop.ExperimentalSmoothScrollFollow,
 		// tl 1132: startup splash overlay readback (two-view lesson).
-		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
+		ExperimentalStartupSplash:       cfg.Desktop.ExperimentalStartupSplash,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
@@ -2054,6 +2071,11 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSubagentTps:        cfg.DesktopSubagentTpsEnabled(),
 		ExperimentalCompletionSummary:  cfg.DesktopCompletionSummaryEnabled(),
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
+		// tl1787 件⑤/A: ranges 主动局部压缩族读数（与 view 装配点同字段集）。
+		ExperimentalRangesCompact:      cfg.Agent.ExperimentalRangesCompact,
+		ExperimentalModelRangesCompact: cfg.Agent.ExperimentalModelRangesCompact,
+		ModelRangesFoldWindowMinutes:   cfg.Agent.ModelRangesFoldWindowMinutes,
+		ModelRangesFoldWindowMax:       cfg.Agent.ModelRangesFoldWindowMax,
 		// Task 385a: lab 回答风格 gate + persisted output_style readback.
 		ExperimentalOutputStyleUI: cfg.Desktop.ExperimentalOutputStyleUI,
 		OutputStyle:               cfg.Agent.OutputStyle,
