@@ -1319,16 +1319,14 @@ func removeProviderAccess(c *config.Config, names ...string) {
 	c.Desktop.ProviderAccess = out
 }
 
+// tl1780: 原 providerViewFromEntry → ForRoot → ForRootWithResolver →
+// AndCredentials 四级直筒链压平——ForRootWithResolver 全仓零调用者（仅链内
+// 上一级引用），ForRoot 唯一调用者即首层 providerViewFromEntry，两级中间层
+// 均为纯转发（每层只补默认值 root="."、nil resolver、providerCredentials-
+// Revision()），首层直调终层，语义逐层等价。终层保留（officialProviderViews
+// 与 settings 主读路径直接使用）。
 func providerViewFromEntry(p config.ProviderEntry, builtIn, added bool) ProviderView {
-	return providerViewFromEntryForRoot(p, builtIn, added, ".")
-}
-
-func providerViewFromEntryForRoot(p config.ProviderEntry, builtIn, added bool, root string) ProviderView {
-	return providerViewFromEntryForRootWithResolver(p, builtIn, added, root, nil)
-}
-
-func providerViewFromEntryForRootWithResolver(p config.ProviderEntry, builtIn, added bool, root string, resolver *config.CredentialResolver) ProviderView {
-	return providerViewFromEntryForRootWithResolverAndCredentials(p, builtIn, added, root, resolver, providerCredentialsRevision())
+	return providerViewFromEntryForRootWithResolverAndCredentials(p, builtIn, added, ".", nil, providerCredentialsRevision())
 }
 
 func providerViewFromEntryForRootWithResolverAndCredentials(p config.ProviderEntry, builtIn, added bool, root string, resolver *config.CredentialResolver, credentialsRevision string) ProviderView {
