@@ -102,18 +102,25 @@ func TestRemoteRuntimeInboxReceiptSnapshotAndConsumptionOverHTTP(t *testing.T) {
 		t.Fatalf("dispatched follow-up did not publish its composer-hidden state while still running: %+v, %v", active, err)
 	}
 	runner.release <- struct{}{}
+	// tl1789: wait for the idle transition, then poll the snapshot on its own
+	// ticker — the durable-item removal is async and can lag the idle event,
+	// and further state events may never arrive, so event-driven re-checks
+	// raced the removal in full-package runs (standalone 3/3 green).
+	settled := false
 	deadline := time.NewTimer(5 * time.Second)
 	defer deadline.Stop()
+	poll := time.NewTicker(200 * time.Millisecond)
+	defer poll.Stop()
 	for {
 		select {
 		case state := <-sink.states:
-			if state.Phase != "idle" {
+			if state.Phase == "idle" {
+				settled = true
+			}
+		case <-poll.C:
+			if !settled {
 				continue
 			}
-			// tl1789: the durable-item removal can lag the idle transition
-			// (async consumption) — asserting on the FIRST idle event raced it
-			// in full-package runs (standalone 3/3 green). Poll until the
-			// removal lands or the budget expires.
 			consumed, err := a.InboxSnapshot(tab.id)
 			if err == nil && consumed.Items != nil && len(consumed.Items) == 0 && consumed.Revision > snapshot.Revision {
 				return
