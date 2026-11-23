@@ -59,15 +59,20 @@ process.stdout.write("\n[tl 1184] tab-switch bottom restoration\n");
   k.observeNativeScroll(snapshot(AT_BOTTOM_TOP));
   ok(k.intent === "tail", "D1: after reaching bottom, intent is tail");
 
-  // Streaming growth arrives: same scrollTop, taller content -> the naive
-  // atBottom computation now says "not at bottom" and demotes to reader.
+  // Streaming growth arrives: same scrollTop, taller content. tl 1184 pinned
+  // this observation as "documents the bug window" — the naive atBottom
+  // computation said "not at bottom" and demoted a bottom-parked tail view to
+  // reader without any user displacement. tl 1776 closes that window: the
+  // intent/anchor derivation is now gated on real displacement too (the same
+  // rule tl 1184 already applied to atBottomValue), so growth alone keeps the
+  // tail follow alive.
   k.beginUserGesture(snapshot(AT_BOTTOM_TOP, 1600));
   k.observeNativeScroll(snapshot(AT_BOTTOM_TOP, 1600));
-  ok(k.intent === "reader", "D1: growth alone can still demote (documents the bug window)");
+  ok(k.intent === "tail", "D1: growth alone no longer demotes (bug window closed by tl 1776)");
 
-  // Switch away and back. The growth-demoted (reader/block) state must NOT win:
-  // the tab was last genuinely parked at the bottom, so we come back in tail.
-  k.replaceSurface("tab-B"); // parks tab-A; note tab-A's atBottomValue is now false
+  // Switch away and back. The tail verdict survives the round trip: the tab
+  // was last genuinely parked at the bottom, so we come back in tail.
+  k.replaceSurface("tab-B"); // parks tab-A; atBottomValue stayed true through the growth
   k.replaceSurface("tab-A");
   ok(
     k.intent === "tail",

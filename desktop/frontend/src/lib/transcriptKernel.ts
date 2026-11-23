@@ -368,6 +368,32 @@ export class TranscriptKernel {
     // transition (the forced-restart report). An unexpired upward-wheel
     // timestamp (see noteWheelScrollUp) passes the observation through to the
     // ordinary derivation below.
+    // tl 1776: the reflow branch (with the displacement baseline capture) and
+    // the tl 1184/1776 displacement gate live together below, in that order.
+    // tl 1184: a reader who stays put while output streams keeps the SAME
+    // scrollTop while scrollHeight grows - the naive atBottom above then flips
+    // to false even though the user never moved. Only a real scrollTop change
+    // expresses user intent, so gate the verdict on displacement; otherwise
+    // streaming silently corrupts "was at the bottom" and the next tab switch
+    // restores a stale block anchor instead of the tail.
+    //
+    // tl 1776: the SAME gate now covers the intent/anchor re-derivation. A
+    // stale same-frame snapshot (a read taken before this kernel's own tail
+    // write, served from the per-frame merge cache) can defeat the writeTop
+    // echo check above: the observation then carries a pre-write scrollTop
+    // with a post-append scrollHeight, measures "not at the bottom", and —
+    // with the derivation running unconditionally — demoted a tail view to a
+    // reader view WITHOUT any real user displacement (the sticky-bottom
+    // follow died mid-stream). A non-displaced observation describes our own
+    // writes or layout noise, never reader intent: keep the current
+    // intent/anchor and the sticky verdict untouched.
+    //
+    // The displacement baseline is the observation BEFORE this one, captured
+    // before the reflow branch below absorbs the rewrap's shift into
+    // lastScrollTop — otherwise a reflow-scoped pass-through (tl 1740's
+    // wheel-intent case) would always measure "not displaced" against its own
+    // just-written value and never re-derive intent.
+    const previousScrollTop = this.lastScrollTop;
     if (options?.reflowed === true) {
       this.lastScrollTop = snapshot.scrollTop;
       // tl 1740: record WHY the reflow-scoped branch took (or waived) the
@@ -386,24 +412,7 @@ export class TranscriptKernel {
       });
       if (reflowSuppressed) return false;
     }
-    // tl 1184: a reader who stays put while output streams keeps the SAME
-    // scrollTop while scrollHeight grows - the naive atBottom above then flips
-    // to false even though the user never moved. Only a real scrollTop change
-    // expresses user intent, so gate the verdict on displacement; otherwise
-    // streaming silently corrupts "was at the bottom" and the next tab switch
-    // restores a stale block anchor instead of the tail.
-    //
-    // tl 1776: the SAME gate now covers the intent/anchor re-derivation. A
-    // stale same-frame snapshot (a read taken before this kernel's own tail
-    // write, served from the per-frame merge cache) can defeat the writeTop
-    // echo check above: the observation then carries a pre-write scrollTop
-    // with a post-append scrollHeight, measures "not at the bottom", and —
-    // with the derivation running unconditionally — demoted a tail view to a
-    // reader view WITHOUT any real user displacement (the sticky-bottom
-    // follow died mid-stream). A non-displaced observation describes our own
-    // writes or layout noise, never reader intent: keep the current
-    // intent/anchor and the sticky verdict untouched.
-    const displaced = snapshot.scrollTop !== this.lastScrollTop;
+    const displaced = snapshot.scrollTop !== previousScrollTop;
     if (!displaced) return true;
     this.lastScrollTop = snapshot.scrollTop;
     this.atBottomValue = atBottom;
