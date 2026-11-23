@@ -110,13 +110,17 @@ func TestRemoteRuntimeInboxReceiptSnapshotAndConsumptionOverHTTP(t *testing.T) {
 			if state.Phase != "idle" {
 				continue
 			}
+			// tl1789: the durable-item removal can lag the idle transition
+			// (async consumption) — asserting on the FIRST idle event raced it
+			// in full-package runs (standalone 3/3 green). Poll until the
+			// removal lands or the budget expires.
 			consumed, err := a.InboxSnapshot(tab.id)
-			if err != nil || consumed.Items == nil || len(consumed.Items) != 0 || consumed.Revision <= snapshot.Revision {
-				t.Fatalf("consumption did not remove durable item: %+v, %v", consumed, err)
+			if err == nil && consumed.Items != nil && len(consumed.Items) == 0 && consumed.Revision > snapshot.Revision {
+				return
 			}
-			return
 		case <-deadline.C:
-			t.Fatal("follow-up did not settle")
+			consumed, snapErr := a.InboxSnapshot(tab.id)
+			t.Fatalf("consumption did not remove durable item within budget: %+v, %v", consumed, snapErr)
 		}
 	}
 }
