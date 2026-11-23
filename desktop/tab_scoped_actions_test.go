@@ -76,6 +76,15 @@ func (c *tabScopedActionController) Compact(_ context.Context, _ string) error {
 	c.compactCalls++
 	return nil
 }
+
+// tl1789: tl1719/tl1723 gave the app path its own trigger-tagged entry
+// (CompactForTabWithFocus -> ctrl.CompactForTrigger); the stub never grew the
+// override, so the call promoted to the embedded nil control.SessionAPI and
+// nil-panicked. Same counting semantics as Compact.
+func (c *tabScopedActionController) CompactForTrigger(_ context.Context, _, _ string) error {
+	c.compactCalls++
+	return nil
+}
 func (c *tabScopedActionController) ForkSession(_ int, _ string) (string, error) {
 	c.forkCalls++
 	return "", errors.New("stop after selecting source controller")
