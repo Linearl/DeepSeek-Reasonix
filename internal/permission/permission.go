@@ -14,6 +14,7 @@ import (
 	"sync"
 
 	"reasonix/internal/shellparse"
+	"reasonix/internal/shellsafe"
 	"reasonix/internal/tool"
 )
 
@@ -996,7 +997,7 @@ func bashPrefixBase(pattern string) (string, bool) {
 }
 
 func bashPrefixMatches(base, subject string) bool {
-	if normalized, ok := normalizeBashSafeRedirectsForMatch(subject); ok {
+	if normalized, ok := shellsafe.NormalizeBashSafeRedirectsForMatch(subject); ok {
 		subject = normalized
 	}
 	fields, malformed := shellparse.StaticFields(subject)
