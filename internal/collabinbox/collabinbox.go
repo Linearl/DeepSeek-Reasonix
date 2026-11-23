@@ -1550,4 +1550,3 @@ func previewOf(body string) string {
 	}
 	return line
 }
-
