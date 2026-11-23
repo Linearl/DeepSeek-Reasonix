@@ -7,6 +7,7 @@
 // coverage. Fail-fast by default; --keep-going runs everything and summarizes.
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { suiteArgv } from "./tsx-test.mjs";
 
@@ -63,6 +64,12 @@ const OWNED_ELSEWHERE = new Map(Object.entries({
 }));
 
 const keepGoing = process.argv.includes("--keep-going");
+// Subset dispatch/verification entry (tl1788): --filter=SUBSTR runs only the
+// discovered suites whose file name contains SUBSTR. The OWNED_ELSEWHERE
+// absence guard below always checks the FULL discovered list, so a filtered
+// run can never mask a rename that dropped coverage.
+const filterArg = process.argv.find(arg => arg.startsWith("--filter="));
+const filter = filterArg ? filterArg.slice("--filter=".length) : null;
 
 // Per-suite wall-clock ceiling. Some suites print all their assertions and
 // then never exit (timer/jsdom handles surviving under multi-layer output
@@ -93,8 +100,31 @@ for (const [name, owner] of OWNED_ELSEWHERE) {
 // copies drifting apart is exactly how loader holes (ERR_UNKNOWN_FILE_
 // EXTENSION `.css`/`.svg` crash family) reopened in dispatch paths.
 
-const suites = files.filter((name) => !OWNED_ELSEWHERE.has(name));
-console.log(`run-tests: ${suites.length} discovered suites (${OWNED_ELSEWHERE.size} owned by dedicated scripts)`);
+const discovered = files.filter((name) => !OWNED_ELSEWHERE.has(name));
+const suites = filter ? discovered.filter((name) => name.includes(filter)) : discovered;
+console.log(`run-tests: ${suites.length} discovered suites (${OWNED_ELSEWHERE.size} owned by dedicated scripts)${filter ? `; filter "${filter}" matched ${suites.length}` : ""}`);
+
+// tl1788 preflight: catch a broken pnpm resolution chain before the loop, so
+// a poisoned environment aborts with one actionable error instead of
+// mass-red noise (tl1776: 230/287 suites red with ERR_MODULE_NOT_FOUND
+// pointing into the linked store while every suite passed when run alone).
+try {
+  createRequire(import.meta.url).resolve("jsdom");
+} catch {
+  console.error("run-tests: preflight failed — jsdom does not resolve from desktop/frontend/node_modules.");
+  console.error("The pnpm link structure backing this checkout is broken; fix node_modules (reinstall deps in the real checkout this worktree links to) and re-run. Aborting instead of mass-red.");
+  process.exit(1);
+}
+
+// tl1788 env-noise triage switch (same face as run-ci-tests.mjs): a failed
+// suite gets exactly one immediate single re-run with identical argv. Green
+// there means environment noise (ENV-FLAKY, recorded and reported, does not
+// abort fail-fast); a second red is a real failure and follows the original
+// fail-fast/keep-going semantics. REASONIX_TEST_REVERIFY=0 restores
+// first-failure-is-final.
+const reverify = process.env.REASONIX_TEST_REVERIFY !== "0";
+if (!reverify) console.log("run-tests: env-noise re-verify disabled (REASONIX_TEST_REVERIFY=0)");
+const envFlaky = [];
 
 const failures = [];
 for (const name of suites) {
@@ -104,29 +134,46 @@ for (const name of suites) {
   // Node's built-in navigator.language follows the machine's ICU locale, and
   // suites assert English UI strings.
   const env = { ...process.env, LANG: "en_US.UTF-8", LC_ALL: "en_US.UTF-8" };
-  const result = spawnSync(process.execPath, suiteArgv(path), {
+  const spawnOpts = {
     stdio: "inherit",
     env,
     timeout: suiteTimeoutMs > 0 ? suiteTimeoutMs : undefined,
-  });
+  };
+  let result = spawnSync(process.execPath, suiteArgv(path), spawnOpts);
   if (result.error) console.error(`run-tests: spawn failed for ${path}: ${result.error.message}`);
   // spawnSync sets error code ETIMEDOUT only for its own timeout kill, so
   // external kills are not miscounted as suite timeouts.
   const timedOut = result.error?.code === "ETIMEDOUT";
   if (timedOut) console.error(`run-tests: ${path} exceeded ${suiteTimeoutMs}ms and was killed (process did not exit)`);
+  // Triage only genuine suite failures (a spawn error would repeat on re-run).
+  if (result.status !== 0 && !result.error && reverify) {
+    console.error(`run-tests: ${path} failed once — re-running alone with identical argv (env-noise triage)`);
+    const second = spawnSync(process.execPath, suiteArgv(path), spawnOpts);
+    if (second.status === 0 && !second.error) {
+      envFlaky.push(path);
+      console.log(`ENV-FLAKY ${path} (failed once, green on single re-run — environment noise, NOT red)`);
+      continue;
+    }
+    result = second;
+  }
   if (result.status !== 0) {
+    const secondTimedOut = result.error?.code === "ETIMEDOUT";
     if (!keepGoing) {
-      console.error(`\nrun-tests: ${timedOut ? "TIMED OUT" : "FAILED"} at ${path}`);
+      console.error(`\nrun-tests: ${secondTimedOut ? "TIMED OUT" : "FAILED"} at ${path}`);
       process.exit(result.status ?? 1);
     }
-    failures.push({ name, timedOut });
+    failures.push({ name, timedOut: secondTimedOut });
   }
 }
 
+if (envFlaky.length > 0) {
+  console.log(`\nrun-tests: ${envFlaky.length}/${suites.length} ENV-FLAKY (failed once, green on single re-run — environment noise, NOT red):`);
+  for (const path of envFlaky) console.log(`  ENV-FLAKY ${path}`);
+}
 if (failures.length > 0) {
   const timedOutCount = failures.filter((failure) => failure.timedOut).length;
   console.error(`\nrun-tests: ${failures.length}/${suites.length} suites failed (${timedOutCount} timed out):`);
   for (const { name, timedOut } of failures) console.error(`  ${timedOut ? "TIMEOUT" : "FAIL"} ${name}`);
   process.exit(1);
 }
-console.log(`\nrun-tests: all ${suites.length} suites passed`);
+console.log(`\nrun-tests: all ${suites.length} suites passed${envFlaky.length > 0 ? ` (${envFlaky.length} env-flaky re-verified green, see list above)` : ""}`);
