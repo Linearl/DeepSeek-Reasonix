@@ -15,10 +15,11 @@ func withTurnInputOrigin(ctx context.Context, synthetic bool) context.Context {
 	return agent.WithInputMessageOrigin(ctx, origin)
 }
 
-func persistedUserTurn(content, raw string, images, audio []string, createdAt int64) provider.Message {
+func persistedUserTurn(content, raw string, images, audio, video []string, createdAt int64) provider.Message {
 	return provider.Message{
 		Role: provider.RoleUser, Origin: provider.MessageOriginUser,
 		Content: content, RawContent: raw,
-		Images: append([]string(nil), images...), Audio: append([]string(nil), audio...), CreatedAt: createdAt,
+		Images: append([]string(nil), images...), Audio: append([]string(nil), audio...),
+		Video: append([]string(nil), video...), CreatedAt: createdAt,
 	}
 }

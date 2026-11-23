@@ -464,6 +464,17 @@ func (a *App) SavePastedAudio(name, dataURL string) (string, error) {
 	})
 }
 
+// SavePastedVideo stores a pasted/dropped video file (tl1767) under the
+// active tab's workspace .reasonix/attachments and returns the relative
+// @-reference path. The accepted formats are validated here so a stray
+// binary never lands under a video name; the 50 MB ceiling mirrors the
+// provider's inline video limit (the generic 25 MB file cap does not apply).
+func (a *App) SavePastedVideo(name, dataURL string) (string, error) {
+	return a.withActiveWorkspace(func() (string, error) {
+		return control.SaveVideoAttachmentDataURL(name, dataURL)
+	})
+}
+
 // PickExportFile opens the native save dialog and returns the selected path. It
 // returns "" when the user cancels.
 func (a *App) PickExportFile(defaultFilename, mimeType string) (string, error) {
@@ -804,6 +815,14 @@ func (a *App) AttachDropped(path string) (DroppedItem, error) {
 				return nil
 			}
 		}
+		// tl1767: an out-of-tree video file takes the same attachment copy path
+		// with the 50 MB video ceiling; in-tree video keeps the workspace @ref.
+		if isVideoExt(path) {
+			if rel, err := control.SaveVideoAttachmentFileIn(a.activeWorkspaceRoot(), path); err == nil {
+				item = DroppedItem{Kind: "attachment", Path: rel}
+				return nil
+			}
+		}
 		if rel, ok := workspaceRelativeIn(path, a.activeWorkspaceRoot()); ok {
 			item = DroppedItem{Kind: "workspace", Path: rel, IsDir: info.IsDir()}
 			return nil
@@ -852,6 +871,16 @@ func isImageExt(path string) bool {
 func isAudioExt(path string) bool {
 	switch strings.ToLower(filepath.Ext(path)) {
 	case ".mp3", ".wav", ".flac", ".m4a", ".ogg":
+		return true
+	}
+	return false
+}
+
+// isVideoExt mirrors the tl1767 video attachment whitelist (shared with the
+// kernel via control's provider helpers).
+func isVideoExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".mp4", ".mov", ".webm", ".mkv", ".avi":
 		return true
 	}
 	return false

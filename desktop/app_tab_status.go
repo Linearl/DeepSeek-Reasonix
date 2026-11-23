@@ -190,6 +190,7 @@ type Meta struct {
 	GitBranch             string `json:"gitBranch,omitempty"`
 	ImageInputEnabled     bool   `json:"imageInputEnabled"`
 	AudioInputEnabled     bool   `json:"audioInputEnabled"` // task 1008: audio attachment entry gate
+	VideoInputEnabled     bool   `json:"videoInputEnabled"` // tl1767: video attachment entry gate
 	VisionFallbackEnabled bool   `json:"visionFallbackEnabled,omitempty"`
 	AutoApproveTools      bool   `json:"autoApproveTools"`
 	Bypass                bool   `json:"bypass"` // legacy JSON key for YOLO/full-access tool auto-approval
@@ -382,6 +383,7 @@ func (a *App) MetaForTab(tabID string) Meta {
 		GitBranch:             extras.gitBranch,
 		ImageInputEnabled:     extras.imageInputEnabled,
 		AudioInputEnabled:     extras.audioInputEnabled,
+		VideoInputEnabled:     extras.videoInputEnabled,
 		VisionFallbackEnabled: extras.visionFallbackEnabled,
 		AutoApproveTools:      autoApproveTools,
 		Bypass:                autoApproveTools,

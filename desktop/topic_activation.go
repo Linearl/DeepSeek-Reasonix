@@ -361,6 +361,7 @@ type tabMetaExtras struct {
 	gitBranch             string
 	imageInputEnabled     bool
 	audioInputEnabled     bool // task 1008: gates the composer audio attachment entry
+	videoInputEnabled     bool // tl1767: gates the composer video attachment entry
 	visionFallbackEnabled bool
 	fetchedAt             time.Time
 }
@@ -387,6 +388,7 @@ func tabMetaExtrasFor(tab *WorkspaceTab, root, model string) (tabMetaExtras, boo
 	if extras.model != model {
 		out.imageInputEnabled = false
 		out.audioInputEnabled = false
+		out.videoInputEnabled = false
 		refresh = true
 	}
 	return out, refresh
@@ -436,6 +438,7 @@ func (a *App) refreshTabMetaExtras(tab *WorkspaceTab) {
 	}
 	imageInputEnabled := false
 	audioInputEnabled := false
+	videoInputEnabled := false
 	visionFallbackEnabled := false
 	if cfg, err := a.loadConfigForVision(root); err == nil && cfg != nil {
 		if model == "" {
@@ -444,6 +447,7 @@ func (a *App) refreshTabMetaExtras(tab *WorkspaceTab) {
 		if entry, ok := cfg.ResolveModel(model); ok {
 			imageInputEnabled = config.EffectiveVision(entry)
 			audioInputEnabled = config.EffectiveAudioInput(entry)
+			videoInputEnabled = config.EffectiveVideoInput(entry)
 		}
 		visionFallbackEnabled = strings.TrimSpace(cfg.Agent.VisionModel) != ""
 	}
@@ -454,6 +458,9 @@ func (a *App) refreshTabMetaExtras(tab *WorkspaceTab) {
 	}
 	if snapshot, ok := ctrl.(interface{ AudioInputEnabled() bool }); ok {
 		audioInputEnabled = snapshot.AudioInputEnabled()
+	}
+	if snapshot, ok := ctrl.(interface{ VideoInputEnabled() bool }); ok {
+		videoInputEnabled = snapshot.VideoInputEnabled()
 	}
 
 	a.mu.Lock()
@@ -467,6 +474,7 @@ func (a *App) refreshTabMetaExtras(tab *WorkspaceTab) {
 		gitBranch:             gitBranch,
 		imageInputEnabled:     imageInputEnabled,
 		audioInputEnabled:     audioInputEnabled,
+		videoInputEnabled:     videoInputEnabled,
 		visionFallbackEnabled: visionFallbackEnabled,
 		fetchedAt:             time.Now(),
 	})

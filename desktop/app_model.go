@@ -270,6 +270,7 @@ type modelSwitchIdentity struct {
 	balanceKey string
 	imageInput *bool
 	audioInput *bool // task 1008: the frozen audio gate follows the switched model
+	videoInput *bool // tl1767: the frozen video gate follows the switched model
 }
 
 // modelSwitchExtras derives the entry-scoped payload the hot switch needs
@@ -303,12 +304,14 @@ func modelSwitchExtras(cfg *config.Config, ref string, entry *config.ProviderEnt
 	resolvedCapability := config.NewModelCapabilityResolver().Resolve(entry)
 	imageEnabled := resolvedCapability.State == config.CapabilitySupported
 	audioEnabled := resolvedCapability.AudioInputEnabled
+	videoEnabled := resolvedCapability.VideoInputEnabled
 	identity := modelSwitchIdentity{
 		label:      label,
 		balanceURL: entry.BalanceURL,
 		balanceKey: entry.APIKey(),
 		imageInput: &imageEnabled,
 		audioInput: &audioEnabled,
+		videoInput: &videoEnabled,
 	}
 	return extras, identity, nil
 }
@@ -567,9 +570,9 @@ func (a *App) tryModelSessionOverride(tab *WorkspaceTab, tabID, switchRef string
 				return false, nil
 			}
 			if idSetter, ok := ctrl.(interface {
-				SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool)
+				SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput, videoInput *bool)
 			}); ok {
-				idSetter.SetModelIdentity(switchRef, identity.label, identity.balanceURL, identity.balanceKey, identity.imageInput, identity.audioInput)
+				idSetter.SetModelIdentity(switchRef, identity.label, identity.balanceURL, identity.balanceKey, identity.imageInput, identity.audioInput, identity.videoInput)
 			}
 			a.mu.Lock()
 			tab.model = switchRef

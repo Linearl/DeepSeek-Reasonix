@@ -424,7 +424,7 @@ func (c *Coordinator) persistExecutorNoOp(ctx context.Context, input, plan strin
 	}
 	c.executor.AppendTurnContextAndUser(ctx, provider.Message{
 		Role: provider.RoleUser, Origin: provider.MessageOriginUser, Content: providerContent, RawContent: rawContent,
-		Images: userImages(ctx), Audio: userAudio(ctx), CreatedAt: time.Now().UnixMilli(),
+		Images: userImages(ctx), Audio: userAudio(ctx), Video: userVideo(ctx), CreatedAt: time.Now().UnixMilli(),
 	})
 	// tl1669: canonical write → the compaction-await funnel.
 	c.executor.appendTurnMessage(ctx, provider.Message{Role: provider.RoleAssistant, Content: plan})

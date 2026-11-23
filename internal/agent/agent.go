@@ -278,6 +278,8 @@ type userImagesContextKey struct{}
 
 type userAudioContextKey struct{}
 
+type userVideoContextKey struct{}
+
 // callContext is the per-call context a tool can read. parentID is the call being
 // executed and sink is the agent's event sink (the `task` tool uses both to nest
 // a sub-agent's events under this call); asker lets the `ask` tool reach the user.
@@ -422,6 +424,20 @@ func WithUserAudio(ctx context.Context, audio []string) context.Context {
 func userAudio(ctx context.Context) []string {
 	audio, _ := ctx.Value(userAudioContextKey{}).([]string)
 	return audio
+}
+
+// WithUserVideo carries the inline video data URLs the user attached to this
+// turn (tl1767). Same contract as WithUserAudio: the controller resolves and
+// capability-gates them; the agent just embeds them on the user message and
+// the provider decides the wire shape (including the fail-closed textify for
+// protocols without a video part).
+func WithUserVideo(ctx context.Context, video []string) context.Context {
+	return context.WithValue(ctx, userVideoContextKey{}, video)
+}
+
+func userVideo(ctx context.Context) []string {
+	video, _ := ctx.Value(userVideoContextKey{}).([]string)
+	return video
 }
 
 // Gate decides, per tool call, whether it may run. The agent consults it at

@@ -237,6 +237,7 @@ type Controller struct {
 	modelCapabilityResolver func(*config.ProviderEntry) config.ResolvedModelCapability
 	frozenImageInput        *bool
 	frozenAudioInput        *bool
+	frozenVideoInput        *bool
 	imageCapabilityChanged  func() bool
 	modelSettings           controllerModelSettings
 	prompt                  controllerPromptState
@@ -884,7 +885,10 @@ type Options struct {
 	FrozenImageInput *bool
 	// FrozenAudioInput is the task-1008 counterpart: the audio-input decision
 	// (protocol gate + modality + override) frozen for this runtime.
-	FrozenAudioInput            *bool
+	FrozenAudioInput *bool
+	// FrozenVideoInput is the tl1767 counterpart: the video-input decision
+	// (protocol gate + modality + override) frozen for this runtime.
+	FrozenVideoInput            *bool
 	ImageCapabilityChanged      func() bool
 	ModelSettingsRevision       string
 	ModelSettingsSourceRevision string
@@ -1162,6 +1166,7 @@ func New(opts Options) *Controller {
 		modelCapabilityResolver:           opts.ModelCapabilityResolver,
 		frozenImageInput:                  opts.FrozenImageInput,
 		frozenAudioInput:                  opts.FrozenAudioInput,
+		frozenVideoInput:                  opts.FrozenVideoInput,
 		imageCapabilityChanged:            opts.ImageCapabilityChanged,
 		modelSettings:                     newControllerModelSettings(opts),
 		prompt:                            newControllerPromptState(opts.SystemPrompt, opts.Executor),
@@ -1538,13 +1543,15 @@ type controllerModelIdentity struct {
 	imageInput *bool
 	// audioInput rebinds the task-1008 frozen audio gate on the same seam.
 	audioInput *bool
+	// videoInput rebinds the tl1767 frozen video gate on the same seam.
+	videoInput *bool
 }
 
 // SetModelIdentity atomically rebinds the construction-time model identity:
 // the canonical ref (cache TTL, listing projections, vision resolution), the
 // human label (future branch file names), the wallet-balance endpoint, and
 // the frozen image-input gate. Zero/nil fields keep the construction value.
-func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool) {
+func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput, videoInput *bool) {
 	c.modelIdentitySwap.Store(&controllerModelIdentity{
 		modelRef:   strings.TrimSpace(ref),
 		label:      strings.TrimSpace(label),
@@ -1552,6 +1559,7 @@ func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string,
 		balanceKey: balanceKey,
 		imageInput: imageInput,
 		audioInput: audioInput,
+		videoInput: videoInput,
 	})
 }
 
@@ -1596,6 +1604,14 @@ func (c *Controller) activeAudioInput() *bool {
 		return id.audioInput
 	}
 	return c.frozenAudioInput
+}
+
+// activeVideoInput mirrors activeImageInput for the tl1767 video gate.
+func (c *Controller) activeVideoInput() *bool {
+	if id := c.modelIdentitySwap.Load(); id != nil && id.videoInput != nil {
+		return id.videoInput
+	}
+	return c.frozenVideoInput
 }
 
 func (c *Controller) markEditedForNewUser(startMessages int, original string) {
