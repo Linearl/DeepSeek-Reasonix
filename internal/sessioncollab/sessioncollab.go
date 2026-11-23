@@ -1117,17 +1117,33 @@ func (s *MailStore) InboxStatus(contactID string) (unread int, lastDeliveryAt in
 	return unread, last
 }
 
+// localDayStart reports local midnight opening the calendar day that contains
+// t (tl1784). Truncate(24h) cuts at the UTC calendar day instead — in UTC+8
+// that line is 08:00 local, so "today" wrongly ran from yesterday 08:00 and
+// the daily-send cap's window was wrong for 8 hours every day. Recomposing
+// Y/M/D in t's own zone keeps the boundary on the local clock, the same clock
+// the daily-limit setting is reasoned about in.
+func localDayStart(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
 // CountSentFromToday counts how many messages the given contact has sent
 // today, across every mailbox in the store (task 173 ⑥). The anti-storm cap
 // needs the sender's own daily volume, not one target's inbox. Calendar-day
 // boundaries follow the local clock — the same clock the daily-limit setting
-// is reasoned about in.
+// is reasoned about in (tl1784: local midnight, not Truncate(24h)'s UTC cut).
 func (s *MailStore) CountSentFromToday(fromContact string) int {
 	fromContact = strings.TrimSpace(fromContact)
 	if fromContact == "" {
 		return 0
 	}
-	start := time.Now().Truncate(24 * time.Hour)
+	return s.countSentSince(fromContact, localDayStart(time.Now()))
+}
+
+// countSentSince is CountSentFromToday's scan against an explicit window
+// opening, split out so tests can pin a fixed-zone boundary without touching
+// the host clock or depending on where CI runs.
+func (s *MailStore) countSentSince(fromContact string, start time.Time) int {
 	matches, err := filepath.Glob(filepath.Join(s.root, "*.inbox.jsonl"))
 	if err != nil {
 		return 0
