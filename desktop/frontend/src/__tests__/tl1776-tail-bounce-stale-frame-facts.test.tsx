@@ -184,17 +184,19 @@ async function unmount(): Promise<void> {
   root = null;
   hookRef.current = null;
 }
-function flushAll(): void {
-  let guard = 0;
-  while (clock.frames.size > 0 && guard < 32) {
-    clock.flushFrames();
-    guard += 1;
-  }
+async function flushAll(): Promise<void> {
+  await act(async () => {
+    let guard = 0;
+    while (clock.frames.size > 0 && guard < 32) {
+      clock.flushFrames();
+      guard += 1;
+    }
+  });
 }
 /** 生产语义：observe() 后 ResizeObserver 总先交付一次初始尺寸（分类=无变化）。 */
 async function fireInitialObservation(): Promise<void> {
   await act(async () => { FakeResizeObserver.fireAll(geom.clientW, geom.client); });
-  flushAll();
+  await flushAll();
 }
 
 /**
@@ -206,13 +208,16 @@ async function fireInitialObservation(): Promise<void> {
  *      先 snapshot（缓存住「写前 scrollTop + 追加后 scrollHeight」混合几何），
  *      后写底（scrollTop=新 floor）；
  *   4. 写底产生的 scroll 事件在同一帧内送达（无 bumpFrame——渲染步先于下一
- *      rAF tick，帧内合并缓存命中，混合几何被原样消费）。
+ *      rAF tick，帧内合并缓存命中，混合几何被原样消费）；手势租约可先于送达
+ *      在场（生产：贴底时滚轮跟读/轻点先到，scroll 事件后到）。
  * 不依赖任何 sleep——竞争窗口由帧计数与调用顺序构造，每步确定。
  */
-async function streamingAppendFrame(newHeight: number): Promise<void> {
+async function streamingAppendFrame(newHeight: number, options?: { gestureBeforeScroll?: boolean }): Promise<void> {
   bumpFrame();
   geom.height = newHeight;
   await act(async () => { hookRef.current!.commitViewportGeometry(undefined, true); });
+  if (options?.gestureBeforeScroll) await act(async () => { hookRef.current!.beginGesture(); });
+  await act(async () => { hookRef.current!.onScroll(); });
 }
 
 /** 宽度重排一帧（侧栏过渡，tl 1740 同款）：布局变→RO 同步交付 widthChanged。 */
@@ -226,7 +231,7 @@ async function widthRewrapFrame(options: {
   geom.blocks = options.blocks;
   geom.height = options.height;
   await act(async () => { FakeResizeObserver.fireAll(options.width, geom.client); });
-  flushAll();
+  await flushAll();
 }
 
 process.stdout.write("\n[tl 1776] sticky-bottom bounce: stale same-frame facts must not pull the tail view up\n");
@@ -237,13 +242,13 @@ process.stdout.write("\n[tl 1776] sticky-bottom bounce: stale same-frame facts m
   clock = new TranscriptTestClock();
   FakeResizeObserver.reset();
   await mount("t1776-b1");
-  flushAll();
+  await flushAll();
   await fireInitialObservation();
   eq(bottomDistance(), 0, "B1: the view starts pinned at the bottom (floor=3500)");
   eq(hookRef.current!.kernel.intent, "tail", "B1: the intent is tail");
 
-  // 追加帧：工具执行卡片追加（4000→4200），写底落到 3700；同帧 scroll 观察
-  // 消费帧内混合几何（3500,4200）——修复前 facts 记入 atBottom=false。
+  // 追加帧：工具执行卡片追加（4000→4200），写底落到 3700；写底 scroll 事件
+  // 同帧送达消费帧内混合几何（3500,4200）——修复前 facts 记入 atBottom=false。
   await streamingAppendFrame(4200);
   eq(geom.top, 3700, "B1: the append frame's tail write lands on the new floor (3700)");
 
@@ -270,32 +275,29 @@ process.stdout.write("\n[tl 1776] sticky-bottom bounce: stale same-frame facts m
   clock = new TranscriptTestClock();
   FakeResizeObserver.reset();
   await mount("t1776-b2");
-  flushAll();
+  await flushAll();
   await fireInitialObservation();
   eq(bottomDistance(), 0, "B2: the view starts pinned at the bottom");
   eq(hookRef.current!.kernel.intent, "tail", "B2: the intent is tail");
 
-  // 追加帧写底到 3700（同 B1——混合几何已进帧内缓存）。
-  await streamingAppendFrame(4200);
+  // 追加帧写底到 3700，且手势租约先于写底 scroll 事件在场（生产模拟：贴底时
+  // 滚轮向下保持跟读/轻点先到，scroll 事件后到）：修复前 echo 被帧内混合缓存
+  // 击穿（写前 scrollTop 与 writeTop 差 200>4）、无位移观察把 intent 无条件
+  // 重推导成 reader（tl 1184 只门了 atBottomValue）；修复后 echo 命中/位移门
+  // 兜底——intent 留 tail。
+  await streamingAppendFrame(4200, { gestureBeforeScroll: true });
   eq(geom.top, 3700, "B2: the append frame's tail write lands on the new floor (3700)");
-
-  // 手势租约在场（生产模拟：贴底时滚轮向下保持跟读/轻点，无真实位移），
-  // 同帧写底 scroll 观察送达：修复前 echo 被混合缓存击穿（写前 scrollTop 与
-  // writeTop 差 200>4）、无位移观察把 intent 无条件重推导成 reader（tl 1184
-  // 只门了 atBottomValue）；修复后 echo 命中/位移门兜底——intent 留 tail。
-  await act(async () => { hookRef.current!.beginGesture(); });
-  await act(async () => { hookRef.current!.onScroll(); });
   eq(hookRef.current!.kernel.intent, "tail", "B2: a displacement-less observation of our own write does not demote the intent");
 
   // 手势结束 + 继续追加：跟随必须活着（scrollTop 跟到新 floor 3800）。
   await act(async () => { hookRef.current!.endGesture(); });
-  flushAll();
+  await flushAll();
   await act(async () => {
     bumpFrame();
     geom.height = 4300;
     hookRef.current!.scheduleTailSync();
   });
-  flushAll();
+  await flushAll();
   eq(bottomDistance(), 0, `B2: streaming growth after the gesture still follows to the bottom (bottomDistance=${bottomDistance()})`);
   eq(geom.top, 3800, `B2: the viewport tracks the new floor (scrollTop=${geom.top})`);
   await unmount();
@@ -307,7 +309,7 @@ process.stdout.write("\n[tl 1776] sticky-bottom bounce: stale same-frame facts m
   clock = new TranscriptTestClock();
   FakeResizeObserver.reset();
   await mount("t1776-r");
-  flushAll();
+  await flushAll();
   await fireInitialObservation();
   eq(bottomDistance(), 0, "R: the view starts pinned at the bottom");
 
@@ -317,7 +319,7 @@ process.stdout.write("\n[tl 1776] sticky-bottom bounce: stale same-frame facts m
   geom.top = 1000;
   await act(async () => { hookRef.current!.onScroll(); });
   await act(async () => { hookRef.current!.endGesture(); });
-  flushAll();
+  await flushAll();
   eq(hookRef.current!.kernel.intent, "reader", "R: a real upward displacement switches to reader");
   eq(geom.top, 1000, "R: the reader stays put");
 
