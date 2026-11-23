@@ -663,6 +663,28 @@ func (s *Session) TranscriptVersion() uint64 {
 	return s.version
 }
 
+// FloorTranscriptVersion raises the process-local transcript version counter to
+// at least v (tl1785 伴生修复). The counter resets to 0 whenever a session is
+// loaded into a new process, but the projection sidecar carries the pre-restart
+// monotonic trail (TranscriptVersion / Projection.TranscriptVersion). Without
+// the floor, every sidecar written after a restart collapsed the trail to 0
+// (the 20261123 装机重启 incident: saved tver=453 before, tver=0 for every save
+// after), and the drift-evidence pair projection_transcript_version vs
+// transcript_version read as if the transcript had moved backwards. The counter
+// is only ever compared within one process lifetime (usage memo keys, relative
+// validity checks), so restoring a floor cannot change any in-process decision;
+// it only keeps the saved sidecar trail monotonic across restarts.
+func (s *Session) FloorTranscriptVersion(v uint64) {
+	if s == nil || v == 0 {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if v > s.version {
+		s.version = v
+	}
+}
+
 // RewriteVersion returns the current rewrite version.
 func (s *Session) RewriteVersion() int {
 	s.mu.RLock()

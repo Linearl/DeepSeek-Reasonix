@@ -724,6 +724,79 @@ func migrateLoadRepairedPrefixHash(st *CompactionState, current, preRepair []pro
 	return true
 }
 
+// projectionRepairDriftKeep (tl1785) decides whether a first-load
+// hash_mismatch is attributable to the transcript-repair rewrite family —
+// NormalizeSession repairs accumulated across loads, or an installer
+// upgrade's changed normalization rules (the tl1116 recurrence family, e.g.
+// the 20261123 装机重启 incident: stored prefix 6bc3bee8 vs current 8c6106d0,
+// whole body dropped, 2,011,859-token full-canonical fallback) — in which case
+// the projection body is kept and marked stale instead of being discarded.
+//
+// The gates are deliberately fail-closed; every non-passing shape keeps the
+// pre-tl1785 wholesale drop:
+//
+//  1. Evidence gate — the sidecar must carry the tl1651 per-message corpus
+//     (CoveredMessageHashes). Without it there is nothing to attribute with.
+//  2. Structural gate — the current sanitized pipeline must have the same
+//     length as the stored corpus AND be 1:1 with the covered canonical
+//     prefix. An insert/delete inside the covered prefix (rewind, branch
+//     splice, orphan-tool fabrication) is a structural rewrite, never repair
+//     drift, and also breaks the pipeline-index → canonical-index mapping the
+//     role gate relies on.
+//  3. Role gate — every diverging slot must sit on an assistant or tool
+//     message. The repair family only rewrites assistant wire bytes (tool-call
+//     name backfill #4727, truncated-argument repair #3953, decision-receipt
+//     folding) and tool bytes (placeholder pairing); a user or system edit is
+//     real divergence and still drops.
+//
+// This lane NEVER re-anchors the stored hash and never republishes the
+// sidecar: the kept body stays content-invalid, so it serves only through the
+// tl1203 bounded stale splice while a forced rebuild replaces it — a
+// deliberate contrast with migrateLoadRepairedPrefixHash, whose stronger
+// proof (stored == this load's pre-repair disk prefix) justifies restoring the
+// fold as fully valid. The single-slot empty-shell corpus migration remains
+// the tl1770 乙案 candidate and is intentionally NOT implemented here.
+//
+// Returns the diverging pipeline indexes (non-empty when the keep applies) so
+// the degrade log can name the rewritten slots; an empty slice means drop.
+func projectionRepairDriftKeep(st CompactionState, msgs []provider.Message) []int {
+	n := st.Projection.CoveredCount
+	if n <= 0 || n > len(msgs) {
+		return nil
+	}
+	corpus := st.Projection.CoveredMessageHashes
+	if len(corpus) == 0 {
+		return nil
+	}
+	current := coveredMessageFingerprints(msgs, n)
+	// Structural gate: equal pipeline lengths, each 1:1 with the covered
+	// canonical prefix (no sanitize drops or fabrications on either side).
+	if len(current) != len(corpus) || len(current) != n {
+		return nil
+	}
+	var diverging []int
+	for i := 0; i < len(corpus); i++ {
+		if corpus[i] == current[i] {
+			continue
+		}
+		// Role gate: repair rewrites only ever land on assistant/tool slots.
+		// Pipeline is 1:1 with canonical here, so msgs[i] is the rewritten
+		// message itself.
+		switch msgs[i].Role {
+		case provider.RoleAssistant, provider.RoleTool:
+		default:
+			return nil
+		}
+		diverging = append(diverging, i)
+	}
+	if len(diverging) == 0 {
+		// Whole-prefix hash mismatch with an all-equal per-message corpus is a
+		// fingerprint-pipeline discrepancy — fail closed.
+		return nil
+	}
+	return diverging
+}
+
 // providerVisibleFingerprint is the stable hash of fields that reach a provider.
 func providerVisibleFingerprint(msgs []provider.Message) string {
 	type wireCall struct {
