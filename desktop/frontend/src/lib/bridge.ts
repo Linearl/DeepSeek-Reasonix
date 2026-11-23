@@ -1811,6 +1811,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SavePastedFile(name: string, dataUrl: string): Promise<string>;
   /** 任务 1008：音频附件保存（五格式白名单 + 50MB 上限）；wails generate 禁用，手写契约对齐 desktop App.SavePastedAudio。 */
   SavePastedAudio(name: string, dataUrl: string): Promise<string>;
+  /** tl1767：视频附件保存（mp4/mov/webm/mkv/avi 白名单 + 50MB 上限）；wails generate 禁用，手写契约对齐 desktop App.SavePastedVideo。 */
+  SavePastedVideo(name: string, dataUrl: string): Promise<string>;
   PickExportFile(defaultFilename: string, mimeType: string): Promise<string>;
   SaveExportFile(path: string, payload: string, base64Encoded: boolean): Promise<void>;
   SaveExportImageFiles(path: string, payloads: string[]): Promise<void>;
@@ -6829,6 +6831,11 @@ function makeMockApp(): AppBindings {
       return path;
     },
     async SavePastedAudio(name: string, dataUrl: string) {
+      const path = `.reasonix/attachments/mock-${name}`;
+      mockAttachmentDataURLs.set(path, dataUrl);
+      return path;
+    },
+    async SavePastedVideo(name: string, dataUrl: string) {
       const path = `.reasonix/attachments/mock-${name}`;
       mockAttachmentDataURLs.set(path, dataUrl);
       return path;

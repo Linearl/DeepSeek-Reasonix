@@ -4,6 +4,7 @@ import { LockKeyhole, RotateCcw } from "lucide-react";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { imageInputHardBlocked, imageInputState } from "../lib/providerImageInput";
 import { audioInputHardBlocked, audioInputState } from "../lib/providerAudioInput";
+import { videoInputHardBlocked, videoInputState } from "../lib/providerVideoInput";
 import { EFFORT_PRESETS } from "../lib/effortTiers";
 import { ModalCloseButton } from "./ModalCloseButton";
 import type { ProviderModelCapabilityView } from "../lib/types";
@@ -13,7 +14,7 @@ import { modelDraftError } from "../lib/providerModelDraft";
 // this dialog. `connectionEfforts` is the connection-level vocabulary the
 // model inherits when it declares none — the model > connection > auto
 // precedence the backend resolves the same way.
-export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; highSpeed: boolean; efforts?: string[]; }
+export interface ModelDetailsDraft { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; video: boolean | null; highSpeed: boolean; efforts?: string[]; }
 export default function ProviderModelDialog({ initial, candidates, contextDefault, capability, baseURL, connectionEfforts, highSpeedSwitchOn, busy, onClose, onApply, onDelete }: {
   initial?: ModelDetailsDraft; candidates: string[]; contextDefault?: number;
   capability?: ProviderModelCapabilityView; baseURL?: string; connectionEfforts?: string[]; highSpeedSwitchOn: boolean; busy: boolean; onClose: () => void; onApply: (draft: ModelDetailsDraft) => void;
@@ -26,6 +27,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   const [output, setOutput] = useState(initial?.maxOutputTokens ? String(Math.max(-1, initial.maxOutputTokens)) : "");
   const [vision, setVision] = useState(initial?.vision == null ? "auto" : String(initial.vision));
   const [audio, setAudio] = useState(initial?.audio == null ? "auto" : String(initial.audio));
+  const [video, setVideo] = useState(initial?.video == null ? "auto" : String(initial.video));
   const [highSpeed, setHighSpeed] = useState(initial?.highSpeed ?? false);
   // Task 1053: per-model effort vocabulary draft. An empty selection means
   // "inherit the connection vocabulary"; a saved list overrides it for this
@@ -45,9 +47,14 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
   // 任务 1008：音频三态仿图片；协议黑名单（audioInputEnableAllowed=false）置灰。
   const audioBlocked = audioInputHardBlocked(capability);
   const audioState = audioBlocked ? "unsupported" : audioInputState(audio === "auto" ? "auto" : audio === "true" ? "on" : "off", capability);
+  // tl1767：视频三态同构；协议黑名单（videoInputEnableAllowed=false）置灰。
+  // ADAPTER 门（端点协议能否携带 video_url）不在此处：后端 wire 层 fail-closed
+  // 转文本占位，所以勾选只代表 MODEL 门（模型声明视频输入）。
+  const videoBlocked = videoInputHardBlocked(capability);
+  const videoState = videoBlocked ? "unsupported" : videoInputState(video === "auto" ? "auto" : video === "true" ? "on" : "off", capability);
   return createPortal(<dialog ref={dialog} className="provider-model-dialog" aria-labelledby={titleId}
     onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}>
-    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", audio:audio === "auto" ? null : !audioBlocked && audio === "true", highSpeed, efforts }); }}>
+    <form onSubmit={event => { event.preventDefault(); if (validation) { setError(true); return; } onApply({ model:model.trim(), contextWindow:context.trim(), maxOutputTokens:Number(output) || 0, vision:vision === "auto" ? null : !imageBlocked && vision === "true", audio:audio === "auto" ? null : !audioBlocked && audio === "true", video:video === "auto" ? null : !videoBlocked && video === "true", highSpeed, efforts }); }}>
       <header><h2 id={titleId}>{t(initial ? "settings.modelDialog.edit" : "settings.models.add")}</h2><ModalCloseButton label={t("common.close")} disabled={busy} onClick={onClose}/></header>
       <label className="provider-model-dialog__id">{t("settings.modelDialog.id")}
         {initial ? <span><LockKeyhole size={16}/>{model}</span> : <input autoFocus className="mem-input" value={model} disabled={busy} onChange={e=>setModel(e.target.value)} placeholder="deepseek-v4-flash"/>}
@@ -94,7 +101,7 @@ export default function ProviderModelDialog({ initial, candidates, contextDefaul
             <label><input type="checkbox" checked disabled/>{t("settings.textInput")}<LockKeyhole size={14}/></label>
             <label><input type="checkbox" checked={imageState === "supported"} disabled={busy || imageBlocked} onChange={event=>setVision(String(event.target.checked))}/>{t("settings.modelDialog.image")}</label>
             <label title={audioBlocked ? t("settings.modelDialog.audioBlocked") : undefined}><input type="checkbox" checked={audioState === "supported"} disabled={busy || audioBlocked} onChange={event=>setAudio(String(event.target.checked))}/>{t("settings.modelDialog.audio")}</label>
-            <label title={t("settings.modelDialog.unavailable")}><input type="checkbox" checked={false} disabled/>{t("settings.modelDialog.video")}</label>
+            <label title={videoBlocked ? t("settings.modelDialog.videoBlocked") : undefined}><input type="checkbox" checked={videoState === "supported"} disabled={busy || videoBlocked} onChange={event=>setVideo(String(event.target.checked))}/>{t("settings.modelDialog.video")}</label>
             <label title={t("settings.modelDialog.unavailable")}><input type="checkbox" checked={false} disabled/>PDF</label>
           </div>
           <p>{t("settings.modelDialog.unavailable")}</p>

@@ -7021,7 +7021,7 @@ export function ProviderEditor({
       const efforts = draft.efforts !== undefined
         ? normalizedEffortSelection(draft.efforts, previous?.defaultEffort ?? "")
         : null;
-      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts: efforts ? efforts.supportedEfforts : (previous?.supportedEfforts ?? []), defaultEffort: efforts ? efforts.defaultEffort : (previous?.defaultEffort ?? ""), vision:draft.vision, audio:draft.audio, maxOutputTokens:draft.maxOutputTokens}];
+      return [...current.filter(item => item.model !== draft.model), {...previous, model:draft.model, reasoningProtocol:previous?.reasoningProtocol ?? "", supportedEfforts: efforts ? efforts.supportedEfforts : (previous?.supportedEfforts ?? []), defaultEffort: efforts ? efforts.defaultEffort : (previous?.defaultEffort ?? ""), vision:draft.vision, audio:draft.audio, video:draft.video, maxOutputTokens:draft.maxOutputTokens}];
     });
     setModelDialog(null);
   };
@@ -7270,7 +7270,7 @@ export function ProviderEditor({
       {fetchFallback && <div role="alert" className="provider-fetch-status provider-fetch-status--warn">{fetchFallback}</div>}
       {modelDialog !== null && <Suspense fallback={null}><ProviderModelDialog
         baseURL={effectiveRequestUrl} candidates={modelCandidateNames} contextDefault={Number(ctx) || undefined}
-        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, audio:modelOverrides.find(item=>item.model === modelDialog)?.audio ?? null, highSpeed:highSpeedModelNames.includes(modelDialog), efforts:modelOverrides.find(item=>item.model === modelDialog)?.supportedEfforts ?? []} : undefined}
+        initial={modelDialog ? {model:modelDialog, contextWindow:modelContextWindows[modelDialog] ?? "", maxOutputTokens:modelOverrides.find(item=>item.model === modelDialog)?.maxOutputTokens ?? 0, vision:modelOverrides.find(item=>item.model === modelDialog)?.vision ?? null, audio:modelOverrides.find(item=>item.model === modelDialog)?.audio ?? null, video:modelOverrides.find(item=>item.model === modelDialog)?.video ?? null, highSpeed:highSpeedModelNames.includes(modelDialog), efforts:modelOverrides.find(item=>item.model === modelDialog)?.supportedEfforts ?? []} : undefined}
         connectionEfforts={cleanedSupportedEfforts}
         highSpeedSwitchOn={highSpeedSwitchOn}
         capability={modelCapabilities.find(item=>item.model === modelDialog)} busy={busy || fetchingModels}
@@ -7285,7 +7285,7 @@ export function ProviderEditor({
         visionModels={visionModelNames}
         visionModelsConfigured={visionModelsConfigured}
         highSpeedModels={highSpeedModelNames}
-        modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model); const visionOverride = override?.vision; const audioOverride = override?.audio; const info = modelCapabilities.find(item=>item.model === model); if (visionOverride == null && audioOverride == null) return info; const modalities = new Set(info?.inputModalities ?? ["text"]); if (visionOverride != null) { visionOverride ? modalities.add("image") : modalities.delete("image"); } if (audioOverride != null) { audioOverride ? modalities.add("audio") : modalities.delete("audio"); } if (modalities.size === 0) modalities.add("text"); return {...info, model, state:visionOverride ? "supported" : visionOverride === false ? "unsupported" : info?.state ?? "unknown", inputModalities:[...modalities], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
+        modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model); const visionOverride = override?.vision; const audioOverride = override?.audio; const videoOverride = override?.video; const info = modelCapabilities.find(item=>item.model === model); if (visionOverride == null && audioOverride == null && videoOverride == null) return info; const modalities = new Set(info?.inputModalities ?? ["text"]); if (visionOverride != null) { visionOverride ? modalities.add("image") : modalities.delete("image"); } if (audioOverride != null) { audioOverride ? modalities.add("audio") : modalities.delete("audio"); } if (videoOverride != null) { videoOverride ? modalities.add("video") : modalities.delete("video"); } if (modalities.size === 0) modalities.add("text"); return {...info, model, state:visionOverride ? "supported" : visionOverride === false ? "unsupported" : info?.state ?? "unknown", inputModalities:[...modalities], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
         contextWindows={modelContextWindows}
         inheritedContextWindow={Number(ctx) || undefined}
         disabled={busy || fetchingModels}
