@@ -823,6 +823,14 @@ func (a *App) SetExperimentalDecisionPatterns(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatterns(enabled) })
 }
 
+// SetExperimentalDecisionPatternsLayered toggles the tl1772 injection-layering
+// lab switch (decisionPatterns 档位族伴生开关). Config-only write: the
+// injection face reads config live per submission, so a flip applies on the
+// next autopilot message; off = legacy full-content injection byte-for-byte.
+func (a *App) SetExperimentalDecisionPatternsLayered(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalDecisionPatternsLayered(enabled) })
+}
+
 // SetExperimentalPinnedIndex toggles the tl1193 plan-E lab card (记忆与上下文
 // group, unstable tier). Ships off (铁律 2). Boot resolves the saved switch
 // into the memory package gate before the first Load, so the flip applies on

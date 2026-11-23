@@ -1531,6 +1531,16 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalDecisionPatternsLayered toggles the tl1772 injection-layering
+// lab switch (decisionPatterns 档位族伴生开关). ON = autopilot 注入只带索引
+// 行 + 按需读全文硬指令（解析不出索引行时静默回退全文形态）；OFF = 原全量
+// 注入逐字节一致。注入面每次提交现读 config（无 boot 快照），拨动对下一条
+// autopilot 消息即生效。
+func (c *Config) SetExperimentalDecisionPatternsLayered(enabled bool) error {
+	c.Agent.ExperimentalDecisionPatternsLayered = enabled
+	return nil
+}
+
 // SetExperimentalPinnedIndex toggles the tl1193 plan-E lab switch (pinned
 // standing tier renders index lines, bodies go on-demand recall). Ships off
 // (铁律 2): off = legacy full-body injection byte-for-byte. Boot resolves the

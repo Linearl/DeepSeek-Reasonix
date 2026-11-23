@@ -234,3 +234,182 @@ func TestSubmitToTabAutopilotInjectsDecisionPatternsOnce(t *testing.T) {
 		t.Fatalf("second user input must reach the model untouched, got %q", composed2)
 	}
 }
+
+// writeDecisionPatternsFixture writes a task-801 four-part fixture with two
+// entries plus the file header/blockquote/meta-comment noise, mirroring the
+// real global-workspace/docs/decision-patterns.md shape.
+func writeDecisionPatternsFixture(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "decision-patterns.md")
+	const content = `# 决策模式（decision patterns）
+
+> 本文件由任务 801 固化链维护，autopilot 会话启动时自动注入。
+
+## DP-0001（2026-11-17 固化）
+- 场景：回合开头出现宿主注入的恢复/中断提示（如 The app updated and restarted itself）
+- 决策：当作环境状态说明处理，从中断点续做；不重述计划、不等待输入
+- 理由：这类文本是宿主对已完成动作的通报，不是新指令
+- 来源：decision-the-app-updated-and-a74554
+
+## DP-0002（2026-11-18 固化）
+- 场景：用户说调查/查一下/看看某现象
+- 决策：交付物是评估报告，报告完即停；不顺手改代码，除非用户显式说修
+- 理由：用户原话：如果要修，我会显式指出的
+- 来源：用户沟通习惯-说调查就是纯调查
+<!-- decision-patterns-meta {"lastSolidifiedAt":"2026-11-21T15:40:53Z","solidifiedCount":2} -->
+`
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// TestDecisionPatternsIndexLinesParsing pins the tl1772 flattening: one line
+// per DP entry, DP id extracted from the heading, scene→decision bullets
+// picked, rune-safe truncation, and header/meta noise skipped.
+func TestDecisionPatternsIndexLinesParsing(t *testing.T) {
+	raw, err := os.ReadFile(writeDecisionPatternsFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := decisionPatternsIndexLines(strings.TrimSpace(string(raw)))
+	if len(lines) != 2 {
+		t.Fatalf("fixture must flatten to exactly 2 index lines, got %d: %q", len(lines), lines)
+	}
+	if !strings.HasPrefix(lines[0], "DP-0001 ") || !strings.Contains(lines[0], "→") {
+		t.Fatalf("index line must carry the DP id and the scene→decision arrow, got %q", lines[0])
+	}
+	// 决策段按 16 rune 截断（"当作环境状态说明处理，从中断点续" + "…"）——
+	// 索引行只保留关键词，全文按需读。
+	if !strings.Contains(lines[0], "DP-0001") || !strings.Contains(lines[0], "当作环境状态说明处理，从中断点续…") {
+		t.Fatalf("index line must keep the truncated decision gist, got %q", lines[0])
+	}
+	if !strings.HasPrefix(lines[1], "DP-0002 ") || !strings.Contains(lines[1], "评估报告") {
+		t.Fatalf("second entry must flatten in order, got %q", lines[1])
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "理由：") || strings.Contains(line, "来源：") || strings.Contains(line, "## ") {
+			t.Fatalf("index line must not leak full-text sections, got %q", line)
+		}
+	}
+	// 截断为 rune 安全且带省略号：场景行按 10 rune 截断（"这个场景远超过十个字"+…）。
+	if got := decisionPatternsIndexSnippet("这个场景远超过十个字符会被截断处理", 10); got != "这个场景远超过十个字…" {
+		t.Fatalf("snippet truncation must cap at the rune budget with an ellipsis, got %q", got)
+	}
+	if got := decisionPatternsIndexSnippet("短", 10); got != "短" {
+		t.Fatalf("short snippet must pass through untouched, got %q", got)
+	}
+
+	// 无 DP 编号的格式漂移：解析不出任何索引行 → 空切片（调用方回退全文）。
+	if got := decisionPatternsIndexLines("# 没有固化条目\n只有正文"); len(got) != 0 {
+		t.Fatalf("non-DP content must flatten to nothing, got %q", got)
+	}
+	empty := filepath.Join(t.TempDir(), "empty-shape.md")
+	if err := os.WriteFile(empty, []byte("## DP-0001\n没有场景与决策段的条目\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(empty); err != nil {
+		t.Fatal(err)
+	} else if got := decisionPatternsIndexLines(strings.TrimSpace(string(raw))); len(got) != 0 {
+		t.Fatalf("entries without scene/decision bullets must be skipped, got %q", got)
+	}
+}
+
+// TestDecisionPatternsLayeredBlockBodyFramesIndex pins the layered block:
+// hard instruction + resolved file path + index lines, same transient framing
+// (prefix/suffix) as the legacy full-content block.
+func TestDecisionPatternsLayeredBlockBodyFramesIndex(t *testing.T) {
+	body := decisionPatternsLayeredBlockBody("/dp/decision-patterns.md", []string{"DP-0001 场景关键词→决策一句话"})
+	if !strings.HasPrefix(body, "<decision-patterns>\n") || !strings.HasSuffix(body, "</decision-patterns>\n\n---\n\n用户消息：\n") {
+		t.Fatalf("layered block must keep the transient framing, got:\n%s", body)
+	}
+	for _, want := range []string{
+		"处理裁决类或用户纠正类消息时，必须先用文件读取工具读取对应 DP 全文",
+		"/dp/decision-patterns.md",
+		"按行内 DP 编号定位",
+		"以用户本条消息为准",
+		"DP-0001 场景关键词→决策一句话",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("layered block must contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
+// armDecisionPatternsForTest isolates user dirs, points the solidified file at
+// the fixture and arms the injection for one fresh autopilot tab.
+func armDecisionPatternsForTest(t *testing.T, path string, layered bool) (*App, *WorkspaceTab) {
+	t.Helper()
+	isolateDesktopUserDirs(t)
+	app := NewApp()
+	if err := app.SetExperimentalDecisionPatterns(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SetExperimentalDecisionPatternsLayered(layered); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.SetDecisionPatternFilePath(path); err != nil {
+		t.Fatal(err)
+	}
+	tab := &WorkspaceTab{ID: "t-l1772", Scope: "global", autopilot: true}
+	tab.decisionPatternsPending.Store(true)
+	return app, tab
+}
+
+// TestDecisionPatternsLayeredSwitchOffByteIdentical pins the rollback path:
+// layered off resolves to EXACTLY the legacy full-content block (byte-for-byte
+// with the pre-tl1772 shape), not merely "contains the same text".
+func TestDecisionPatternsLayeredSwitchOffByteIdentical(t *testing.T) {
+	raw, err := os.ReadFile(writeDecisionPatternsFixture(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	app, tab := armDecisionPatternsForTest(t, writeDecisionPatternsFixture(t), false)
+	block, ok := app.decisionPatternsInjectBlock(tab)
+	if !ok {
+		t.Fatal("armed autopilot tab must inject with the switch on")
+	}
+	if want := decisionPatternsBlockBody(strings.TrimSpace(string(raw))); block != want {
+		t.Fatalf("layered-off block must be byte-identical to the legacy full-content block\ngot:  %q\nwant: %q", block, want)
+	}
+	if tab.decisionPatternsPending.Load() {
+		t.Fatal("pending must be consumed by the injection")
+	}
+}
+
+// TestDecisionPatternsLayeredSwitchOnInjectsIndex pins the layered form end to
+// end on decisionPatternsInjectBlock: index lines + hard instruction ride the
+// block, full-text-only sections (理由/来源 bullets) do not.
+func TestDecisionPatternsLayeredSwitchOnInjectsIndex(t *testing.T) {
+	app, tab := armDecisionPatternsForTest(t, writeDecisionPatternsFixture(t), true)
+	block, ok := app.decisionPatternsInjectBlock(tab)
+	if !ok {
+		t.Fatal("armed autopilot tab must inject with the layered switch on")
+	}
+	for _, want := range []string{"DP-0001 ", "DP-0002 ", "→", "必须先用文件读取工具读取对应 DP 全文", "decision-patterns.md"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("layered block must carry %q, got:\n%s", want, block)
+		}
+	}
+	if strings.Contains(block, "理由：") || strings.Contains(block, "来源：decision-the-app-updated") {
+		t.Fatalf("layered block must not carry the full 理由/来源 text, got:\n%s", block)
+	}
+	if len(block) >= 4096 {
+		t.Fatalf("layered block must stay lean (≈2KB budget), got %d bytes", len(block))
+	}
+
+	// 格式漂移回退：解析不出索引行 → 静默回退全文形态（永不注入空块）。
+	fallbackPath := filepath.Join(t.TempDir(), "drifted.md")
+	const drifted = "# 决策模式\n\n正文说明，没有固化条目。\n"
+	if err := os.WriteFile(fallbackPath, []byte(drifted), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	app2, tab2 := armDecisionPatternsForTest(t, fallbackPath, true)
+	block2, ok2 := app2.decisionPatternsInjectBlock(tab2)
+	if !ok2 {
+		t.Fatal("drifted file must still inject (full-content fallback)")
+	}
+	if want := decisionPatternsBlockBody(strings.TrimSpace(drifted)); block2 != want {
+		t.Fatalf("unparseable file must fall back to the legacy block byte-for-byte\ngot:  %q\nwant: %q", block2, want)
+	}
+}

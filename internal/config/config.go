@@ -1893,6 +1893,17 @@ type AgentConfig struct {
 	// heartbeat writes decision-patterns.md (task 801 修订六). Off by default:
 	// the default posture reports the patterns and waits for the user.
 	DecisionPatternAutoApprove bool `toml:"decision_pattern_auto_approve"`
+	// ExperimentalDecisionPatternsLayered is the tl1772 injection-layering lab
+	// switch (A 方案: index resident + full text on demand). ON = the autopilot
+	// injection carries only a per-entry index line (DP 编号 场景关键词→决策
+	// 一句话, ≈1.5KB for 18 entries) plus a hard instruction to read the
+	// referenced DP full text from the solidified file for ruling/
+	// user-correction messages; an unparseable file silently falls back to the
+	// full-content form. Ships OFF (铁律 2): off = the legacy full-content
+	// injection byte-for-byte (rollback path). Read live per injection — no
+	// boot snapshot — so a flip applies on the next autopilot message. B 方案
+	// (post-compaction incremental re-injection) is explicitly not built.
+	ExperimentalDecisionPatternsLayered bool `toml:"experimental_decision_patterns_layered"`
 	// ExperimentalPinnedIndex is the tl1193 plan-E lab switch: the standing
 	// pinned tier renders one self-sufficient index line per pinned fact
 	// (title + memory-tool reference + scope/type + description capped at 150

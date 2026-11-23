@@ -354,9 +354,9 @@ type SettingsView struct {
 	// (task 1053 — the model-level sibling of DefaultEffort). "" / a missing
 	// entry means "auto"; the vocabulary each row offers still rides the
 	// ProviderView.modelOverrides round-trip.
-	ModelEfforts           map[string]string `json:"modelEfforts"`
-	PlannerModel           string            `json:"plannerModel"`
-	GuardianModel          string            `json:"guardianModel"`
+	ModelEfforts  map[string]string `json:"modelEfforts"`
+	PlannerModel  string            `json:"plannerModel"`
+	GuardianModel string            `json:"guardianModel"`
 	// tl1741：Autopilot 偏好键随撤开关退役（新会话恒默认 unattended）；
 	// MaxRuntime/ApprovalGrace 是运行护栏键，保留展示（config 手写可调）。
 	AutopilotMaxRuntime    string `json:"autopilotMaxRuntime"`
@@ -581,6 +581,10 @@ type SettingsView struct {
 	BackgroundJobWakeIdleSession bool `json:"backgroundJobWakeIdleSession"`
 	DecisionPatternThreshold     int  `json:"decisionPatternThreshold"`
 	DecisionPatternAutoApprove   bool `json:"decisionPatternAutoApprove"`
+	// tl1772: injection-layering lab switch readback. The injection face reads
+	// config live per submission (no boot snapshot), so a flip applies on the
+	// next autopilot message; off = legacy full-content injection byte-for-byte.
+	ExperimentalDecisionPatternsLayered bool `json:"experimentalDecisionPatternsLayered"`
 	// tl1193b: plan-E pinned standing-tier index mode readback. Boot snapshot —
 	// boot resolves the saved switch into the memory gate before the first
 	// Load, so the desktop flip writes config and applies on restart.
@@ -2004,9 +2008,9 @@ func (a *App) Settings() SettingsView {
 		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
 		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
 		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
-		ExperimentalTasklistPanel:  cfg.Desktop.ExperimentalTasklistPanel, // tl1746 tasklist panel switch
-		TasklistDBPath:             cfg.Desktop.TasklistDBPath,            // tl1746 db-path family key
-		ExperimentalTrajectoryView: cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
+		ExperimentalTasklistPanel:    cfg.Desktop.ExperimentalTasklistPanel,  // tl1746 tasklist panel switch
+		TasklistDBPath:               cfg.Desktop.TasklistDBPath,             // tl1746 db-path family key
+		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the
 		// switch rendered "off" even with the feature running (the 81/123
@@ -2033,7 +2037,7 @@ func (a *App) Settings() SettingsView {
 		// tl 1165: smooth streaming scroll follow readback (two-view lesson).
 		ExperimentalSmoothScrollFollow: cfg.Desktop.ExperimentalSmoothScrollFollow,
 		// tl 1132: startup splash overlay readback (two-view lesson).
-		ExperimentalStartupSplash: cfg.Desktop.ExperimentalStartupSplash,
+		ExperimentalStartupSplash:       cfg.Desktop.ExperimentalStartupSplash,
 		ExperimentalSubagentPanel:       cfg.Desktop.ExperimentalSubagentPanel,
 		ExperimentalSessionWall:         cfg.Desktop.ExperimentalSessionWall,
 		ExperimentalPromptHistoryPicker: cfg.Desktop.ExperimentalPromptHistoryPicker,
@@ -2087,6 +2091,8 @@ func (a *App) Settings() SettingsView {
 		BackgroundJobWakeIdleSession: cfg.BackgroundJobWakeIdleSession(),
 		DecisionPatternThreshold:     cfg.Agent.DecisionPatternThreshold,
 		DecisionPatternAutoApprove:   cfg.Agent.DecisionPatternAutoApprove,
+		// tl1772: injection-layering lab switch readback (live-read, no snapshot).
+		ExperimentalDecisionPatternsLayered: cfg.Agent.ExperimentalDecisionPatternsLayered,
 		// tl1193b: plan-E pinned index mode readback.
 		ExperimentalPinnedIndex: cfg.Agent.ExperimentalPinnedIndex,
 		// tl1733: 记忆注入瘦身 lab switch readback.
