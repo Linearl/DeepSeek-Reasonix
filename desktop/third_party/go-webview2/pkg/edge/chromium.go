@@ -208,8 +208,26 @@ func (e *Chromium) errorCallback(err error) {
 	e.globalErrorCallback(err)
 	// 任务496 诊断插桩：此前的 os.Exit(1) 零输出，desktop 全量静默死亡无法
 	// 归因（4/4 轮复现、死点随输出模式漂移）。退出前先留一行可检索证据。
-	slog.Error("webview2: chromium errorCallback exiting the process", "err", err)
+	// tl1786：errorCallback 有 20+ 个 COM 调用触发点，一行 err 定不出具体
+	// 调用点；附调用 goroutine 栈（截断）后，触发 frame 直接可读——包111
+	// 16:27 exit=1 静默退出一例即该家族的「留证不足」形态。
+	slog.Error("webview2: chromium errorCallback exiting the process", "err", err, "stack", reasonixCallerStack(2<<10))
 	os.Exit(1)
+}
+
+// reasonixCallerStack snapshots the calling goroutine's stack, head-capped so
+// the slog line stays bounded. Only used on the fatal exit paths below.
+func reasonixCallerStack(max int) string {
+	if max <= 0 {
+		max = 2 << 10
+	}
+	buf := make([]byte, max<<2)
+	n := runtime.Stack(buf, false)
+	stack := string(buf[:n])
+	if len(stack) > max {
+		stack = stack[:max]
+	}
+	return stack
 }
 
 func (e *Chromium) nonFatalErrorCallback(err error) {
@@ -613,7 +631,11 @@ func (e *Chromium) PermissionRequested(_ *ICoreWebView2, args *iCoreWebView2Perm
 func (e *Chromium) WebResourceRequested(sender *ICoreWebView2, args *ICoreWebView2WebResourceRequestedEventArgs) uintptr {
 	req, err := args.GetRequest()
 	if err != nil {
-		log.Fatal(err)
+		// tl1786：log.Fatal 的退出码同为 1，但只留一行 err 且走 std log——
+		// 换成与 errorCallback 同构的归因（slog + 调用栈 + exit 1），退出
+		// 码保持 1 不变，桌面日志通道（slog→desktop.log）下证据完整。
+		slog.Error("webview2: WebResourceRequested GetRequest failed; exiting the process", "err", err, "stack", reasonixCallerStack(2<<10))
+		os.Exit(1)
 	}
 	defer req.Release()
 
