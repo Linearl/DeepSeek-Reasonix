@@ -178,7 +178,12 @@ func (a *App) submitToTabResult(tabID, input string, fromBridge, classifyManagem
 	return result, nil
 }
 
-func (a *App) submitUserTurnToTabWithSink(tabID, input string, forwarder event.Sink) bool {
+// submitUserTurnToTabWithSink 与 submitHeartbeatTurnToTabWithSink 共用
+// submitTurnToTabWithSinkBody 受理体（tl1780 双胞胎合并）：tab 受理锁、bot
+// sink 换装、话题索引、提交、finish、未受理时清 sink，逐行等价。两入口仅差
+// 提交动作一行（普通回合 vs 心跳回合）。注：user 入口当前全仓无调用者（唯一
+// 活入口是心跳引擎调用的 heartbeat 版），入口按任务书保留候拍板。
+func (a *App) submitTurnToTabWithSinkBody(tabID, input string, forwarder event.Sink, submit func(control.SessionAPI)) bool {
 	admission, ctrl, err := a.beginTabTurn(tabID, false)
 	if err != nil {
 		return false
@@ -190,12 +195,18 @@ func (a *App) submitUserTurnToTabWithSink(tabID, input string, forwarder event.S
 		generation = tab.sink.SetBotSink(forwarder)
 	}
 	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitUserTurn(input, input)
+	submit(ctrl)
 	started := admission.finish(ctrl)
 	if !started && forwarder != nil {
 		tab.sink.clearBotSink(generation)
 	}
 	return started
+}
+
+func (a *App) submitUserTurnToTabWithSink(tabID, input string, forwarder event.Sink) bool {
+	return a.submitTurnToTabWithSinkBody(tabID, input, forwarder, func(c control.SessionAPI) {
+		c.SubmitUserTurn(input, input)
+	})
 }
 
 // submitHeartbeatTurnToTabWithSink is submitUserTurnToTabWithSink for
@@ -205,23 +216,9 @@ func (a *App) submitUserTurnToTabWithSink(tabID, input string, forwarder event.S
 // wait. Called by the heartbeat engine for every run — regular tasks and
 // autopilot-guard wakes alike.
 func (a *App) submitHeartbeatTurnToTabWithSink(tabID, input string, forwarder event.Sink) bool {
-	admission, ctrl, err := a.beginTabTurn(tabID, false)
-	if err != nil {
-		return false
-	}
-	defer admission.abort()
-	tab := admission.tab
-	var generation uint64
-	if forwarder != nil {
-		generation = tab.sink.SetBotSink(forwarder)
-	}
-	a.ensureTabTopicIndexedForUserTurn(tab)
-	ctrl.SubmitHeartbeatTurn(input, input)
-	started := admission.finish(ctrl)
-	if !started && forwarder != nil {
-		tab.sink.clearBotSink(generation)
-	}
-	return started
+	return a.submitTurnToTabWithSinkBody(tabID, input, forwarder, func(c control.SessionAPI) {
+		c.SubmitHeartbeatTurn(input, input)
+	})
 }
 
 // RunShell executes a shell command directly (bypassing the model) and streams
