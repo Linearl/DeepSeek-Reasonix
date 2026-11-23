@@ -10,7 +10,7 @@ GOEXE := $(shell go env GOEXE)
 GOLANGCI_VERSION := $(shell cat .golangci-version)
 WAILS_VERSION := $(shell tr -d '[:space:]' < .wails-version)
 
-.PHONY: build vet fmt lint lint-go lint-install lint-cross lint-update wails-install test desktop-test desktop-test-short desktop-test-times sdk-test sdk-test-race hooks cross clean
+.PHONY: build vet fmt lint lint-go lint-install lint-cross lint-update wails-install test test-triage desktop-test desktop-test-short desktop-test-times desktop-test-triage sdk-test sdk-test-race hooks cross clean
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/reasonix$(GOEXE) ./cmd/reasonix
@@ -68,6 +68,13 @@ GO_TEST_TIMEOUT := 30m
 test:
 	go test -timeout $(GO_TEST_TIMEOUT) ./...
 
+# tl1788 pattern 5: same package sets, but every failing package gets
+# isolated re-runs (default 3 attempts) so load-sensitive flaky tests
+# (TestConnectionReuseBaseline / CountSentFromToday family / BindingReaders)
+# classify as FLAKY instead of forcing a manual single-run triage round.
+test-triage:
+	bash scripts/go-test-triage.sh ./...
+
 desktop-test:
 	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) .
 
@@ -77,11 +84,17 @@ desktop-test-short:
 desktop-test-times:
 	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) -count=1 -json . | python3 ../scripts/desktop-test-times.py
 
+desktop-test-triage:
+	cd desktop && bash ../scripts/go-test-triage.sh .
+
 sdk-test:
 	cd sdk/go && go test -timeout $(GO_TEST_TIMEOUT) ./...
 
 sdk-test-race:
 	cd sdk/go && go test -timeout $(GO_TEST_TIMEOUT) -race ./...
+
+sdk-test-triage:
+	cd sdk/go && bash ../../scripts/go-test-triage.sh ./...
 
 hooks:
 	@git config core.hooksPath .githooks
