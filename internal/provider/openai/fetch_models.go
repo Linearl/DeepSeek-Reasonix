@@ -227,9 +227,10 @@ func decodeModalities(raw json.RawMessage) ([]provider.ModelModality, bool) {
 	out := make([]provider.ModelModality, 0, len(values))
 	for _, value := range values {
 		modality := provider.ModelModality(strings.ToLower(strings.TrimSpace(value)))
-		// Task 1008: audio rides the same declaration channel; an unknown
-		// modality still poisons the entry (nil) rather than being dropped.
-		if modality != provider.ModalityText && modality != provider.ModalityImage && modality != provider.ModalityAudio {
+		// Task 1008: audio rides the same declaration channel; tl1767 adds
+		// video. An unknown modality still poisons the entry (nil) rather than
+		// being dropped.
+		if modality != provider.ModalityText && modality != provider.ModalityImage && modality != provider.ModalityAudio && modality != provider.ModalityVideo {
 			return nil, false
 		}
 		if !seen[modality] {

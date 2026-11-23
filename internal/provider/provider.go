@@ -67,7 +67,14 @@ type Message struct {
 	// gates independent; adapters embed it as input_audio parts only when the
 	// model is audio-enabled, and must reject audio-carrying messages
 	// otherwise (never drop silently).
-	Audio            []string `json:"audio,omitempty"`
+	Audio []string `json:"audio,omitempty"`
+	// Video holds inline video data URLs (tl1767, first phase: file
+	// attachments only). A separate field keeps the capability gates
+	// independent; adapters embed it as video_url parts only when the adapter
+	// gate allows, and project it to a text placeholder otherwise — video
+	// never fails the request (fail-closed, zcode unsupportedInputMediaText
+	// 口径).
+	Video            []string `json:"video,omitempty"`
 	ReasoningContent string   `json:"reasoning_content,omitempty"` // assistant: thinking-mode chain-of-thought, round-tripped on multi-turn
 	// ReasoningID is the provider-issued reasoning-item id (OpenAI Responses:
 	// Reasoning.id is required on input items),

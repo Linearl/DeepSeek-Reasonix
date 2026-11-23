@@ -377,6 +377,13 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 	if err := provider.RejectAudioIfPresent(c.name, c.model, "the Anthropic protocol does not support audio input", req.Messages); err != nil {
 		return nil, err
 	}
+	// tl1767: video takes the fail-closed path instead of the audio hard
+	// block — the resolver-side gate keeps video out of Anthropic models in
+	// the first place, and a message that still carries video (session replay,
+	// mid-turn flip) is projected to an honest text placeholder rather than
+	// failing the request (zcode transform.ts:242 unsupportedInputMediaText
+	// 口径).
+	req.Messages = provider.TextifyVideoAttachments(req.Messages)
 	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	buf := bufPool.Get().(*bytes.Buffer)
 	buf.Reset()
