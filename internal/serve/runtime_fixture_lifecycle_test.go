@@ -221,7 +221,7 @@ func TestServeSwitchEffortUsesModelRefForDuplicateModelNames(t *testing.T) {
 		}), nil
 	}
 
-	if err := server.switchEffort(context.Background(), "high"); err != nil {
+	if err := server.switchEffortExpected(context.Background(), "high", ""); err != nil {
 		t.Fatalf("switchEffort: %v", err)
 	}
 	if builtRef != "alternate/shared-chat" {

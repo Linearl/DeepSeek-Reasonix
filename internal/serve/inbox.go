@@ -24,10 +24,6 @@ func (s *Server) registerInboxRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /inbox/items/{id}/refresh", s.foregroundMutation(s.inboxRefresh))
 }
 
-func (s *Server) inboxAPI() control.SessionAPI {
-	return s.ctl()
-}
-
 func writeInboxError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, sessioninbox.ErrItemTooLarge):
@@ -49,7 +45,7 @@ func (s *Server) inboxList(w http.ResponseWriter, r *http.Request) {
 	if !s.validateInboxReadSessionLocked(w, r) {
 		return
 	}
-	snap := s.inboxAPI().InboxSnapshot()
+	snap := s.ctl().InboxSnapshot()
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(snap)
 }
@@ -83,7 +79,7 @@ func (s *Server) inboxEnqueue(w http.ResponseWriter, r *http.Request) {
 	if strings.EqualFold(body.Intent, "steer") {
 		intent = sessioninbox.IntentSteer
 	}
-	api := s.inboxAPI()
+	api := s.ctl()
 	if ensurer, ok := any(api).(interface{ EnsureSessionPath() }); ok {
 		ensurer.EnsureSessionPath()
 	}
@@ -143,7 +139,7 @@ func (s *Server) inboxReceipt(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	meta, env, err := s.inboxAPI().ReadInboxItem(id)
+	meta, env, err := s.ctl().ReadInboxItem(id)
 	if err != nil {
 		writeInboxError(w, err)
 		return
@@ -161,7 +157,7 @@ func (s *Server) inboxUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing input", http.StatusBadRequest)
 		return
 	}
-	meta, err := s.inboxAPI().UpdateInboxItem(id, body.Input, body.Input, body.Input)
+	meta, err := s.ctl().UpdateInboxItem(id, body.Input, body.Input, body.Input)
 	if err != nil {
 		writeInboxError(w, err)
 		return
@@ -172,7 +168,7 @@ func (s *Server) inboxUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.inboxAPI().DeleteInboxItem(id); err != nil {
+	if err := s.ctl().DeleteInboxItem(id); err != nil {
 		writeInboxError(w, err)
 		return
 	}
@@ -188,7 +184,7 @@ func (s *Server) inboxMove(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
-	if err := s.inboxAPI().MoveInboxItem(body.ID, body.ToIndex); err != nil {
+	if err := s.ctl().MoveInboxItem(body.ID, body.ToIndex); err != nil {
 		writeInboxError(w, err)
 		return
 	}
@@ -197,7 +193,7 @@ func (s *Server) inboxMove(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxPause(w http.ResponseWriter, r *http.Request) {
 	_ = r
-	if err := s.inboxAPI().SetInboxPaused(true); err != nil {
+	if err := s.ctl().SetInboxPaused(true); err != nil {
 		writeInboxError(w, err)
 		return
 	}
@@ -206,7 +202,7 @@ func (s *Server) inboxPause(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxResume(w http.ResponseWriter, r *http.Request) {
 	_ = r
-	if err := s.inboxAPI().SetInboxPaused(false); err != nil {
+	if err := s.ctl().SetInboxPaused(false); err != nil {
 		writeInboxError(w, err)
 		return
 	}
@@ -215,7 +211,7 @@ func (s *Server) inboxResume(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxRetry(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.inboxAPI().RetryInboxItem(id); err != nil {
+	if err := s.ctl().RetryInboxItem(id); err != nil {
 		writeInboxError(w, err)
 		return
 	}
@@ -224,7 +220,7 @@ func (s *Server) inboxRetry(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) inboxRefresh(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := s.inboxAPI().RefreshInboxReferences(id); err != nil {
+	if err := s.ctl().RefreshInboxReferences(id); err != nil {
 		writeInboxError(w, err)
 		return
 	}

@@ -96,11 +96,6 @@ func (b *Broadcaster) ResetSessionPath(path string) {
 	b.mu.Unlock()
 }
 
-// SessionCostQuote returns the current aggregate quote without repricing.
-func (b *Broadcaster) SessionCostQuote() billing.CostQuote {
-	return b.SessionCostQuoteFor("")
-}
-
 // SessionCostQuoteFor returns one session's aggregate quote. Empty selects
 // the current session so existing single-session callers keep their contract.
 func (b *Broadcaster) SessionCostQuoteFor(path string) billing.CostQuote {
