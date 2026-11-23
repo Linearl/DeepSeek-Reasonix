@@ -102,6 +102,7 @@ func (a *App) recordPreviousRunDiagnostics() {
 			"pid", lifecycle.PID, "phase", lifecycle.Phase, "disposition", disposition,
 			"reported", disposition == "abnormal_phase",
 			"exit_code", lifecycle.ExitCode, "death_at", lifecycle.DeathAt,
+			"exit_reason", lifecycle.ExitReason,
 			"task_1027_wedge_point", wedgePointBucket(lifecycle.WedgePoint))
 		if m := a.metrics.Load(); m != nil {
 			m.inc("desktop_exit_phase", metricBucket(lifecycle.Phase))
@@ -291,13 +292,21 @@ func desktopLifecycleReport(previous desktopLifecycleObservation) crashReport {
 		wedgePoint = wedgePointBucket(previous.WedgePoint)
 		wedgeLine = fmt.Sprintf("\nwedge point: %s (shutdown watchdog forced exit)", wedgePoint)
 	}
+	// tl1786: the launcher now classifies the exit code into the death class
+	// the fork's exit surfaces can produce (external TerminateProcess-class
+	// kill, wails browser-crash dialog path, native NTSTATUS fault, ...).
+	// Empty on pre-tl1786 evidence — the line stays absent then, byte-for-byte.
+	reasonLine := ""
+	if strings.TrimSpace(previous.ExitReason) != "" {
+		reasonLine = fmt.Sprintf("\nexit class: %s", previous.ExitReason)
+	}
 	message := fmt.Sprintf(`[desktop.abnormal_exit.v2]
 
 Reasonix found a per-process lifecycle record whose desktop process was no longer running.
 
 --- lifecycle context ---
 phase: %s
-pid: %d%s%s
+pid: %d%s%s%s
 previous version: %s
 previous channel: %s
 started at: %s
@@ -307,6 +316,7 @@ discovered at: %s`,
 		previous.PID,
 		deathLine,
 		wedgeLine,
+		reasonLine,
 		sanitizeCrashField(previous.Version, 64),
 		sanitizeCrashField(previous.Channel, 32),
 		sanitizeCrashField(previous.StartedAt, 64),

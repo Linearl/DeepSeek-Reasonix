@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -435,5 +436,65 @@ func TestDesktopLifecycleStaleLauncherEvidenceIsSwept(t *testing.T) {
 	}
 	if _, err := os.Stat(evidencePath); !os.IsNotExist(err) {
 		t.Fatalf("stale evidence was not swept: %v", err)
+	}
+}
+
+// tl1786: the launcher's enriched death record (same schemaVersion 1, new
+// reason/stack/lifecyclePhase/wedgePoint/crashFatalSeen fields) must still be
+// consumed by this decoder, and the exit-class sentence must reach the
+// observation and the report message. The stack itself stays launcher-side
+// (the record is the carrier; the report keeps the class line only).
+func TestDesktopLifecycleEnrichedLauncherEvidenceJoins(t *testing.T) {
+	root := t.TempDir()
+	dead := lifecycleTrackerForTest(t, root, 4242, "dead-enriched")
+	if err := dead.start(); err != nil {
+		t.Fatal(err)
+	}
+	dead.stopWriter()
+
+	evidencePath := filepath.Join(root, "diagnostics", "lifecycle", "last-abnormal-exit.json")
+	if err := os.MkdirAll(filepath.Dir(evidencePath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	exitedAt := time.Now().UTC().Add(-1 * time.Hour).Format(time.RFC3339Nano)
+	body := `{"schemaVersion":1,"pid":4242,"exitCode":1,"exitedAt":"` + exitedAt + `",` +
+		`"reason":"exit=1: explicit process exit or external TerminateProcess-class kill",` +
+		`"stack":"","lifecyclePhase":"running","crashFatalSeen":true}`
+	if err := os.WriteFile(evidencePath, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	reader := lifecycleTrackerForTest(t, root, os.Getpid(), "reader")
+	got := reader.consumePrevious(true)
+	if len(got) != 1 {
+		t.Fatalf("observations = %+v", got)
+	}
+	if got[0].DeathAt != exitedAt || got[0].ExitCode != 1 {
+		t.Fatalf("death evidence not joined: %+v", got[0])
+	}
+	if !strings.Contains(got[0].ExitReason, "TerminateProcess") {
+		t.Fatalf("exit reason not joined: %+v", got[0])
+	}
+	if _, err := os.Stat(evidencePath); !os.IsNotExist(err) {
+		t.Fatalf("enriched record not consumed after match: %v", err)
+	}
+
+	report := desktopLifecycleReport(got[0])
+	if !strings.Contains(report.Message, "exit class: exit=1") {
+		t.Fatalf("report message lacks the exit-class line: %q", report.Message)
+	}
+}
+
+// Pre-tl1786 records carry no reason — the report message must stay
+// byte-for-byte without the exit-class line (old evidence, old shape).
+func TestDesktopLifecycleReportOmitsAbsentReason(t *testing.T) {
+	observation := desktopLifecycleObservation{
+		PID: 4242, Phase: "running", Version: "test", Channel: "stable",
+		StartedAt: "2026-11-23T08:00:00Z", UpdatedAt: "2026-11-23T09:00:00Z",
+		DetectedAt: "2026-11-23T09:30:00Z",
+	}
+	report := desktopLifecycleReport(observation)
+	if strings.Contains(report.Message, "exit class:") {
+		t.Fatalf("report message grew an exit-class line without evidence: %q", report.Message)
 	}
 }
