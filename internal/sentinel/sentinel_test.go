@@ -3,6 +3,9 @@ package sentinel
 import (
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -207,6 +210,12 @@ func TestWriteSystemConfigRules(t *testing.T) {
 			// (first-match-wins); either block is the correct verdict.
 			`cp evil.toml C:/Users/dev/AppData/Roaming/reasonix/config.toml`,
 			`mv evil.toml ~/AppData/Roaming/reasonix/config.toml`,
+			// tl1783 反向用例：Windows（NTFS 大小写不敏感）下大小写变体与真实
+			// 保护文件同体，必须同样拦截——修复前 matchProtectedPath 大小写
+			// 敏感子串匹配把变体放行（write_system_config 硬拦截被穿透）。
+			`echo "x=1" > C:/Users/dev/AppData/Roaming/reasonix/CONFIG.TOML`,
+			`echo "x=1" > C:\USERS\DEV\APPDATA\ROAMING\REASONIX\CONFIG.TOML`,
+			`mv evil.toml ~/AppData/Roaming/reasonix/Config.Toml`,
 		}
 		for _, cmd := range bashHits {
 			tool, args := bashCall(t, cmd)
@@ -223,6 +232,8 @@ func TestWriteSystemConfigRules(t *testing.T) {
 			{"write_file", `{"file_path": "C:/Users/dev/AppData/Roaming/reasonix/config.toml", "content": "x"}`},
 			{"edit_file", `{"file_path": "C:\\Users\\dev\\AppData\\Roaming\\reasonix\\.env", "old": "a", "new": "b"}`},
 			{"move_file", `{"source_path": "D:/tmp/evil.toml", "destination_path": "C:/Users/dev/AppData/Roaming/reasonix/config.toml"}`},
+			// tl1783：文件工具路径同样走大小写变体拦截。
+			{"write_file", `{"file_path": "C:/Users/dev/AppData/Roaming/reasonix/Config.Toml", "content": "x"}`},
 		}
 		for _, tc := range toolHits {
 			expectBlocked(t, tc.tool, json.RawMessage(tc.args), RuleWriteSystemConfig)
@@ -238,6 +249,9 @@ func TestWriteSystemConfigRules(t *testing.T) {
 			{"bash", `echo hello > out.txt`, false},
 			{"write_file", `{"file_path": "D:/work/reasonix.toml", "content": "x"}`, true}, // project config, not protected in v1
 			{"write_file", `{"file_path": "D:/work/config.toml", "content": "x"}`, true},   // ordinary same-name file
+			// tl1783 误杀面：非保护树下的大写变体是不同目录的普通文件，折叠后
+			// 仍不得命中保护前缀（全路径折叠，非文件名折叠）。
+			{"write_file", `{"file_path": "D:/work/CONFIG.TOML", "content": "x"}`, true},
 			{"read_file", `{"path": "C:/Users/dev/AppData/Roaming/reasonix/config.toml"}`, true},
 		}
 		for _, tc := range legal {
@@ -249,6 +263,26 @@ func TestWriteSystemConfigRules(t *testing.T) {
 			expectAllowed(t, tool, args)
 		}
 	})
+}
+
+// TestNormalizePathCaseFolding 钉住 tl1783 的平台条件大小写折叠语义：
+//   - Windows（NTFS 默认大小写不敏感）：变体拼写必须折叠成同一规范形，
+//     否则大小写不同的同体文件穿透保护路径匹配（write_system_config /
+//     delete_critical_path 双规则受害）；
+//   - POSIX（大小写敏感文件系统是常态）：折叠不启用，CONFIG.TOML 与
+//     config.toml 是不同文件，语义不得回归（tl1783 验收②）。
+func TestNormalizePathCaseFolding(t *testing.T) {
+	variant := `C:/Users/dev/Reasonix/CONFIG.TOML`
+	got := normalizePath(variant)
+	if runtime.GOOS == "windows" {
+		if want := strings.ToLower(filepath.ToSlash(filepath.Clean(variant))); got != want {
+			t.Errorf("windows normalizePath must fold case: got %q, want %q", got, want)
+		}
+		return
+	}
+	if want := filepath.ToSlash(filepath.Clean(variant)); got != want {
+		t.Errorf("posix normalizePath must keep case: got %q, want %q", got, want)
+	}
 }
 
 // TestTogglesAndDisabledRules verifies the composition-root switches.

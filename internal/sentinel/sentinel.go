@@ -18,6 +18,7 @@ package sentinel
 import (
 	"encoding/json"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 )
@@ -223,13 +224,21 @@ func commandSubject(toolName string, args json.RawMessage) string {
 	}
 }
 
-// normalizePath canonicalizes a path for comparisons: forward slashes,
-// lowercase drive letters, no trailing separator. Empty stays empty.
+// normalizePath canonicalizes a path for comparisons: forward slashes, and on
+// Windows a full lowercase fold — NTFS name lookup is case-insensitive, so
+// `CONFIG.TOML` names the same file as `config.toml` and must not slip past a
+// protected-path match by spelling (tl1783). Registered protected paths go
+// through this same function (SetProtectedPaths), so both sides of
+// matchProtectedPath fold identically. POSIX keeps case sensitivity: there a
+// different case is a different file. Empty stays empty.
 func normalizePath(p string) string {
 	p = strings.TrimSpace(p)
 	if p == "" {
 		return ""
 	}
 	p = filepath.ToSlash(filepath.Clean(p))
+	if runtime.GOOS == "windows" {
+		p = strings.ToLower(p)
+	}
 	return p
 }
