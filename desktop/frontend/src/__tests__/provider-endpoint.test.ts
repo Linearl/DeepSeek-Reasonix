@@ -19,6 +19,9 @@ function eq(actual: unknown, expected: unknown, label: string) {
 console.log("\nprovider endpoint");
 
 eq(providerRequestURLFromConfig("openai", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/chat/completions", "legacy OpenAI base URLs expose their effective request URL");
+eq(providerRequestURLFromConfig("openai", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/chat/completions", "tl1774 bare base still auto-completes the chat path");
+eq(providerRequestURLFromConfig("anthropic", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/v1/messages", "tl1774 bare anthropic base auto-completes the messages path");
+eq(providerRequestURLFromConfig("responses", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/responses", "tl1774 bare responses base auto-completes the responses path");
 eq(providerRequestURLFromConfig("anthropic", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/messages", "legacy Anthropic base URLs expose their effective request URL");
 eq(providerRequestURLFromConfig("responses", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/responses", "legacy Responses base URLs expose their effective request URL");
 eq(providerRequestURLFromConfig("openai", "https://proxy.example.com/v1", "", "https://legacy.example.com/chat/completions/"), "https://legacy.example.com/chat/completions", "legacy OpenAI chat URLs preserve historical trailing-slash normalization");
