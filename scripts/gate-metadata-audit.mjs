@@ -309,7 +309,7 @@ function renderHuman(report) {
       lines.push(`    tsc ${record.file}  ${record.pairs.length} 对（候选 ${record.candidates}）`);
     }
   }
-  lines.push(`[口径] 清零率 = 累计已退役 ÷（累计已退役 + 当前存量）＝ ${report.clearance.tsc}（tsc，累计退役 ${report.clearance.retiredTsc}）／ ${report.clearance.forkIntegrity}（fork-integrity，累计退役 ${report.clearance.retiredFork}）；退役数由台账人工累计，本脚本只报存量与候选。`);
+  lines.push(`[口径] 清零率 = 累计已退役 ÷（累计已退役 + 当前存量）＝ ${report.clearance.tsc}（tsc，累计退役 ${report.clearance.retiredTsc}）／ ${report.clearance.forkIntegrity}（fork-integrity，累计退役 ${report.clearance.retiredFork}）；退役数取自台账（--retired-tsc/--retired-fork 传入），本脚本只报存量与候选。`);
   lines.push("[声明] 本脚本只读盘点、不是门禁：候选清单只列不删，退役动作候拍板（docs/gate-metadata-retirement.md §2/§4）。");
   return lines.join("\n");
 }
@@ -327,6 +327,8 @@ async function main(argv) {
   const jsonPath = getArg("--json", null);
   const sampleRaw = getArg("--sample", 0);
   const sampleN = sampleRaw === true ? 10 : Number(sampleRaw) || 0;
+  const retiredTsc = Math.max(0, Number(getArg("--retired-tsc", 0)) || 0);
+  const retiredFork = Math.max(0, Number(getArg("--retired-fork", 0)) || 0);
   const todayISO = String(getArg("--today", new Date().toISOString().slice(0, 10)));
   if (!["all", "tsc", "fork-integrity"].includes(source)) {
     console.error(`未知 --source=${source}（可选 all|tsc|fork-integrity）`);
@@ -350,6 +352,16 @@ async function main(argv) {
   try {
     if (source === "all" || source === "tsc") report.sources.push(await auditTsc(repoRoot, { withTsc }));
     if (source === "all" || source === "fork-integrity") report.sources.push(await auditForkIntegrity(repoRoot, todayISO));
+    // 清零率（政策 §4.5）：退役数由台账人工累计后经参数传入；首轮起算退役=0 → 0%。
+    const tscSource = report.sources.find((s) => s.source === "tsc");
+    const forkSource = report.sources.find((s) => s.source === "fork-integrity");
+    const rate = (retired, stock) => (retired + stock === 0 ? "n/a" : `${((retired * 100) / (retired + stock)).toFixed(2)}%`);
+    report.clearance = {
+      retiredTsc,
+      retiredFork,
+      tsc: tscSource ? rate(retiredTsc, tscSource.pairs) : null,
+      forkIntegrity: forkSource ? rate(retiredFork, forkSource.total) : null,
+    };
     if (sampleN > 0) {
       const fork = report.sources.find((s) => s.source === "fork-integrity");
       const tsc = report.sources.find((s) => s.source === "tsc");
