@@ -862,21 +862,6 @@ func (s *Store) restoreTransactionConversation(tx *TransactionManifest, applier 
 	return restoreErr
 }
 
-// SetConversationForward attaches the pre-truncate conversation snapshot to a
-// prepared transaction before commit. The controller calls this after Prepare.
-func (s *Store) SetConversationForward(txID string, forward []byte) error {
-	path := s.txManifestPath(txID)
-	var tx TransactionManifest
-	if err := readJSONFile(path, &tx); err != nil {
-		// Also check in-memory last prepare path: store plans don't hold tx yet.
-		// Commit builds tx fresh; controller should pass forward via Commit options.
-		return err
-	}
-	setTransactionConversationForward(&tx, forward)
-	tx.UpdatedAt = time.Now()
-	return s.persistTransaction(&tx)
-}
-
 // CommitRewindWithForward is CommitRewind plus conversation forward payload.
 func (s *Store) CommitRewindWithForward(planID string, forward []byte, applier ConversationApplier, inject *InjectFail) (RewindResult, error) {
 	if s == nil {

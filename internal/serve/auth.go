@@ -357,9 +357,6 @@ func (ag *authGate) checkToken(w http.ResponseWriter, r *http.Request, next http
 			qry := cleanURL.Query()
 			qry.Del("token")
 			cleanURL.RawQuery = qry.Encode()
-			if cleanURL.RawQuery == "" {
-				cleanURL.RawQuery = ""
-			}
 			redirectToSafeTarget(w, r, cleanURL.RequestURI(), http.StatusFound)
 			return
 		}

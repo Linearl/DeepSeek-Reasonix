@@ -114,19 +114,5 @@ type DetailedExecutor interface {
 	ExecuteDetailed(ctx context.Context, args json.RawMessage) (DetailedResult, error)
 }
 
-// CloneShellExecution returns a deep copy suitable for attaching to events or
-// session messages without sharing mutable pointers (e.g. ExitCode).
-func CloneShellExecution(in *ShellExecution) *ShellExecution {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	if in.ExitCode != nil {
-		code := *in.ExitCode
-		out.ExitCode = &code
-	}
-	return &out
-}
-
 // IntPtr returns a pointer to v for ShellExecution.ExitCode.
 func IntPtr(v int) *int { return &v }

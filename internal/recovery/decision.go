@@ -97,9 +97,10 @@ type DecisionResult struct {
 //  9. three consecutive failures of the same operation → stop that operation
 //  10. remaining exact-operation retries → reviewer
 //
-// Episode-level totals (6 failures / 3 review rejects / 3 stopped-op retries)
-// are enforced by the gate before or after Decide; Decide focuses on pure
-// routing of one proposal given Facts.
+// Episode-level totals (MaxEpisodeFailures failures / MaxReviewRejects review
+// rejects / MaxStoppedOperationRetries stopped-op retries — see budget.go) are
+// enforced by the gate before or after Decide; Decide focuses on pure routing
+// of one proposal given Facts.
 func Decide(f Facts) DecisionResult {
 	if !f.AutoMode {
 		return DecisionResult{Route: RouteBypass}

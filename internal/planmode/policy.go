@@ -1,7 +1,6 @@
 package planmode
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -25,14 +24,12 @@ const (
 	PlanSafetyUnsafe
 )
 
-// Call is the plan-mode view of one tool invocation. ReadOnly and Args remain
-// for source compatibility with older callers; they do not decide phase
-// availability because Permissions/Sandbox own safety.
+// Call is the plan-mode view of one tool invocation. Safety carries the tool's
+// explicit planning-phase stance; write-safety itself is owned by
+// Permissions/Sandbox and does not decide phase availability.
 type Call struct {
-	Name     string
-	ReadOnly bool
-	Safety   PlanSafety
-	Args     json.RawMessage
+	Name   string
+	Safety PlanSafety
 }
 
 // Decision reports whether phase semantics refuse a call and why.
@@ -41,22 +38,8 @@ type Decision struct {
 	Message string
 }
 
-// ReadOnlyCommandTrust is retained for source compatibility with the legacy
-// Plan bash trust bridge. Decide no longer produces this request: bash safety is
-// classified by Permissions, and read-only subagents enforce their own runner
-// boundary directly.
-type ReadOnlyCommandTrust struct {
-	Command string
-	Prefix  string
-}
-
-// Policy is retained so existing config/assembly code can carry legacy
-// plan_mode_* fields without breaking old data. Those fields no longer grant or
-// revoke execution in the main Plan workflow.
-type Policy struct {
-	AllowedTools     []string
-	ReadOnlyCommands []string
-}
+// Policy carries phase semantics via Decide; it holds no configuration state.
+type Policy struct{}
 
 // Decide applies phase semantics only. Plan is a collaboration workflow, not a
 // security boundary: every ordinary call proceeds to the same permission and

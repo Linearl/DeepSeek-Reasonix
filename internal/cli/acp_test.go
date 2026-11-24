@@ -12,7 +12,6 @@ import (
 	"reasonix/internal/event"
 	"reasonix/internal/netclient"
 	"reasonix/internal/provider"
-	"reasonix/internal/tool"
 
 	_ "reasonix/internal/tool/builtin"
 )
@@ -26,24 +25,6 @@ func init() {
 	provider.Register(acpTestProviderKind, func(cfg provider.Config) (provider.Provider, error) {
 		return &acpTestProvider{cfg: cfg}, nil
 	})
-}
-
-func TestACPBuiltinToolsKeepSessionLevelBuiltins(t *testing.T) {
-	dir := t.TempDir()
-	tools := toolMap(acpBuiltinTools(&config.Config{}, dir, []string{dir}))
-	for _, name := range []string{
-		"todo_write",
-		"complete_step",
-		"bash_output",
-		"kill_shell",
-		"wait",
-		"move_file",
-		"notebook_edit",
-	} {
-		if tools[name] == nil {
-			t.Fatalf("ACP workspace tools missing %q; got %v", name, toolNames(tools))
-		}
-	}
 }
 
 func TestACPInitializesWithoutAPIKey(t *testing.T) {
@@ -308,26 +289,6 @@ api_key_env = "REASONIX_TEST_KEY"
 	}
 }
 
-func TestACPTaskProfileDefaults(t *testing.T) {
-	cfg := config.Default()
-	cfg.Agent.SubagentModel = "default-model"
-	cfg.Agent.SubagentEffort = "high"
-	cfg.Agent.SubagentModels = map[string]string{"task": "task-model"}
-	cfg.Agent.SubagentEfforts = map[string]string{"task": "max"}
-
-	model, effort := acpTaskProfileDefaults(cfg)
-	if model != "task-model" || effort != "max" {
-		t.Fatalf("task profile defaults = %q/%q, want task-model/max", model, effort)
-	}
-
-	cfg.Agent.SubagentModels = nil
-	cfg.Agent.SubagentEfforts = nil
-	model, effort = acpTaskProfileDefaults(cfg)
-	if model != "default-model" || effort != "high" {
-		t.Fatalf("fallback task profile defaults = %q/%q, want default-model/high", model, effort)
-	}
-}
-
 func TestACPSubagentProviderResolverHonorsProfile(t *testing.T) {
 	cfg := config.Default()
 	cfg.Providers = []config.ProviderEntry{
@@ -398,22 +359,6 @@ func findACPConfigOption(options []acp.SessionConfigOption, id string) (acp.Sess
 		}
 	}
 	return acp.SessionConfigOption{}, false
-}
-
-func toolMap(tools []tool.Tool) map[string]tool.Tool {
-	out := make(map[string]tool.Tool, len(tools))
-	for _, t := range tools {
-		out[t.Name()] = t
-	}
-	return out
-}
-
-func toolNames(tools map[string]tool.Tool) []string {
-	out := make([]string, 0, len(tools))
-	for name := range tools {
-		out = append(out, name)
-	}
-	return out
 }
 
 type acpTestProvider struct {

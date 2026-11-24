@@ -186,11 +186,6 @@ func (o *MutationObserver) snapshotWritersLocked() []ActiveWriter {
 	return out
 }
 
-// HasActiveWriters reports whether any background writer is still running.
-func (o *MutationObserver) HasActiveWriters() bool {
-	return len(o.ActiveWriters()) > 0
-}
-
 // BeforeMutation captures the preimage for a known path before a tool or hook runs.
 // Prefer this over the legacy Snapshot(diff.Change) path for built-in tools.
 func (o *MutationObserver) BeforeMutation(path, tool string, source CaptureSource) {

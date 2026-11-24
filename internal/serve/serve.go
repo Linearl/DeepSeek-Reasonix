@@ -640,18 +640,12 @@ func applyEffortEdit(edit *config.Config, entry *config.ProviderEntry, effort st
 
 // Handler returns the HTTP routes: GET / (a minimal browser client), GET /events
 // (SSE), GET /history, GET /context, and POST command endpoints.
-// CORS is NOT applied by default — same-origin policy protects the unauthenticated
-// agent endpoints. Call HandlerWithCORS to opt in for local development.
+// CORS is NOT applied — same-origin policy protects the unauthenticated
+// agent endpoints.
 func (s *Server) Handler() http.Handler {
 	return s.handler()
 }
 
-// HandlerWithCORS returns the same routes as Handler but adds permissive CORS
-// headers so a dev frontend on a different origin (e.g. Vite on :5173) can
-// reach the server. Do NOT use in production — the server has no auth.
-func (s *Server) HandlerWithCORS(origin string) http.Handler {
-	return corsMiddleware(s.handler(), origin)
-}
 func (s *Server) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.index)
@@ -1132,26 +1126,6 @@ func writeJSONCached(w http.ResponseWriter, r *http.Request, v any) {
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	_, _ = w.Write(body)
-}
-
-// corsMiddleware adds CORS headers for a specific allowed origin. Only use for
-// local development — the server has no auth, so broad CORS would let any site
-// drive the agent. origin is the exact origin to allow (e.g.
-// "http://localhost:5173"); empty origin skips CORS entirely.
-func corsMiddleware(next http.Handler, origin string) http.Handler {
-	if origin == "" {
-		return next
-	}
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", origin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, "+expectedSessionPathHeader)
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
 }
 
 // logMiddleware logs each request's method, path, and status.
