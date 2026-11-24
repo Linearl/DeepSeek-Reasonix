@@ -179,6 +179,11 @@ func TestSessionSidecarFiles(t *testing.T) {
 		"/home/u/.reasonix/sessions/abc.display-index.json",
 		"/home/u/.reasonix/sessions/abc.conflicts.jsonl",
 		"/home/u/.reasonix/sessions/abc.repairlog.jsonl",
+		// tl1787 续作（tl1674b 补期望清单）：pre-repair 分叉拼接档案袋
+		// （.splices.json）是纯元信息 sidecar——生产清单在 1787 续作已列它
+		// （agent 层 TestSpliceLedgerRidesSessionSidecarInventory 同源钉），
+		// 本期望清单漏更导致预存红（与 tl1442 的 1174 漏更同型）。
+		"/home/u/.reasonix/sessions/abc.splices.json",
 		// tl1652：改写归因日志（.rewritelog.jsonl）是会话拥有的审计侧车——
 		// 漏列等于删会话时把归因史留在盘上（孤儿文件）。
 		"/home/u/.reasonix/sessions/abc.rewritelog.jsonl",

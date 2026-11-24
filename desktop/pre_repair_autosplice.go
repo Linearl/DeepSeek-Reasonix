@@ -105,6 +105,7 @@ func runPreRepairAutoSplicePass(enabled bool, views []PreRepairBackupView, busy 
 			Stamp:            view.Stamp,
 			Plan:             plan,
 			RepairAt:         repairAt,
+			Source:           agent.PreRepairSpliceSourceAuto,
 		})
 		if err != nil {
 			// 失败不阻塞 sweep（non-goal 纪律：静默记日志，下一 tick 自然
@@ -115,8 +116,8 @@ func runPreRepairAutoSplicePass(enabled bool, views []PreRepairBackupView, busy 
 			continue
 		}
 		registered++
-		slog.Info("desktop: pre-repair fork spliced into the ledger (metadata-only)",
-			"backup", entry.BackupDir, "owner", owner, "kind", entry.Kind,
+		slog.Info("desktop: pre-repair fork spliced into the ledger (metadata-only, auto)",
+			"backup", entry.BackupDir, "owner", owner, "kind", entry.Kind, "source", entry.Source,
 			"segment", entry.SegmentEnd-entry.SegmentStart, "splicePoint", entry.SplicePoint)
 	}
 	return registered, skipped

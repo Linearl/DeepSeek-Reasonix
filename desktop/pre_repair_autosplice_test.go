@@ -79,6 +79,14 @@ func TestPreRepairAutoSplicePassRegistersDivergedFork(t *testing.T) {
 	if !agent.HasPreRepairSplice(ownerPath, backupDir) {
 		t.Fatal("the fork must read back registered from the owner's ledger")
 	}
+	// tl1674 阶段二：自动登记必须携带 auto 来源（与手动入口可观测区分）。
+	entries, err := agent.ReadPreRepairSpliceLedger(ownerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Source != agent.PreRepairSpliceSourceAuto {
+		t.Fatalf("ledger source = %+v, want exactly one entry with source %q", entries, agent.PreRepairSpliceSourceAuto)
+	}
 	transcriptAfter, err := os.ReadFile(ownerPath)
 	if err != nil {
 		t.Fatal(err)
@@ -107,7 +115,7 @@ func TestPreRepairAutoSplicePassBusyAndIdempotent(t *testing.T) {
 	}
 	if _, err := agent.RegisterPreRepairSplice(ownerPath, agent.PreRepairSpliceRequest{
 		BackupDir: backupDir, BackupTranscript: filepath.Join(backupDir, "topic.jsonl"),
-		Stamp: "20261110T010000", Plan: plan,
+		Stamp: "20261110T010000", Plan: plan, Source: agent.PreRepairSpliceSourceAuto,
 	}); err != nil {
 		t.Fatalf("pre-register: %v", err)
 	}

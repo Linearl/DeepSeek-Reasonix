@@ -513,6 +513,10 @@ export interface PreRepairBackupView {
    *  (background autosplice or the manual merge) — the long chain is
    *  queryable from the ledger. */
   spliced?: boolean;
+  /** tl1674b 阶段二: which trigger registered it — "auto" (background
+   *  self-heal) or "manual" (the panel entry). Empty on legacy ledger files
+   *  written before the source marker existed; the badge stays plain then. */
+  splicedBy?: string;
   label: string;
   stamp: string;
   bytes: number;
@@ -530,6 +534,47 @@ export interface PreRepairMergeView {
   grafted: number;
   ownerPath: string;
   afterMessages: number;
+}
+
+/** tl1674b 阶段二: the manual-splice chain preview — the criteria verdict plus
+ *  the segmented structure (shared prefix / lost old-chain segment / main-line
+ *  continuation) the user confirms before registering. splicable=false means
+ *  nothing to register (covered, no anchor…); reason then says why in plain
+ *  language. ownerHealthy/healthCodes are a NOTICE, not a gate: a splice is a
+ *  metadata-only operation and stays available for an unhealthy owner. */
+export interface PreRepairSplicePreviewView {
+  splicable: boolean;
+  reason?: string;
+  kind?: string;
+  sharedPrefix?: number;
+  splicePoint?: number;
+  segmentStart?: number;
+  segmentEnd: number;
+  segmentMessages: number;
+  ownerMessages: number;
+  backupMessages: number;
+  repairAt?: number;
+  ownerHealthy: boolean;
+  healthCodes?: string[];
+  alreadyRegistered?: boolean;
+  ownerPath: string;
+  backupDir: string;
+}
+
+/** tl1674b 阶段二: the manual-splice receipt. registered=false carries the
+ *  reason (a legitimate covered/nothing-to-do outcome, not an error);
+ *  registered=true carries the ledger readouts with source="manual" so the
+ *  receipt is distinguishable from the background autosplice. */
+export interface PreRepairSpliceReceiptView {
+  registered: boolean;
+  reason?: string;
+  kind?: string;
+  source?: string;
+  splicePoint?: number;
+  segmentMessages?: number;
+  ownerMessages?: number;
+  ownerPath: string;
+  backupDir: string;
 }
 
 /** tl1603: one refusal line of the batch cleanup receipt. reason is a stable
@@ -1249,6 +1294,12 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // graft 合并体系同一执行核：只增不改，纯本地零 token）；宿主已归档/孤儿
   // 备份拒绝并给人话原因。
   MergePreRepairBackup(dir: string): Promise<PreRepairMergeView>;
+  // tl1674b 阶段二: 手动拼接入口（自动自愈之外的人工路径）——链预览（纯读
+  // 数：判据分段结构+健康提示+幂等读数）与手动登记（同一判据/同一档案袋，
+  // 登记 source=manual，与自动可观测区分）。纯元信息操作：主线转录与事件
+  // 日志逐字节不动。
+  PreviewPreRepairSplice(dir: string): Promise<PreRepairSplicePreviewView>;
+  MergePreRepairSplice(dir: string): Promise<PreRepairSpliceReceiptView>;
   // 任务 1011: session health / self-heal / versions panel (需求 E).
   ListSessionVersionGroups(): Promise<SessionVersionGroupView[]>;
   ListSessionHealthFindings(): Promise<SessionHealthFindingView[]>;
@@ -4859,6 +4910,18 @@ function makeMockApp(): AppBindings {
     async MergePreRepairBackup(_dir: string): Promise<PreRepairMergeView> {
       // mock: merge is a no-op in browser-dev mode (nothing to merge into)
       return { merged: false, grafted: 0, ownerPath: "", afterMessages: 0 };
+    },
+    async PreviewPreRepairSplice(dir: string): Promise<PreRepairSplicePreviewView> {
+      // mock: browser-dev preview with a plausible diverged shape
+      return {
+        splicable: true, kind: "diverged-long-chain", sharedPrefix: 2, splicePoint: 2,
+        segmentStart: 2, segmentEnd: 4, segmentMessages: 2, ownerMessages: 4, backupMessages: 4,
+        ownerHealthy: true, ownerPath: dir, backupDir: dir,
+      };
+    },
+    async MergePreRepairSplice(dir: string): Promise<PreRepairSpliceReceiptView> {
+      // mock: registration is a no-op in browser-dev mode
+      return { registered: true, kind: "diverged-long-chain", source: "manual", splicePoint: 2, segmentMessages: 2, ownerMessages: 4, ownerPath: dir, backupDir: dir };
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
       return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };

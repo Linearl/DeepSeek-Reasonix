@@ -50,6 +50,17 @@ const (
 	PreRepairSpliceFoldContinuation PreRepairSpliceKind = "fold-continuation"
 )
 
+// 拼接登记的来源标记（tl1674 阶段二手动入口）：自动自愈（events_idle_sweep
+// tick）与手动合并入口（版本管理面板）共用同一判据与档案袋，来源是唯一区
+// 分两者的可观测键。登记必须携带来源（空值拒绝）——不留「来历不明」的登记。
+const (
+	// PreRepairSpliceSourceAuto 自动自愈来源（后台 idle 拼接 pass）。
+	PreRepairSpliceSourceAuto = "auto"
+	// PreRepairSpliceSourceManual 手动来源（面板「拼接登记」入口，用户逐条
+	// 确认链预览后触发）。
+	PreRepairSpliceSourceManual = "manual"
+)
+
 // PreRepairSplicePlan 是拼接判据的输出：可拼接时给出形态与段边界；不可拼
 // 接时 Kind 为空、Reason 给人话原因（面板/自愈日志共用）。
 type PreRepairSplicePlan struct {
@@ -65,6 +76,10 @@ type PreRepairSplicePlan struct {
 	SplicePoint int `json:"splicePoint,omitempty"`
 	// SegmentMessages 是丢失段的条数（=SegmentEnd-SegmentStart）。
 	SegmentMessages int `json:"segmentMessages"`
+	// OwnerMessages/BackupMessages 是两侧（trim 后）的总条数（tl1674b 链预览
+	// 的对屏读数：面板按它展示「主线 N 条 / 备份 M 条」的分段结构）。
+	OwnerMessages  int `json:"ownerMessages,omitempty"`
+	BackupMessages int `json:"backupMessages,omitempty"`
 	// Reason 是不可拼接时的人话原因（可拼接时为空）。
 	Reason string `json:"reason,omitempty"`
 }
@@ -84,6 +99,10 @@ type PreRepairSpliceEntry struct {
 	// Stamp 是备份目录名携带的 UTC 紧凑时间戳（改写点时间戳读数之一）。
 	Stamp string `json:"stamp"`
 	Kind  string `json:"kind"`
+	// Source 是登记来源（tl1674 阶段二）：auto=后台自愈 / manual=手动合并
+	// 入口。面板与日志按它区分两种触发路径（空值只可能出现在本字段引入前
+	// 的历史档案袋里，新登记一律强制携带）。
+	Source string `json:"source,omitempty"`
 	// RegisteredAt 是登记时刻（RFC3339）。
 	RegisteredAt string `json:"registeredAt"`
 	// RepairAt 是修复记录锚点（unix 秒；0=无 repairlog 命中）。
@@ -163,6 +182,12 @@ func CheckPreRepairSplice(ownerPath, backupTranscript string, repairAt int64) (P
 	}
 	ownerMsgs := trimLeadingSystemMessages(canonical.messages)
 	backupMsgs := trimLeadingSystemMessages(copied.messages)
+	// 链预览的对屏读数（tl1674b）：两侧 trim 后总条数，随每个判据出口带出。
+	sides := func(plan PreRepairSplicePlan) PreRepairSplicePlan {
+		plan.OwnerMessages = len(ownerMsgs)
+		plan.BackupMessages = len(backupMsgs)
+		return plan
+	}
 
 	// covered 口径（集合级）：备份每条消息都已在主线。
 	known := make(map[string]struct{}, len(ownerMsgs))
@@ -176,37 +201,37 @@ func CheckPreRepairSplice(ownerPath, backupTranscript string, repairAt int64) (P
 		}
 	}
 	if unique == 0 {
-		return PreRepairSplicePlan{Reason: "backup fully contained in the main line (covered; nothing was lost)"}, nil
+		return sides(PreRepairSplicePlan{Reason: "backup fully contained in the main line (covered; nothing was lost)"}), nil
 	}
 
 	// 形态②分叉长链：精确公共前缀（回退到轮边界）+ 备份独有段非空。
 	k := exactCommonPrefixLength(ownerMsgs, backupMsgs)
 	k = lastTurnStartAtOrBefore(backupMsgs, k)
 	if k > 0 && k < len(backupMsgs) {
-		return PreRepairSplicePlan{
+		return sides(PreRepairSplicePlan{
 			Kind:            PreRepairSpliceDiverged,
 			SharedPrefix:    k,
 			SegmentStart:    k,
 			SegmentEnd:      len(backupMsgs),
 			SegmentMessages: len(backupMsgs) - k,
 			SplicePoint:     k,
-		}, nil
+		}), nil
 	}
 
 	// 形态③折叠续接：无公共前缀，但有改写锚点（调用方已验时间线）——整条
 	// 旧链接在新链之前。
 	if repairAt > 0 {
-		return PreRepairSplicePlan{
+		return sides(PreRepairSplicePlan{
 			Kind:            PreRepairSpliceFoldContinuation,
 			SharedPrefix:    0,
 			SegmentStart:    0,
 			SegmentEnd:      len(backupMsgs),
 			SegmentMessages: len(backupMsgs),
 			SplicePoint:     0,
-		}, nil
+		}), nil
 	}
 
-	return PreRepairSplicePlan{Reason: "no content continuity and no repair-record anchor — needs a manual HEAD pick"}, nil
+	return sides(PreRepairSplicePlan{Reason: "no content continuity and no repair-record anchor — needs a manual HEAD pick"}), nil
 }
 
 // lastTurnStartAtOrBefore 把消息级分歧点对齐到轮边界（备份侧）：idx 本身
@@ -241,14 +266,17 @@ func exactCommonPrefixLength(a, b []provider.Message) int {
 	return i
 }
 
-// PreRepairSpliceRequest 是登记入参：判据结果 + 备份身份（校验值由本层在
-// 登记时本地重算，调用方不带哈希——单一来源）。
+// PreRepairSpliceRequest 是登记入参：判据结果 + 备份身份 + 来源标记（校验值
+// 由本层在登记时本地重算，调用方不带哈希——单一来源）。Source 必填（auto/
+// manual 二选一；空值拒绝——自动与手动两条触发路径共用本函数，来源是唯一
+// 可观测区分键）。
 type PreRepairSpliceRequest struct {
 	BackupDir        string
 	BackupTranscript string
 	Stamp            string
 	Plan             PreRepairSplicePlan
 	RepairAt         int64
+	Source           string
 }
 
 // RegisterPreRepairSplice 把一条拼接登记写进主线档案袋（纯元信息；主线转录
@@ -260,6 +288,14 @@ func RegisterPreRepairSplice(ownerPath string, req PreRepairSpliceRequest) (PreR
 	entry := PreRepairSpliceEntry{SchemaVersion: 1, BackupDir: req.BackupDir, BackupTranscript: req.BackupTranscript, Stamp: req.Stamp, RepairAt: req.RepairAt}
 	if entry.BackupDir == "" {
 		return entry, fmt.Errorf("splice entry needs a backup dir")
+	}
+	// 来源闸（tl1674 阶段二）：auto/manual 二选一，空值或陌生值拒绝——自动
+	// 与手动共用登记面，没有来源的登记无法观测区分（不留「来历不明」件）。
+	switch req.Source {
+	case PreRepairSpliceSourceAuto, PreRepairSpliceSourceManual:
+		entry.Source = req.Source
+	default:
+		return entry, fmt.Errorf("splice entry needs a source (auto or manual); got %q", req.Source)
 	}
 	plan := req.Plan
 	if !PreRepairSplicePlanSplicable(plan) {
