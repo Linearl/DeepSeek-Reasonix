@@ -42,8 +42,11 @@ const sourceRoot = path.join(frontendRoot, "src");
 //   322: tl1800 gate introduction (three-strip count on the f158412e4a tree,
 //        all src css; the audit doc measured 246 with a line-deduped awk on
 //        styles.css alone — same mechanism, narrower sampling, older tree).
+//   197: tl1800 batch 1 (125 same-value conversions: whites -> text-on-color
+//        /surface-white/highlight-color, blacks -> shadow/scrim/shade
+//        color-mix forms, IM brand colors -> brand-*).
 // Lower this number in the same commit that removes uses. Never raise it.
-const BASELINE = 322;
+const BASELINE = 197;
 
 function listCSSFiles(directory) {
   const files = [];

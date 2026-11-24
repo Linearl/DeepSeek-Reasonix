@@ -718,7 +718,7 @@
 
 .heartbeat-toolbar__btn--primary,
 .heartbeat-toolbar__btn--primary:hover {
-  color: #fff;
+  color: var(--text-on-color);
 }
 .heartbeat-toolbar__btn--primary {
   background: var(--accent);
@@ -791,7 +791,7 @@
 }
 .heartbeat-btn--primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-color);
   border-color: var(--accent);
 }
 .heartbeat-btn--primary:hover {
@@ -911,7 +911,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: #fff;
+  color: var(--text-on-color);
   font-size: var(--text-sm);
   font-weight: 600;
   cursor: pointer;
@@ -941,7 +941,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 4px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow-color) 15%, transparent);
 }
 .heartbeat-filter-menu__option {
   display: flex;
@@ -1312,7 +1312,7 @@
 .heartbeat-editor__weekday-btn--on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text-on-color);
 }
 .heartbeat-editor__weekday-btn--on:hover {
   opacity: 0.88;
@@ -1388,9 +1388,9 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface-white);
   transition: transform 0.2s ease;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 25%, transparent);
 }
 
 .heartbeat-editor__toggle--on .heartbeat-editor__toggle-knob {
@@ -1532,7 +1532,7 @@
 .heartbeat-editor__action-btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--text-on-color);
 }
 
 .heartbeat-editor__action-btn--primary:hover {
@@ -1638,7 +1638,7 @@
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 20%, transparent);
   padding: 4px;
 }
 
@@ -1891,7 +1891,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--shadow-color) 15%, transparent);
 }
 .heartbeat-task-menu__item {
   display: flex;

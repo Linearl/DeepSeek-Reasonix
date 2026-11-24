@@ -55,7 +55,7 @@
 .remote-wizard__rail-item--done .remote-wizard__rail-index {
   border-color: transparent;
   background: var(--shell-accent, #22c55e);
-  color: #fff;
+  color: var(--text-on-color);
 }
 .remote-wizard__body {
   display: flex;

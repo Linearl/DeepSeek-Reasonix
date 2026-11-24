@@ -7,7 +7,7 @@
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   --wails-draggable: no-drag;
 }
 
@@ -55,7 +55,7 @@
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   --wails-draggable: no-drag;
 }
 

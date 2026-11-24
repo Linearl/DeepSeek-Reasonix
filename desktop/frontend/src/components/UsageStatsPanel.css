@@ -477,7 +477,7 @@
   background: var(--bg-elev-2, var(--bg));
   color: var(--fg);
   font-size: var(--font-caption);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 18%, transparent);
   pointer-events: none;
   white-space: nowrap;
   display: flex;

@@ -39,6 +39,17 @@ const requiredRootTokens = new Map([
   ["--text-3", "var(--fg-faint)"],
   ["--shadow-color", "#000"],
   ["--overlay-surface-bg", "var(--bg-elev)"],
+  // tl1800 theme-invariant constants: base :root must keep pinning them so a
+  // theme direction cannot silently repurpose a role the use sites rely on.
+  ["--text-on-color", "#fff"],
+  ["--surface-white", "#fff"],
+  ["--highlight-color", "#fff"],
+  ["--scrim-color", "#000"],
+  ["--shade-color", "#000"],
+  ["--brand-feishu", "#2f80ff"],
+  ["--brand-qq", "#ff5a3d"],
+  ["--brand-lark", "#4f7dff"],
+  ["--brand-weixin", "#22b35f"],
 ]);
 
 const themeStyles = ["graphite", "aurora", "slate", "carbon", "nocturne", "amber"];
