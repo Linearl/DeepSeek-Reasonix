@@ -3,7 +3,7 @@ import { useCommittedCommand } from "../lib/useCommittedCommand";
 import { isMacOSWorkbenchSidebarTitlebar, type DesktopPlatform } from "../lib/desktopPlatform";
 import { nativeWindowCommands, syncMainWindowMaximised } from "./useNativeWindowController";
 import type { SettingsTab, SettingsView } from "../lib/types";
-import type { SettingsInitialFocus } from "../components/SettingsPanel";
+import type { SettingsInitialFocus } from "../lib/settingsFocus";
 
 export type AppChromeCommandsInput = {
   platform: DesktopPlatform;

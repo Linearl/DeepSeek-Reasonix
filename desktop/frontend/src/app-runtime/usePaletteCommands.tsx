@@ -8,6 +8,7 @@ import { clearThemePack } from "../lib/themePack";
 import { paletteSessionDisplayTitle, paletteSessionHint, paletteSessionKeywords, sessionActivityTime } from "../lib/session";
 import { useOverlayStore } from "../store/overlays";
 import { useAppNavigationStore } from "../store/appNavigation";
+import { settingsFocusRequestId } from "../lib/settingsFocus";
 import { useRemoteStore } from "../store/remote";
 import { activeTabMirror } from "./activeTabMirror";
 import type { RemoteHostView, SessionMeta } from "../lib/types";
@@ -120,7 +121,7 @@ export function usePaletteCommands(input: PaletteCommandsInput) {
         run: () => {
           navigation.setSettingsFocus((current) => ({
             target: "model-stats",
-            requestId: (current?.requestId ?? 0) + 1,
+                        requestId: settingsFocusRequestId(current) + 1,
           }));
           navigation.setSettingsTarget("models");
         },

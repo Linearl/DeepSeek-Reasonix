@@ -9,6 +9,10 @@ import { batchClosePolicy } from "./lib/tabClosePolicy";
 import { useManagementWorkspace } from "./lib/useManagementWorkspace";
 import { loadSplitState, persistSplitState, type SplitState } from "./lib/splitView";
 import { setSettingsOpenHook, useAppNavigationStore } from "./store/appNavigation";
+// tl1791：设置页深链（#settings/lab/<卡id>）——开面板半边（解析+落位+关页
+// 清 hash）收在本装配层；面板已挂载时的重定位半边在 SettingsPanel。
+import { clearSettingsHash, parseLabDeepLink } from "./lib/settingsDeepLink";
+import { settingsFocusRequestId } from "./lib/settingsFocus";
 import { useEffortApplyingStore } from "./store/effortApplying";
 import { useModelApplyingStore } from "./store/modelApplying";
 import { prefetchSettingsView } from "./lib/settingsPrefetch";
@@ -1104,6 +1108,41 @@ export default function App() {
   const setSettingsTarget = useAppNavigationStore((s) => s.setSettingsTarget);
   const settingsFocus = useAppNavigationStore((s) => s.settingsFocus);
   const setSettingsFocus = useAppNavigationStore((s) => s.setSettingsFocus);
+  // tl1791：设置页深链（#settings/lab/<卡id>）——CDP page.goto 或用户粘贴带
+  // hash 的 URL：设置页关着 → openPage({settings, experimental}) 落位（焦点
+  // 经 settingsFocus → initialFocus 进面板）；设置页开着 → 面板自己的
+  // hashchange 监听重定位（本 effect 的 openPage 对已挂面板是幂等空转）。
+  // entry 合法性不在装配层校验（那要把 lab 布局解析拉进主 chunk，棘轮预算
+  // 不划算）——格式由 parseLabDeepLink 把关，存在性由面板消费点把关，未知
+  // id 落实验室页默认视图（分享的卡已下线 = 打开实验室页，无害）。
+  const labDeepLinkConsumed = useRef(false);
+  useEffect(() => {
+    const openLabDeepLink = () => {
+      const entry = parseLabDeepLink(window.location.hash);
+      if (!entry) return;
+      labDeepLinkConsumed.current = true;
+      setSettingsFocus({ target: "lab", entry });
+      openPage({ kind: "settings", tab: "experimental" });
+    };
+    openLabDeepLink();
+    window.addEventListener("hashchange", openLabDeepLink);
+    return () => window.removeEventListener("hashchange", openLabDeepLink);
+  }, [openPage, setSettingsFocus]);
+  // 深链往返防脏态：设置页关闭或切离实验室页时清掉设置 hash（replaceState，
+  // 无历史条目、无 hashchange 回环）。挂载首帧跳过一次且仅当本次确有深链
+  // 消费——boot 消费路径的 openPage 下一帧才提交，首帧本 effect 先看到旧的
+  // workspace 页，直接清会把刚消费的 hash 当脏态抹掉；无消费的残留设置
+  // hash（#settings/ 其他形态）照清。
+  const settingsHashSyncMounted = useRef(false);
+  useEffect(() => {
+    if (page.kind === "settings" && page.tab === "experimental") return;
+    if (!settingsHashSyncMounted.current) {
+      settingsHashSyncMounted.current = true;
+      if (!labDeepLinkConsumed.current) clearSettingsHash();
+      return;
+    }
+    clearSettingsHash();
+  }, [page]);
   // Task 670: fork first-launch notice — same launch window as the chime
   // gate. The Go side owns the gate (switch + mute + version record); the
   // dialog is raised when it says so, and the version is acknowledged
@@ -5310,9 +5349,11 @@ export default function App() {
         compact: true,
         keywords: ["usage", "stats", "statistics", "用量", "统计"],
         run: () => {
+          // tl1791：focus 联合新增 lab 变体（无 requestId 字段）——判重读数改
+          // in 窄化，联合扩员不再破坏此处递增。
           setSettingsFocus((current) => ({
             target: "model-stats",
-            requestId: (current?.requestId ?? 0) + 1,
+            requestId: settingsFocusRequestId(current) + 1,
           }));
           setSettingsTarget("models");
         },
@@ -5421,7 +5462,7 @@ export default function App() {
         // 导出日志：走既有诊断页的导出入口（复用设置→诊断的同一条链路，
         // 不新造 Go binding——导出报告是诊断页的既有能力）。
         run: () => {
-          setSettingsFocus((current) => ({ target: "model-stats", requestId: (current?.requestId ?? 0) + 1 }));
+          setSettingsFocus((current) => ({ target: "model-stats", requestId: settingsFocusRequestId(current) + 1 }));
           setSettingsTarget("diagnostics");
         },
       },

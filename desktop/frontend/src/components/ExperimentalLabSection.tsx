@@ -577,11 +577,15 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // 任务 764：搜索直达——设置导航搜索命中实验室条目后点进来，预选该条目、
   // 确保所在组展开并把 rail 行滚入视野；右侧 pane 随 selected 同步出卡。
   // 无 focusEntry 时 effect 空转（默认选中仍是 autopilot，359 契约不变）。
+  // tl1791：深链落位走同一 effect（App/SettingsPanel 把 #settings/lab/<卡id>
+  // 解析成 focusEntry 传入）；组查找前置——不在布局中的 id 一律零行为
+  // （缺守卫时旧代码会把 selected 设成未知 id 出空白 pane，764 的搜索产不出
+  // 非法 id 所以此前无害，深链入口是新的，守卫在入口前收口）。
   useEffect(() => {
     if (!focusEntry) return;
-    setSelected(focusEntry);
     const group = labEntries(labLayoutResolved.layout).find(({ entry }) => entry.id === focusEntry)?.group;
     if (!group) return;
+    setSelected(focusEntry);
     setExpandedGroups((prev) => (prev.has(group) ? prev : new Set(prev).add(group)));
     requestAnimationFrame(() => {
       document.getElementById(`lab-entry-${focusEntry}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
