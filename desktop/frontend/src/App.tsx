@@ -1382,6 +1382,8 @@ export default function App() {
     replaceComposerInsert,
     prefillSubagentCommand,
     insertQuickCommand,
+    insertComposerIntoTab,
+    clearComposerInsertForTab,
     addWorkspaceTextToComposer,
     addTerminalOutputToComposer,
     addSelectedTextToComposer,
