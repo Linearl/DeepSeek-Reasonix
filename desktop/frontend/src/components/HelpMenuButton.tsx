@@ -39,7 +39,7 @@ export function HelpMenuButton({ items }: { items: ContextMenuItem[] }) {
         aria-expanded={open}
         onClick={openMenu}
       >
-        <CircleHelp size={15} aria-hidden="true" />
+        <CircleHelp size={16} aria-hidden="true" />
       </button>
       <ContextMenu open={open} point={point} items={items} minWidth={196} ariaLabel={t("helpMenu.open")} onClose={() => setOpen(false)} />
     </>
