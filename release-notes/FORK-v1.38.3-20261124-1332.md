@@ -1,10 +1,10 @@
 # 包113 release notes — v1.38.3-20261124-1332
 
 > 基线：包112（v1.38.3-20261124-0820，构建点 89a123dae6——**其 notes 已勘误**：tl1786/1788/1789/1767/1769/1774/1777 一期/1779/1780 十项虚报，实际全部随本包入库）
-> 构建点：`2c26ef1ad8`（main-v2-stable）
-> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
-> 执行线：zcode 开发线（16 支 merge 全量本包，zcode 滚合）
-> <!-- claims: feat-tl1788,feat-tl1789,feat-tl1786,feat-tl1767,feat-tl1772,feat-tl1777,feat-tl1769,feat-tl1766,feat-tl1756,feat-tl1771,feat-tl1768,feat-tl1774,feat-tl1779,feat-tl1780,feat-tl1787,feat-tl1742 -->
+> 构建点：`4a46bce041`（main-v2-stable，含棘轮六抬 commit）
+> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`（74,218,698 B）
+> 执行线：zcode 开发线（17 支 merge 全量本包，zcode 滚合；九轮构建=六线棘轮自抬+node_modules 掏穿重装+tl1652b manifest 清零）
+> <!-- claims: feat-tl1788,feat-tl1789,feat-tl1786,feat-tl1767,feat-tl1772,feat-tl1777,feat-tl1769,feat-tl1766,feat-tl1756,feat-tl1771,feat-tl1768,feat-tl1774,feat-tl1779,feat-tl1780,feat-tl1787,feat-tl1742,feat-tl1652b -->
 
 ## 一、背景：包111/112 虚报事故修复（本包主体=漏合补滚 14 支+新交付 2 支）
 
@@ -53,6 +53,8 @@
 - deferred bridge 钉桩「读取在途」窗口 25 断言
 ### 出包链防线接线+两包勘误（治理 commit）
 - verify-release-ancestry.mjs `--notes`+build-local-installer.sh 门参数；包111/112 notes 勘误 commit
+### tl1652b manifest 欠账清零（出包阻塞清障件）
+- agent 包组合态首跑爆「23 项未登记」→ 定性=**行号漂移**（符号 20261117 基线已登记，代码改动挤挪行号致台账门牌失配）非新字段——只更新 23 处行号，disposition 零改动，逐项判据留痕；agent 包全量 387s 组合态首绿
 
 ## 五、装机验证清单（reasonix 开发线逐项）
 
