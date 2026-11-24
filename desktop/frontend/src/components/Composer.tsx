@@ -5331,6 +5331,27 @@ export function Composer({
   // state so long drafts expose their scrollability (#8494/#8742/#9019).
   const composerAutoOverflow = composerHeight === null && textareaAutoOverflow;
   const composerResizeValue = effectiveComposerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, composerMetaExtraHeight));
+  // tl1777r2：卡高写手落定对齐——pointer 拖动手势经 lib/resizeDrag 的
+  // createRafResizeUpdater 绕过 React 直写卡片 --composer-height（拖动帧性能
+  // 通道）；松手 setComposerHeight 触发的 render 若算出与上一帧 prop 相同的值
+  // （长草稿在场时 logicalHeight 不随手动目标变——floor-not-cap 语义
+  // logicalHeight=max(手动, 内容+预留)，手动从 360 改到 160 时内容需要
+  // 302+58 仍把 logicalHeight 顶回 360），React style diff 判定「无变化」跳过
+  // DOM 写入，var 停在手势直写残值（160px）——卡定高残值与 textarea inline
+  // 高（302px，内容需要）分裂，overflow:visible + 透明背景输入框把文字伸出
+  // 卡底（真浏览器 Edge 探针实测 taBottom 1011 > cardBottom 860，用户复现=
+  // 「主动调小高度后长文本输入溢出卡外」）。本 effect 在手势结束与写手值变化
+  // 时绕过 diff 强制对齐 DOM var：值异即权威终写、值同则同值幂等；手势中
+  // 早退保 liveResize 独占拖动帧写权（layout effect 在 commit 后同步跑，
+  // 落定帧无闪烁）。渲染期 style prop 保留（首帧与 SSR 一致性），DOM 终态以
+  // 本写手为准；写 DOM 不触发 render，无回环。键盘 resize/双击复位不直写
+  // DOM（纯 setState→render diff），本写手对它们只是同值幂等补写。
+  useLayoutEffect(() => {
+    if (composerResizing) return;
+    const card = composerCardRef.current;
+    if (!card || effectiveComposerHeight === null) return;
+    card.style.setProperty("--composer-height", `${effectiveComposerHeight}px`);
+  }, [composerResizing, effectiveComposerHeight]);
   void onSetMode;
   const chooseApprovalMode = (nextMode: ToolApprovalMode) => {
     onSetToolApprovalMode(nextMode);
