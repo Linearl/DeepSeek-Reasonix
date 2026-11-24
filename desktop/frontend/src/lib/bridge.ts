@@ -2279,6 +2279,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenTasklistBoard(path: string): Promise<TasklistBoardOpenResult>;
   SetExperimentalTasklistPanel(enabled: boolean): Promise<void>;
   SetTasklistDBPath(path: string): Promise<void>;
+  // tl1796: composer 模式条 autopilot 档显隐 opt-in 门（写点返修，见
+  // settings_preferences.go 同名 setter；纯前端门，保存即回放免重启）。
+  SetExperimentalAutopilotComposer(enabled: boolean): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
   SetSessionCollabGates(allowDelete: boolean, allowRequireReply: boolean, allowReadTail: boolean, allowCreate: boolean, allowSteer: boolean, dailySendLimit: number): Promise<void>;
   // Task 264: background-woken sessions stay out of the tab bar (detached

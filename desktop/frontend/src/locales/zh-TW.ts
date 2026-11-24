@@ -2869,6 +2869,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.autopilotHint": "會話支援無人值守模式：由牆鐘時間設上限，審批由「審批模型」代為判斷無人應答的請求。看起來具破壞性、對外發布或涉及憑證的請求會被拒絕，而不是被批准。",
   "settings.autopilot.on": "開啟",
   "settings.autopilot.off": "關閉",
+  "settings.autopilotOfferHint": "開=審批列追加 autopilot 檔（無人值守：牆鐘設上限，審批模型代答無人應答的請求）；關（預設）=僅 ask/auto/yolo 三檔，審批列布局不變。只管下拉顯隱，不改變會話預設姿態。",
   "settings.autopilotMaxRuntime": "autopilot 時限",
   "settings.autopilotMaxRuntimeHint": "無人值守對話最長執行多久，例如 8h。必填——不填則不啟用 autopilot。",
   "settings.autopilotApprovalGrace": "審批等待時長",

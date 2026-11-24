@@ -133,6 +133,18 @@ type DesktopConfig struct {
 	// Resolved at query time (no restart needed), and the panel opens it
 	// mode=ro regardless of the value — never a write surface.
 	TasklistDBPath string `toml:"tasklist_db_path"`
+	// ExperimentalAutopilotComposer gates whether the composer mode bar offers
+	// the autopilot tier (tl1796). Opt-in repair: when tl1741 retired the
+	// [desktop] autopilot preference key, the frontend gate kept reading the
+	// removed settings-view mirror (settings.autopilot === true at App.tsx),
+	// so the composer offer went permanently dead — the mode bar never listed
+	// autopilot again. This key is the fresh opt-in write point (the autopilot
+	// lab card's row-level switch); it changes nothing about the retired
+	// preference semantics (new sessions keep their configured posture and
+	// per-session autopilot state is untouched). It ships off per 铁律 2: with
+	// it off the mode bar renders exactly the three-tier ask/auto/yolo layout
+	// it shows today.
+	ExperimentalAutopilotComposer bool `toml:"experimental_autopilot_composer"`
 	// Task 473: the [desktop] boolean mirrors of [agent] lab switches are
 	// retired. These fields are READ-ONLY legacy inputs: migrateLabMirrorKeysToAgent
 	// folds any leftover true into the [agent] key at load and the setters only
