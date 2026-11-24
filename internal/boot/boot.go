@@ -2659,7 +2659,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// mailbox(action=drain) nor its alias is executable — the pump's
 	// two-phase Claim→Ack would otherwise double-consume the same batch
 	// (audit M-a). Task 689 folds the three mailbox tools into one
-	// mailbox(action=peek|drain|query) entry: the merged tool registers
+	// mailbox(action=peek|drain|query|batch_dispose) entry (tl1768 added the
+	// filter-based batch cleanup; it rides the same unconditional registration,
+	// never touches the drain cursor): the merged tool registers
 	// unconditionally (peek/query are read-only views) while the drain
 	// ACTION re-checks the boot decision at call time, so consumption
 	// rights keep following the switch. Registration is boot-time: a switch

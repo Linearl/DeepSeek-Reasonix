@@ -1282,6 +1282,20 @@ func (s *Store) Delete(ctx context.Context, ids []string) (Snapshot, error) {
 	if err != nil {
 		return Snapshot{}, err
 	}
+	if _, err := s.deleteIDsLocked(ctx, idx, ids); err != nil {
+		return Snapshot{}, err
+	}
+	return s.List(ctx, Query{Limit: 1}, false)
+}
+
+// deleteIDsLocked is the write half of Delete (tl1768: shared with
+// DisposeByFilter's delete mode): a folded entry id expands to its whole
+// duplicate cluster, the archive copies are physically pruned, and dead
+// dismissed/decided state keys are garbage-collected. Caller holds the store
+// lock and supplies the same index the ids were read from. Returns how many
+// physical mail lines were removed (a cluster removes more lines than
+// entries).
+func (s *Store) deleteIDsLocked(ctx context.Context, idx *foldIndex, ids []string) (int, error) {
 	targets := map[string]bool{}
 	for _, id := range ids {
 		primary := strings.TrimSpace(id)
@@ -1296,15 +1310,17 @@ func (s *Store) Delete(ctx context.Context, ids []string) (Snapshot, error) {
 			targets[mid] = true
 		}
 	}
-	if len(targets) > 0 {
-		if _, err := s.mail.PruneBy(ctx, func(_ string, m sessioncollab.MailMessage) bool {
-			return targets[m.ID]
-		}); err != nil {
-			return Snapshot{}, err
-		}
-		s.gcStateLocked(ctx)
+	if len(targets) == 0 {
+		return 0, nil
 	}
-	return s.List(ctx, Query{Limit: 1}, false)
+	removed, err := s.mail.PruneBy(ctx, func(_ string, m sessioncollab.MailMessage) bool {
+		return targets[m.ID]
+	})
+	if err != nil {
+		return 0, err
+	}
+	s.gcStateLocked(ctx)
+	return removed, nil
 }
 
 // DeleteAll physically empties the whole archive (任务 856 ②「清空全部」:
@@ -1411,14 +1427,22 @@ func (s *Store) mutate(ctx context.Context, apply func(*stateFile)) (Snapshot, e
 	if err != nil {
 		return Snapshot{}, err
 	}
+	snap, werr := s.writeStateLocked(ctx, apply)
+	unlock()
+	return snap, werr
+}
+
+// writeStateLocked is mutate's write core with the lock already held (tl1768:
+// shared with DisposeByFilter's archive mode): load → apply → bump revision →
+// save, then a fresh default-view snapshot for one-round-trip convergence.
+// Caller holds the store lock.
+func (s *Store) writeStateLocked(ctx context.Context, apply func(*stateFile)) (Snapshot, error) {
 	st := s.loadState()
 	apply(&st)
 	st.Revision++
 	if err := s.saveState(st); err != nil {
-		unlock()
 		return Snapshot{}, err
 	}
-	unlock()
 	return s.List(ctx, Query{Limit: 1}, false)
 }
 
@@ -1526,4 +1550,3 @@ func previewOf(body string) string {
 	}
 	return line
 }
-

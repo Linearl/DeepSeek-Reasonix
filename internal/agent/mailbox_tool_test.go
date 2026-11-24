@@ -210,6 +210,7 @@ func TestMailboxDrainActionFollowsConsumerGate(t *testing.T) {
 
 // 路由边界：缺 action、未知 action 报错；ReadOnly 立场照旧（mailbox 合并了
 // 消费半面 → 非 ReadOnly；peek/query 别名只读；drain 别名非只读）。
+// tl1768：action 集扩为 peek|drain|query|batch_dispose，报错文案同步更新。
 func TestMailboxRoutingAndStances(t *testing.T) {
 	env := newStatusTestEnv(t)
 	cfg := mailboxTestCfg(env)
@@ -218,7 +219,7 @@ func TestMailboxRoutingAndStances(t *testing.T) {
 	if _, err := mb.Execute(context.Background(), json.RawMessage(`{}`)); err == nil || !strings.Contains(err.Error(), "action is required") {
 		t.Fatalf("missing action must be refused: %v", err)
 	}
-	if _, err := mb.Execute(context.Background(), json.RawMessage(`{"action":"send"}`)); err == nil || !strings.Contains(err.Error(), "peek|drain|query") {
+	if _, err := mb.Execute(context.Background(), json.RawMessage(`{"action":"send"}`)); err == nil || !strings.Contains(err.Error(), "peek|drain|query|batch_dispose") {
 		t.Fatalf("unknown action must be refused: %v", err)
 	}
 	if mb.ReadOnly() {
