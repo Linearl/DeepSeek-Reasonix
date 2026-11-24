@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
+import { formatIsoTimestamp } from "../lib/messageTimestamp";
 
 export type FeedbackEntry = {
   at: string;
@@ -60,11 +61,9 @@ export function onFeedbackOpenChange(cb: (open: boolean) => void): () => void {
   return () => openListeners.delete(cb);
 }
 
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString();
-}
+// tl1758：本地 formatTime 并入 lib/messageTimestamp.formatIsoTimestamp（ISO 串形态，
+// 非法输入回显原文，行为逐字节不变）。
+const formatTime = formatIsoTimestamp;
 
 export function FeedbackPanel() {
   const t = useT();

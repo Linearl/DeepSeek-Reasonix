@@ -445,7 +445,9 @@ function UnfiledEntryCard({
   // decides handled marking (true) or the stay-listed failure face (false;
   // the refusal toast is the handler's contract).
   const [resendPending, setResendPending] = useState(false);
-  const formatTime = entry.time > 0 ? new Date(entry.time).toLocaleString() : t.timeUnknown;
+  // tl1758 改名消歧：局部变量旧名 formatTime 与 lib 时间戳族撞名；本处回退语义
+  // 不同源（i18n 文案 timeUnknown，非空串），不并入族，仅改名（行为零变化）。
+  const timeLabel = entry.time > 0 ? new Date(entry.time).toLocaleString() : t.timeUnknown;
   const handleResend = useCallback(async () => {
     if (!onResend || resendPending) return;
     setResendPending(true);
@@ -470,7 +472,7 @@ function UnfiledEntryCard({
           onClick={() => setExpanded((v) => !v)}
         >
           {expanded ? <ChevronDown className="notice-line__chevron" size={14} aria-hidden="true" /> : <ChevronRight className="notice-line__chevron" size={14} aria-hidden="true" />}
-          <span className="notice-line__title">{`${t.turnLabel(entry.turn)} · ${formatTime}${entryBucket(entry) === "pending_recovery" ? ` · ${t.recoveryTag}` : ""}`}</span>
+          <span className="notice-line__title">{`${t.turnLabel(entry.turn)} · ${timeLabel}${entryBucket(entry) === "pending_recovery" ? ` · ${t.recoveryTag}` : ""}`}</span>
         </button>
         <span className="banner__spacer" />
         <button className="btn btn--secondary btn--small" type="button" aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>

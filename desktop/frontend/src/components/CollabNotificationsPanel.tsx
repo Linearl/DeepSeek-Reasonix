@@ -18,6 +18,7 @@ import {
   type NotifyArchiveLevel,
 } from "../lib/notifyArchive";
 import { useT } from "../lib/i18n";
+import { formatTimestampMs } from "../lib/messageTimestamp";
 import { useConfirmDialog } from "./ConfirmDialog";
 
 /** 懒加载水位：首屏 20 条，滚动近底增量 +20（tl1230 信件列表同方案同数）。 */
@@ -32,9 +33,11 @@ const LEVEL_ICONS: Record<NotifyArchiveLevel, string> = {
   info: "ℹ",
 };
 
-function formatTime(ms: number): string {
-  return new Date(ms).toLocaleString();
-}
+// tl1758：本地 formatTime 并入 lib/messageTimestamp.formatTimestampMs（守卫版）。
+// 申报：旧本地版无 !ms 守卫，entry.at=0 时渲染 1970 epoch 戳；收口统一多数派
+// 守卫后 0 → ""。数据侧 entry.at 恒为落档时 Date.now()（notifyArchive 落档+dedup
+// 刷新），0 仅理论脏数据可达——行为申报见 tl1758 报告。
+const formatTime = formatTimestampMs;
 
 export function CollabNotificationsPanel() {
   const t = useT();

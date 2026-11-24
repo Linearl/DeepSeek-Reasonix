@@ -16,6 +16,7 @@ import { collabTitleFor, rememberCollabContactNames, shortContactId } from "../l
 import { onCollabMailChanged as onCollabMailChangedRuntime } from "../lib/inboxEvents";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
+import { formatTimestampMs } from "../lib/messageTimestamp";
 
 /** 目录行（与 CollabInboxPanel.CollabSessionDirectoryRow 同形，避免跨组件
  *  依赖其私有导出——两处字段集合各自声明，生产 bridge 同源）。 */
@@ -80,10 +81,9 @@ const STATUS_KEYS = ["waiting", "in_flight", "replied", "refused"] as const;
 
 const DISPATCH_PAGE = 200;
 
-function formatTime(ms: number): string {
-  if (!ms) return "";
-  return new Date(ms).toLocaleString();
-}
+// tl1758：本地 formatTime 并入 lib/messageTimestamp.formatTimestampMs（同构守卫版，
+// 行为逐字节不变）。
+const formatTime = formatTimestampMs;
 
 export function CollabDispatchPanel({
   bindings,
