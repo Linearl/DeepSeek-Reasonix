@@ -59,10 +59,14 @@ func resolveInfoTarget(cfg SessionCollabConfig, target string) (sessioncollab.Id
 		return sessioncollab.Identity{}, fmt.Errorf("no session path (pass target, or run inside a session)")
 	}
 	id := sessioncollab.Identity{SessionPath: session, Workspace: cfg.WorkspaceRoot}
-	if meta, _, err := LoadBranchMeta(session); err == nil {
+	// tl1799: name through the shared convention (DisplayTitleFromMeta, the
+	// SessionDirectoryTitle order). The historical TopicTitle-first order here
+	// made get_session_info report the topic title while the contact directory
+	// showed the custom title for the same conversation.
+	if meta, found, err := LoadBranchMeta(session); err == nil {
 		id.ContactID = meta.ContactID
 		id.TopicID = meta.TopicID
-		id.Title = textutil.First(meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(session))
+		id.Title = DisplayTitleFromMeta(meta, found, sessionPathStem(session))
 		id.Purpose = meta.Purpose
 		id.Scope = meta.Scope
 		id.Workspace = textutil.First(meta.WorkspaceRoot, cfg.WorkspaceRoot)
@@ -139,7 +143,7 @@ func (t getSessionInfoTool) sessionInfo(id sessioncollab.Identity) map[string]an
 		"sessionPath":   id.SessionPath,
 		"contactId":     contact,
 		"topicId":       id.TopicID,
-		"title":         textutil.First(id.Title, meta.TopicTitle, meta.CustomTitle, SessionDirectoryTitle(id.SessionPath)),
+		"title":         textutil.First(id.Title, SessionDirectoryTitle(id.SessionPath)),
 		"purpose":       textutil.First(id.Purpose, meta.Purpose),
 		"scope":         id.Scope,
 		"workspaceRoot": id.Workspace,
