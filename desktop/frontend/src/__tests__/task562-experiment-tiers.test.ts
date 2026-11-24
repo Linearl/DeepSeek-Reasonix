@@ -342,6 +342,10 @@ console.log("\ntask 562 lab three-tier badges");
   // cards 成员数以合并态实测为准（ok 值首猜 63，跑批校正）。
   // tl1772：decisionPatternsLayered 成员行入 smartAutomation 卡（+1）；
   // memoryIndexSlim 独立卡移入 safetyCostControl 卡成员行（+1）——63→65。
+  // tl1772r2：decisionPatternsLayered 成员行 smartAutomation→safetyCostControl
+  // 卡平移——成员总数 65 不变；两卡档位聚合输入仍 [推荐,可选]（分层行可选，
+  // smartAutomation 剩 heartbeatBackground 推荐、safetyCostControl 仍有
+  // messageMerge 推荐），聚合断言零改。
   ok(members.length === 65, `merged cards carry 65 member features (tl1772 decisionPatternsLayered row + memoryIndexSlim re-homed as a safetyCostControl member; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815

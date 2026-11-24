@@ -128,7 +128,8 @@ console.log("\ntask 561 lab regroup + merged cards");
   // rail census 以合并态 yaml 实测为准（见 ok 断言值）。
   // tl1772：memoryIndexSlim 独立卡移出提效组——并入「安全/成本控制」卡
   // 成员行（decisionPatternsLayered 为 smartAutomation 卡成员行，不占
-  // rail 入口）→ 29→28。
+  // rail 入口）→ 29→28。tl1772r2：decisionPatternsLayered 成员行二次移组
+  // smartAutomation→safetyCostControl 卡——仍是成员行，rail census 不变。
   ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (tl1772 re-homed memoryIndexSlim as a safetyCostControl member; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
@@ -301,8 +302,8 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   { id: "smartAutomation", endMarker: '{selected === "searchHistory" && (', members: [
     // tl1453：dream 成员行随 dream/distill 实验退役（宪法 Q1）摘除。
     { label: "961 decisionPatterns", field: "s.experimentalDecisionPatterns", setter: "app.SetExperimentalDecisionPatterns(on)" },
-    // tl1772：注入分层伴生开关（decisionPatterns 行下方）。
-    { label: "tl1772 decisionPatternsLayered", field: "s.experimentalDecisionPatternsLayered", setter: "app.SetExperimentalDecisionPatternsLayered(on)" },
+    // tl1772r2：decisionPatternsLayered 成员行迁出本卡（落位 safetyCostControl，
+    // 见其落位钉⑤；本清单随迁摘除）。
     { label: "961 heartbeatBackground", field: "s.experimentalHeartbeatBackground", setter: "app.SetExperimentalHeartbeatBackground(on)" },
   ] },
   { id: "interactionPresentation", endMarker: '{selected === "devDebug" && (', members: [
@@ -496,14 +497,18 @@ for (const setter of [
   ok(panel.includes(setter), `setter wiring survives the merge: ${setter}`);
 }
 
-// ⑤ tl1772 注入分层开关 + memoryIndexSlim 移组的落位钉（pane 行面）。
+// ⑤ tl1772 注入分层开关 + memoryIndexSlim 移组、tl1772r2 注入分层行二次移组
+//    的落位钉（pane 行面）。
 {
   const smart = cardSlice('{selected === "smartAutomation" && (', '{selected === "searchHistory" && (');
-  ok(smart.includes('labLabel("decisionPatternsLayered"') && smart.includes("app.SetExperimentalDecisionPatternsLayered(on)"),
-    "tl1772: the injection-layering row lives below decisionPatterns in the smartAutomation card");
   const safety = cardSlice('{selected === "safetyCostControl" && (', '{selected === "sessionCollab" && (');
   ok(safety.includes('labLabel("memoryIndexSlim"') && safety.includes("app.SetMemoryIndexSlim(on)"),
     "tl1772: the memoryIndexSlim switch row rides inside the safetyCostControl card");
+  // tl1772r2：注入分层行 smartAutomation→safetyCostControl 平移（键/setter 零变化）。
+  ok(safety.includes('labLabel("decisionPatternsLayered"') && safety.includes("app.SetExperimentalDecisionPatternsLayered(on)"),
+    "tl1772r2: the injection-layering row rides inside the safetyCostControl card");
+  ok(!smart.includes('labLabel("decisionPatternsLayered"') && !smart.includes("app.SetExperimentalDecisionPatternsLayered(on)"),
+    "tl1772r2: no injection-layering remnant stays in the smartAutomation card after the re-home");
   ok(!smart.includes('labLabel("memoryIndexSlim"') && !safety.includes('{selected === "memoryIndexSlim" &&'),
     "tl1772: no standalone memoryIndexSlim rail/pane remnant survives the re-home");
 }
