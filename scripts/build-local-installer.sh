@@ -27,6 +27,8 @@ CHANNEL="${REASONIX_CHANNEL:-stable}"
 # --- --keep N / REASONIX_VERSIONS_KEEP set the versions/ retention count.
 VER=""
 KEEP="${REASONIX_VERSIONS_KEEP:-5}"
+VERIFY_NOTES=""
+VERIFY_BASELINE=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--keep)
@@ -34,6 +36,12 @@ while [ $# -gt 0 ]; do
 			KEEP="$2"; shift 2 ;;
 		--keep=*)
 			KEEP="${1#--keep=}"; shift ;;
+		--verify-notes)
+			[ -n "${2:-}" ] || { echo "ERROR: --verify-notes needs a release-notes file" >&2; exit 1; }
+			VERIFY_NOTES="$2"; shift 2 ;;
+		--verify-baseline)
+			[ -n "${2:-}" ] || { echo "ERROR: --verify-baseline needs a commit (previous package build point)" >&2; exit 1; }
+			VERIFY_BASELINE="$2"; shift 2 ;;
 		*)
 			if [ -z "$VER" ]; then VER="$1"; fi; shift ;;
 	esac
@@ -60,6 +68,27 @@ case "$VER" in
 		exit 1
 		;;
 esac
+
+# Ancestry gate (tl1760 防线接线,20261124 包112 补滚事故判例):tl1760 的门此前只挂
+# fork-release.sh,实际出包路径(本脚本)无门——包112 notes 预写三支未滚合支(tl1786/
+# 1788/1789)虚报,防线空转。传 --verify-notes <release-notes 含 claims 行> +
+# --verify-baseline <上一包构建点> 即启用:notes 的 "<!-- claims: feat-a,... -->"
+# 行是唯一声称源,门拒 MISSING/EMPTY/ERROR(any 非零即中止建包)。
+if [ -n "$VERIFY_NOTES" ]; then
+	if [ -z "$VERIFY_BASELINE" ]; then
+		echo "ERROR: --verify-notes requires --verify-baseline <previous package build point>" >&2
+		exit 1
+	fi
+	echo "==> Ancestry gate: notes=$VERIFY_NOTES baseline=$VERIFY_BASELINE build-point=$(git rev-parse HEAD)"
+	node "$ROOT/scripts/verify-release-ancestry.mjs" \
+		--build-point "$(git rev-parse HEAD)" \
+		--baseline "$VERIFY_BASELINE" \
+		--repo "$ROOT" \
+		--notes "$VERIFY_NOTES" || {
+		echo "==> Ancestry gate FAILED — release aborted: fix notes claims or roll up missing branches before building (tl1760 判例)." >&2
+		exit 1
+	}
+fi
 
 export HTTP_PROXY="${HTTP_PROXY:-http://127.0.0.1:10808}"
 export HTTPS_PROXY="${HTTPS_PROXY:-http://127.0.0.1:10808}"

@@ -67,7 +67,7 @@ export function makeGitRunner(repo) {
 }
 
 export function parseArgs(argv) {
-  const out = { repo: ".", buildPoint: null, baseline: null, branches: [], branchesFile: null };
+  const out = { repo: ".", buildPoint: null, baseline: null, branches: [], branchesFile: null, notesFile: null };
   for (let i = 0; i < argv.length; i += 1) {
     switch (argv[i]) {
       case "--repo": out.repo = argv[++i] ?? null; break;
@@ -75,6 +75,7 @@ export function parseArgs(argv) {
       case "--baseline": out.baseline = argv[++i] ?? null; break;
       case "--branches": out.branches = (argv[++i] ?? "").split(",").map((s) => s.trim()).filter(Boolean); break;
       case "--branches-file": out.branchesFile = argv[++i] ?? null; break;
+      case "--notes": out.notesFile = argv[++i] ?? null; break;
       default: throw new Error(`unknown argument: ${argv[i]}`);
     }
   }
@@ -85,7 +86,18 @@ export function parseArgs(argv) {
       readFileSync(out.branchesFile, "utf8").split(/\r?\n/).map((s) => s.trim()).filter((s) => s && !s.startsWith("#")),
     );
   }
-  if (!out.branches.length) throw new Error("--branches <a,b,...> or --branches-file is required");
+  if (out.notesFile) {
+    // notes 内机器可读声称行是唯一声称源（SSOT）：`<!-- claims: feat-a,feat-b -->`。
+    // 只列本包新增支（上一包构建点之后交付者）——夜批/更早已入库支列进来会因
+    // W==0 被 EMPTY 拒。缺该行=无法验证=拒（视同未验证，20261124 包112 虚报判例）。
+    const text = readFileSync(out.notesFile, "utf8");
+    const m = /<!--\s*claims:\s*([^\r\n]*?)\s*-->/.exec(text);
+    if (!m || !m[1].trim()) {
+      throw new Error(`--notes ${out.notesFile}: no "<!-- claims: feat-a,feat-b -->" marker line found (claims are required)`);
+    }
+    out.branches = out.branches.concat(m[1].split(",").map((s) => s.trim()).filter(Boolean));
+  }
+  if (!out.branches.length) throw new Error("--branches <a,b,...> or --branches-file or --notes is required");
   return out;
 }
 

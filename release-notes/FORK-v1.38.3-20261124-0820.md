@@ -4,6 +4,9 @@
 > 构建点：`89a123dae6`（main-v2-stable，五支滚合后）
 > 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
 > 执行线：zcode 开发线（20 支 merge 全量本包，zcode 滚合）
+>
+> ⚠️ **勘误（20261124·祖先性虚报事故，tl1760 判例第 4 例）**：本包构建点 `89a123dae6` 祖先链**不含 tl1786/1788/1789 三支**（分支交付晚于构建、未及滚合被预写进本 notes；reasonix 线 merge-base 实测纠正，zcode 线五支追溯校验全 MISSING 复证）；**tl1767 亦未入包**（其四 commit 从未合入主线，验证清单第 10 项作废）。四支+tl1772r2 已补滚入主线（`18e2b17ab5`/`71272b8a07`/`c27b8dddbc`/`90f50b8b9c`/`0239adb474`，1772r2 撞 1741r2 lab 布局并集解），**随包113 入库**；下方三段正文与验证清单第 10/20/21 项保留原文仅供对账，**装机验证跳过**。防线已接线：`build-local-installer.sh` 现挂 verify-release-ancestry 门（`--verify-notes`+`--verify-baseline`），notes claims 行=唯一声称源。
+> <!-- claims: feat-tl1783,feat-tl1784,feat-tl1785,feat-tl1781,feat-tl1770r2 -->
 
 ## 一、修复（P1/P2 主力）
 
@@ -14,7 +17,7 @@
 - **分桶日志**：压缩前后 7 桶构成（系统/真用户输入/session-context 载体/assistant/tool/摘要/其他）——「其他 205K」黑桶拆开见人
 - 三个旧断言随拍板换代；任务 719 防线保留（hook 吹大仍拒绝）
 
-### tl1786 崩溃归因+黑匣子（P1 最高优先）
+### tl1786 崩溃归因+黑匣子（P1 最高优先）**〔勘误：未随包112 入库，随包113〕**
 - **归因结论**：16:27 exit=1 三通道零痕迹+仓内所有 exit=1 路径都先写日志 ⇒ 唯一吻合=外部 TerminateProcess 类击杀（非 1739r2/repair 链）
 - **黑匣子三件**：launcher last-abnormal-exit.json 富化五字段（reason/stack/lifecyclePhase/wedgePoint/crashFatalSeen）+desktop decoder 锁步+webview2 插桩附调用栈——下次无声退出死亡瞬间写证据一眼定谳
 
@@ -48,12 +51,12 @@
 - 19 改/3 不改列明（U4 End 幂等=有意设计候拍板；K8/U5 观察档）；净 −176 行
 ### tl1779 上游继承兼容层删除
 - C5-C28 十二处死码+3 配套测试+transport_sse.go 整文件——净减 286 行；C14 两案候拍板；C1 与 tl1754 重复只做对账
-### tl1788 环境误报治理（本包新落地基建）
+### tl1788 环境误报治理（本包新落地基建）**〔勘误：未随包112 入库，随包113〕**
 - **统一 tsx 测试入口** tsx-test.mjs（css/svg stub+扩展名自动纠偏——ERR_UNKNOWN_FILE_EXTENSION 家族根治）
 - **harness 环境误报自动甄别**：失败即同参单跑复验（绿=ENV-FLAKY 留痕不阻断；再红=真红阻断）+jsdom 预飞检查（坏环境一条报错替代 287 大面红）
 - **go-test-triage.sh**：失败包自动隔离单跑 3 次（FLAKY 不阻断/REAL-RED 阻断留证）
 - **Makefile go test 超时 10m→30m**（agent 包 750s+/desktop 全量 1203s 不再被误杀）
-### tl1789 基线红治理（结构性收获）
+### tl1789 基线红治理（结构性收获）**〔勘误：未随包112 入库，随包113〕**
 - **desktop 包从一跑就崩治到第 5 跑 EXITCODE=0 全绿**（4558 支：3715 PASS+47 SKIP+0 FAIL）——崩掉的半截里藏着 19 支从没人见过的老红全部顺手治完
 - 32 支修绿+12 支挂牌（隔离不拦出包）+55 族归档候拍板；provider 时序挂账遵任务书
 - tl1652 manifest 欠账修复（合并线 41685f4dc6 先行，本包含其验证面）
@@ -69,7 +72,7 @@
 7. tl1751：压缩过程实时 tokens/tps；hover 百级真值
 8. tl1752：重启后上下文卡直接「实测」
 9. tl1762：edit_file 证据门不死锁（read_file 尾部 source_token）
-10. tl1767：**真机 glm-5.3-flash 勾视频拖 mp4 可描述**
+10. tl1767：**真机 glm-5.3-flash 勾视频拖 mp4 可描述**〔勘误：代码未随包112 入库，候包113 装机后验〕
 11. tl1768：mailbox batch_dispose 两段式+UI 多选批量
 12. tl1772：实验室「决策模式提取」开关两态
 13. tl1769：hover 第一行完整对话名
@@ -79,8 +82,8 @@
 17. tl1777：侧栏展开+图片输入不溢出卡外
 18. tl1783/1784：哨兵变体拦截+反风暴闸时区
 19. tl1785：装机重启投影降级保留（不再 2M 全量）
-20. tl1786：崩溃时 last-abnormal-exit.json 含 reason/stack
-21. tl1789：desktop 包 `go test .` 全绿
+20. tl1786：崩溃时 last-abnormal-exit.json 含 reason/stack〔勘误：候包113〕
+21. tl1789：desktop 包 `go test .` 全绿〔勘误：候包113〕
 22. tl1713 低收益门装机观察（已拍板默认值）
 
 ## 五、候拍板/移交
