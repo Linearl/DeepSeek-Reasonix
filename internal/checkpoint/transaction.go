@@ -182,12 +182,14 @@ func (s *Store) ValidatePlanSessionRevision(planID string, current int64) error 
 	return nil
 }
 
-// CommitRewind executes a previously prepared plan under exclusive barrier.
-// conversation/checkpoints are applied via applier when non-nil.
-func (s *Store) CommitRewind(planID string, applier ConversationApplier, inject *InjectFail) (RewindResult, error) {
-	if s == nil {
-		return RewindResult{}, fmt.Errorf("checkpoints unavailable")
-	}
+// beginCommitRewind is the shared entry face of CommitRewind and
+// CommitRewindWithForward (tl1781-C21): pop the prepared plan, re-validate the
+// scope gates, then enter the workspace exclusive barrier and re-check for
+// staleness and file conflicts. On success the barrier stays held and the
+// caller must defer the returned release; on failure the barrier (when taken)
+// is already released and release is nil. Coverage is reported on every
+// refusal so both entries expose the same result shape.
+func (s *Store) beginCommitRewind(planID string) (RewindPlan, func(), RewindResult, error) {
 	s.mu.Lock()
 	pp, ok := s.plans[planID]
 	if ok {
@@ -195,43 +197,61 @@ func (s *Store) CommitRewind(planID string, applier ConversationApplier, inject 
 	}
 	s.mu.Unlock()
 	if !ok {
-		return RewindResult{OK: false, Error: "unknown or expired plan"}, fmt.Errorf("unknown or expired plan %q", planID)
+		return RewindPlan{}, nil, RewindResult{OK: false, Error: "unknown or expired plan"}, fmt.Errorf("unknown or expired plan %q", planID)
 	}
 	plan := pp.plan
 
 	// Re-validate gate conditions before any mutation.
 	if plan.Scope == RewindBoth && (!plan.CanFiles || !plan.CanConversation) {
-		return RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts, Coverage: plan.Coverage}, fmt.Errorf("%s", plan.DisabledReason)
+		return plan, nil, RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts, Coverage: plan.Coverage}, fmt.Errorf("%s", plan.DisabledReason)
 	}
-	if (plan.Scope == RewindCode || plan.Scope == RewindBoth) && !plan.CanFiles && plan.Scope != RewindConversation {
-		if plan.Scope == RewindCode || plan.Scope == RewindBoth {
-			return RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts, Coverage: plan.Coverage}, fmt.Errorf("%s", plan.DisabledReason)
-		}
+	if (plan.Scope == RewindCode || plan.Scope == RewindBoth) && !plan.CanFiles {
+		return plan, nil, RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts, Coverage: plan.Coverage}, fmt.Errorf("%s", plan.DisabledReason)
 	}
 	if (plan.Scope == RewindConversation || plan.Scope == RewindBoth) && !plan.CanConversation {
-		return RewindResult{OK: false, Error: plan.DisabledReason}, fmt.Errorf("%s", plan.DisabledReason)
+		return plan, nil, RewindResult{OK: false, Error: plan.DisabledReason}, fmt.Errorf("%s", plan.DisabledReason)
 	}
 
 	// Workspace exclusive barrier.
 	if !s.barrier.TryEnterExclusive() {
 		err := fmt.Errorf("workspace mutation in progress")
-		return RewindResult{OK: false, Error: err.Error(), Conflicts: []RewindConflict{{Reason: ConflictBusyWriter}}}, err
+		return plan, nil, RewindResult{OK: false, Error: err.Error(), Conflicts: []RewindConflict{{Reason: ConflictBusyWriter}}}, err
 	}
-	defer s.barrier.ExitExclusive()
 	if conflicts := s.activeWriterConflicts(); len(conflicts) > 0 {
 		err := fmt.Errorf("active background writer")
-		return RewindResult{OK: false, Error: err.Error(), Conflicts: conflicts, Coverage: plan.Coverage}, err
+		s.barrier.ExitExclusive()
+		return plan, nil, RewindResult{OK: false, Error: err.Error(), Conflicts: conflicts, Coverage: plan.Coverage}, err
 	}
 
 	if plan.Scope == RewindCode || plan.Scope == RewindBoth {
 		if plan.WorkspaceToken != fmt.Sprintf("%d", s.barrier.Generation()) {
 			conflict := RewindConflict{Reason: ConflictStalePlan}
-			return RewindResult{OK: false, Error: "workspace changed since preview", Conflicts: []RewindConflict{conflict}, Coverage: plan.Coverage}, fmt.Errorf("workspace changed since preview")
+			err := fmt.Errorf("workspace changed since preview")
+			s.barrier.ExitExclusive()
+			return plan, nil, RewindResult{OK: false, Error: err.Error(), Conflicts: []RewindConflict{conflict}, Coverage: plan.Coverage}, err
 		}
-		conflicts := s.precheckFiles(plan.Turn)
-		if len(conflicts) > 0 {
-			return RewindResult{OK: false, Error: "file conflicts detected", Conflicts: conflicts, Coverage: plan.Coverage}, fmt.Errorf("file conflicts detected")
+		if conflicts := s.precheckFiles(plan.Turn); len(conflicts) > 0 {
+			err := fmt.Errorf("file conflicts detected")
+			s.barrier.ExitExclusive()
+			return plan, nil, RewindResult{OK: false, Error: "file conflicts detected", Conflicts: conflicts, Coverage: plan.Coverage}, err
 		}
+	}
+
+	return plan, func() { s.barrier.ExitExclusive() }, RewindResult{}, nil
+}
+
+// CommitRewind executes a previously prepared plan under exclusive barrier.
+// conversation/checkpoints are applied via applier when non-nil.
+func (s *Store) CommitRewind(planID string, applier ConversationApplier, inject *InjectFail) (RewindResult, error) {
+	if s == nil {
+		return RewindResult{}, fmt.Errorf("checkpoints unavailable")
+	}
+	plan, release, fail, err := s.beginCommitRewind(planID)
+	if release != nil {
+		defer release()
+	}
+	if err != nil {
+		return fail, err
 	}
 
 	tx, err := s.prepareTransaction(plan, applier)
@@ -608,7 +628,8 @@ func (s *Store) prepareTransaction(plan RewindPlan, applier ConversationApplier)
 			} else if fwd.Existed {
 				t.ForwardInline = clonePayload(fwd.Content)
 			}
-			// Backup existing file for delete path (move later at commit).
+			// Record the target (its backup/forward disposition) on the
+			// transaction; the actual file moves happen at commit.
 			tx.Targets = append(tx.Targets, t)
 		}
 	}
@@ -861,45 +882,12 @@ func (s *Store) CommitRewindWithForward(planID string, forward []byte, applier C
 	if s == nil {
 		return RewindResult{}, fmt.Errorf("checkpoints unavailable")
 	}
-	s.mu.Lock()
-	pp, ok := s.plans[planID]
-	if ok {
-		delete(s.plans, planID)
+	plan, release, fail, err := s.beginCommitRewind(planID)
+	if release != nil {
+		defer release()
 	}
-	s.mu.Unlock()
-	if !ok {
-		return RewindResult{OK: false, Error: "unknown or expired plan"}, fmt.Errorf("unknown or expired plan %q", planID)
-	}
-	plan := pp.plan
-
-	if plan.Scope == RewindBoth && (!plan.CanFiles || !plan.CanConversation) {
-		return RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts}, fmt.Errorf("%s", plan.DisabledReason)
-	}
-	if plan.Scope == RewindCode && !plan.CanFiles {
-		return RewindResult{OK: false, Error: plan.DisabledReason, Conflicts: plan.Conflicts}, fmt.Errorf("%s", plan.DisabledReason)
-	}
-	if (plan.Scope == RewindConversation || plan.Scope == RewindBoth) && !plan.CanConversation {
-		return RewindResult{OK: false, Error: plan.DisabledReason}, fmt.Errorf("%s", plan.DisabledReason)
-	}
-
-	if !s.barrier.TryEnterExclusive() {
-		err := fmt.Errorf("workspace mutation in progress")
-		return RewindResult{OK: false, Error: err.Error(), Conflicts: []RewindConflict{{Reason: ConflictBusyWriter}}}, err
-	}
-	defer s.barrier.ExitExclusive()
-	if conflicts := s.activeWriterConflicts(); len(conflicts) > 0 {
-		err := fmt.Errorf("active background writer")
-		return RewindResult{OK: false, Error: err.Error(), Conflicts: conflicts, Coverage: plan.Coverage}, err
-	}
-
-	if plan.Scope == RewindCode || plan.Scope == RewindBoth {
-		if plan.WorkspaceToken != fmt.Sprintf("%d", s.barrier.Generation()) {
-			conflict := RewindConflict{Reason: ConflictStalePlan}
-			return RewindResult{OK: false, Error: "workspace changed since preview", Conflicts: []RewindConflict{conflict}, Coverage: plan.Coverage}, fmt.Errorf("workspace changed since preview")
-		}
-		if conflicts := s.precheckFiles(plan.Turn); len(conflicts) > 0 {
-			return RewindResult{OK: false, Error: "file conflicts detected", Conflicts: conflicts}, fmt.Errorf("file conflicts detected")
-		}
+	if err != nil {
+		return fail, err
 	}
 
 	tx, err := s.prepareTransaction(plan, applier)

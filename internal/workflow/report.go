@@ -151,14 +151,12 @@ func (b *reportBag) promoteNote(f Finding, note string) {
 }
 
 // buildConclusion assembles the report conclusion: the author's template with
-// {{refs}} interpolated, or an engine summary of what ran. It is deliberately
-// honest about failure — a dead run says it died.
-func buildConclusion(wf *Workflow, tmpl string, ran, total int, failedNode string) string {
+// {{refs}} interpolated, or an engine summary of what ran. Stop-mid-run
+// conclusions are assembled at the call site (the runErr switch), which is
+// why this face only ever describes a completed run.
+func buildConclusion(wf *Workflow, tmpl string, ran, total int) string {
 	if strings.TrimSpace(tmpl) != "" {
 		return tmpl
-	}
-	if failedNode != "" {
-		return fmt.Sprintf("Workflow %q stopped at node %q; %d/%d nodes ran. Reported findings are preserved below.", wf.Name, failedNode, ran, total)
 	}
 	return fmt.Sprintf("Workflow %q completed: %d/%d nodes ran.", wf.Name, ran, total)
 }

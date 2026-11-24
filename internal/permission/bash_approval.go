@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"reasonix/internal/shellparse"
+	"reasonix/internal/shellsafe"
 )
 
 type bashApprovalClass uint8
@@ -50,7 +51,7 @@ func classifyBashApproval(subject string) bashApprovalClass {
 }
 
 func classifyBashSegmentApproval(subject string) bashApprovalClass {
-	if normalized, ok := normalizeBashSafeRedirectsForMatch(subject); ok {
+	if normalized, ok := shellsafe.NormalizeBashSafeRedirectsForMatch(subject); ok {
 		subject = normalized
 	}
 	features, ok := shellparse.AnalyzeApprovalFeatures(subject)

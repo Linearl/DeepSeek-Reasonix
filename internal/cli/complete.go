@@ -16,6 +16,7 @@ import (
 	"reasonix/internal/fileref"
 	"reasonix/internal/i18n"
 	"reasonix/internal/plugin"
+	"reasonix/internal/pluginpkg"
 	"reasonix/internal/skill"
 )
 
@@ -278,13 +279,19 @@ func (m *chatTUI) slashArgData() control.ArgData {
 	if parts := strings.SplitN(m.modelRef, "/", 2); len(parts) == 2 {
 		curProvider = parts[0]
 	}
+	// Installed plugin names feed the "/<plugin>:…" completion; a failed scan
+	// contributes no names rather than failing completion.
+	installedPluginNames, namesErr := pluginpkg.InstalledNames(config.ReasonixHomeDir())
+	if namesErr != nil {
+		installedPluginNames = nil
+	}
 	data := control.ArgData{
 		Skills:          m.skills,
 		ModelRefs:       modelRefs(),
 		CurrentModel:    m.modelRef,
 		ProviderNames:   providerNames(),
 		CurrentProvider: curProvider,
-		PluginNames:     pluginArgNames(),
+		PluginNames:     installedPluginNames,
 	}
 	if strings.TrimSpace(m.modelRef) != "" {
 		if entry, _, err := m.currentConfigProvider(); err == nil {

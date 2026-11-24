@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -546,7 +547,7 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	if e, ok := g.proxy[id]; ok && e.port == port {
 		return e.proxy
 	}
-	target, _ := url.Parse("http://127.0.0.1:" + itoa(port))
+	target, _ := url.Parse("http://127.0.0.1:" + strconv.Itoa(port))
 	p := httputil.NewSingleHostReverseProxy(target)
 	p.FlushInterval = -1 // stream SSE/turn deltas to remote clients immediately
 	p.Director = func(req *http.Request) {
@@ -572,28 +573,6 @@ func (g *Gateway) proxyFor(id string, port int) *httputil.ReverseProxy {
 	}
 	g.proxy[id] = &proxyEntry{port: port, proxy: p}
 	return p
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	var b [20]byte
-	i := len(b)
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

@@ -58,7 +58,7 @@ func (s *Store) load() {
 				}
 			}
 			// Mark v1 as legacy_unverified.
-			if c.SchemaVersion == 0 || c.SchemaVersion < SchemaV2 {
+			if c.SchemaVersion < SchemaV2 {
 				c.SchemaVersion = SchemaV1
 				c.Legacy = true
 				c.Coverage = CoverageLegacy

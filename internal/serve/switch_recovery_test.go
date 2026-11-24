@@ -70,7 +70,7 @@ func TestSwitchModelKeepsAskInteractive(t *testing.T) {
 		}), nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -167,7 +167,7 @@ func TestSwitchModelContinuesRecoveryPathAfterSnapshotConflict(t *testing.T) {
 		return built, nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -266,7 +266,7 @@ func TestSwitchModelRefreshesLeadingSystemPrompt(t *testing.T) {
 		}), nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -313,7 +313,7 @@ func TestSwitchModelRestoresSessionAuthorizations(t *testing.T) {
 		}), nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -366,7 +366,7 @@ func TestSwitchModelPersistsRefreshedSystemPromptToDisk(t *testing.T) {
 		}), nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -410,7 +410,7 @@ func TestSwitchModelSnapshotFailureKeepsOldController(t *testing.T) {
 		}), nil
 	}
 
-	err := s.switchModel(context.Background(), "next-model")
+	err := s.switchModelExpected(context.Background(), "next-model", "")
 	if err == nil || !strings.Contains(err.Error(), "snapshot adopted history") {
 		t.Fatalf("switchModel error = %v, want snapshot adopted history failure", err)
 	}

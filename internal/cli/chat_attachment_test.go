@@ -153,11 +153,11 @@ func TestNextPasteIDForHistoryContinuesAcrossReload(t *testing.T) {
 		{Role: provider.RoleUser, Content: "[Pasted text #2 · 4 lines]"},
 		{Role: provider.RoleAssistant, Content: "--- Begin [Pasted text #7 · 3 lines] ---"},
 	}
-	if got := nextPasteIDForHistory(history); got != 8 {
-		t.Fatalf("nextPasteIDForHistory = %d, want 8", got)
+	if got, _ := pasteIDStateForHistory(history); got != 8 {
+		t.Fatalf("pasteIDStateForHistory = %d, want 8", got)
 	}
-	if got := nextPasteIDForHistory(nil); got != 1 {
-		t.Fatalf("nextPasteIDForHistory(nil) = %d, want 1", got)
+	if got, _ := pasteIDStateForHistory(nil); got != 1 {
+		t.Fatalf("pasteIDStateForHistory(nil) = %d, want 1", got)
 	}
 }
 
@@ -166,8 +166,8 @@ func TestNextPasteIDForHistoryDoesNotOverflow(t *testing.T) {
 		Role:    provider.RoleAssistant,
 		Content: foldedPasteLabel(math.MaxInt, 1),
 	}}
-	if got := nextPasteIDForHistory(history); got != 1 {
-		t.Fatalf("nextPasteIDForHistory = %d, want 1", got)
+	if got, _ := pasteIDStateForHistory(history); got != 1 {
+		t.Fatalf("pasteIDStateForHistory = %d, want 1", got)
 	}
 }
 
@@ -534,7 +534,12 @@ func TestPastedImagePathShellUnescape(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, ok := pastedImagePathForOS(c.src, c.goos)
+			candidates := pastedPathCandidates(c.src, c.goos, false)
+			ok := len(candidates) > 0
+			var got string
+			if ok {
+				got = candidates[0]
+			}
 			if ok != c.ok {
 				t.Fatalf("ok = %v, want %v", ok, c.ok)
 			}

@@ -66,7 +66,7 @@ func TestRuntimeSwitchesRejectRunningBackgroundJobs(t *testing.T) {
 
 	t.Run("work mode", func(t *testing.T) {
 		m := chatTUIWithRunningBackgroundJob(t)
-		if cmd := m.runWorkModeCommand("/work-mode delivery"); cmd != nil {
+		if cmd := m.runPresetCommand("/work-mode delivery"); cmd != nil {
 			t.Fatal("work-mode switch queued a rebuild while a background job was running")
 		}
 	})
@@ -320,7 +320,7 @@ func TestWorkModeSwitchUpdatesInPlaceWithoutRebuildOrLeaseMove(t *testing.T) {
 		return control.New(control.Options{Label: "deepseek-flash"}), nil
 	}
 
-	cmd := m.runWorkModeCommand("/preset delivery")
+	cmd := m.runPresetCommand("/preset delivery")
 	if cmd != nil {
 		t.Fatal("/preset must not queue a controller rebuild")
 	}

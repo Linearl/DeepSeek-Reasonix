@@ -36,15 +36,15 @@ func TestRunStatuslineCmd(t *testing.T) {
 	}
 
 	// Multi-line output collapses to the first row.
-	if got := runStatuslineCmd(firstLineCmd, "{}"); got != "row-one" {
+	if got := runStatuslineCmdWithTimeout(firstLineCmd, "{}", statuslineCommandTimeout); got != "row-one" {
 		t.Errorf("multi-line output should collapse to the first row, got %q", got)
 	}
 	// The JSON payload is delivered on stdin.
-	if got := runStatuslineCmd(stdinCmd, `{"model":"deepseek"}`); got != `{"model":"deepseek"}` {
+	if got := runStatuslineCmdWithTimeout(stdinCmd, `{"model":"deepseek"}`, statuslineCommandTimeout); got != `{"model":"deepseek"}` {
 		t.Errorf("stdin payload not forwarded, got %q", got)
 	}
 	// A failing command yields an empty line, not an error.
-	if got := runStatuslineCmd(failCmd, "{}"); got != "" {
+	if got := runStatuslineCmdWithTimeout(failCmd, "{}", statuslineCommandTimeout); got != "" {
 		t.Errorf("failed command should yield empty, got %q", got)
 	}
 }

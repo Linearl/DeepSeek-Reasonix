@@ -8,14 +8,6 @@ import (
 	"reasonix/internal/pluginpkg"
 )
 
-func pluginArgNames() []string {
-	names, err := pluginpkg.InstalledNames(config.ReasonixHomeDir())
-	if err != nil {
-		return nil
-	}
-	return names
-}
-
 func (m *chatTUI) runPluginSubcommand(input string) {
 	args := tokenizeArgs(input)
 	sub := ""

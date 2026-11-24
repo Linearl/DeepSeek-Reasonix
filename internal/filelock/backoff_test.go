@@ -140,7 +140,7 @@ func TestRetryScheduleFitsAnyBudget(t *testing.T) {
 // second.
 func TestAcquireCancelDuringDeepBackoffReturnsFast(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.lock")
-	releaseExternal, err := tryLockFile(path)
+	releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 	if err != nil {
 		t.Fatalf("hold external file lock: %v", err)
 	}
@@ -166,7 +166,7 @@ func TestAcquireCancelDuringDeepBackoffReturnsFast(t *testing.T) {
 func TestAcquireDiscoversReleaseWithinBackoffCap(t *testing.T) {
 	t.Run("floor phase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "state.lock")
-		releaseExternal, err := tryLockFile(path)
+		releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 		if err != nil {
 			t.Fatalf("hold external file lock: %v", err)
 		}
@@ -192,7 +192,7 @@ func TestAcquireDiscoversReleaseWithinBackoffCap(t *testing.T) {
 	})
 	t.Run("deep backoff phase", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "state.lock")
-		releaseExternal, err := tryLockFile(path)
+		releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 		if err != nil {
 			t.Fatalf("hold external file lock: %v", err)
 		}

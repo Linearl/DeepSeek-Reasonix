@@ -422,7 +422,7 @@ func (s *runState) buildReport(runErr error) *WorkflowReport {
 		conclusion = fmt.Sprintf("Workflow %q stopped before completion: %v. Findings reported before the stop are preserved below.",
 			s.wf.Name, runErr)
 	default:
-		conclusion = buildConclusion(s.wf, s.interpolate(s.wf.Report.Conclusion), ran, total, "")
+		conclusion = buildConclusion(s.wf, s.interpolate(s.wf.Report.Conclusion), ran, total)
 	}
 	notCovered := append([]string(nil), s.wf.Report.NotCovered...)
 	findings := s.bag.snapshot()

@@ -9,9 +9,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-func tryLockFile(path string) (func(), error) {
-	return tryLockFileMode(path, ModeExclusive)
-}
 
 func tryLockFileMode(path string, mode Mode) (func(), error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)

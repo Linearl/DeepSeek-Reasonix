@@ -117,7 +117,7 @@ func TestSwitchModelDoesNotHoldServerLockDuringSnapshotAndClose(t *testing.T) {
 		return built, nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err != nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err != nil {
 		t.Fatalf("switchModel: %v", err)
 	}
 
@@ -157,7 +157,7 @@ func TestSwitchModelDiscardsBuiltControllerOnConcurrentSwap(t *testing.T) {
 		return built, nil
 	}
 
-	err := s.switchModel(context.Background(), "next-model")
+	err := s.switchModelExpected(context.Background(), "next-model", "")
 	if err == nil {
 		t.Fatal("expected switchModel to fail when the controller changed mid-switch")
 	}
@@ -182,7 +182,7 @@ func TestSwitchModelRejectsWhileRunning(t *testing.T) {
 	ctrl.SubmitHTTP("hi")
 	waitRunning(t, ctrl)
 
-	if err := s.switchModel(context.Background(), "next-model"); err == nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err == nil {
 		t.Fatal("expected switchModel to refuse while a turn is running")
 	}
 	if built {
@@ -299,7 +299,7 @@ func TestSwitchModelRejectsWhileBackgroundJobRunning(t *testing.T) {
 		return control.New(control.Options{Sink: bc}), nil
 	}
 
-	if err := s.switchModel(context.Background(), "next-model"); err == nil {
+	if err := s.switchModelExpected(context.Background(), "next-model", ""); err == nil {
 		t.Fatal("expected switchModel to refuse while a background job is running")
 	}
 	if built {

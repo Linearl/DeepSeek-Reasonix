@@ -99,9 +99,9 @@ func (t recallTool) Execute(ctx context.Context, args json.RawMessage) (string, 
 		// Hit 分量供数。session 经 ctx 携带(jobs.WithSession);无会话作用域
 		// 时退化为仅记忆级计数。
 		RecordUsageView(t.store, jobs.SessionFromContext(ctx), m.ID)
-		return formatMemory(t.store, m), nil
+		return formatMemory(m), nil
 	case "list":
-		return formatMemoryList(t.store, filterMemories(t.store.ListAll(), memType, memScope), limit), nil
+		return formatMemoryList(filterMemories(t.store.ListAll(), memType, memScope), limit), nil
 	case "":
 		return "", fmt.Errorf("operation is required")
 	default:
@@ -287,7 +287,7 @@ func formatMemoryHits(query string, hits []memoryHit) string {
 	return strings.TrimSpace(b.String())
 }
 
-func formatMemory(_ Store, m Memory) string {
+func formatMemory(m Memory) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Memory %s\n", m.Name)
 	fmt.Fprintf(&b, "id: %s\n", m.ID)
@@ -302,7 +302,7 @@ func formatMemory(_ Store, m Memory) string {
 	return strings.TrimSpace(b.String())
 }
 
-func formatMemoryList(_ Store, memories []Memory, limit int) string {
+func formatMemoryList(memories []Memory, limit int) string {
 	if len(memories) == 0 {
 		return "No saved memories found."
 	}

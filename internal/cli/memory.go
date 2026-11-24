@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"reasonix/internal/control"
 	"reasonix/internal/i18n"
@@ -15,7 +16,7 @@ import (
 func (m *chatTUI) showMemory(input string) {
 	args := strings.TrimSpace(strings.TrimPrefix(input, "/memory"))
 	if args == "" {
-		m.commitLine(renderMemory(m.width, m.ctrl.Memory()))
+		m.commitLine(viewProtectLines(control.RenderMemorySummary(m.ctrl.Memory(), time.Now().UTC()), m.width))
 		return
 	}
 	m.commitLine(viewProtectLines(control.MemoryCommandText(m.ctrl, args), m.width))

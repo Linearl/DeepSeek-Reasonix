@@ -533,21 +533,18 @@ func remoteForwardAdd(args []string) int {
 	if dir == forward.Remote {
 		ftype = "remote"
 	}
-	found := false
 	err = editUserConfig(func(c *config.Config) error {
 		entry, ok := c.RemoteHost(host)
 		if !ok {
 			return fmt.Errorf("no remote host named %q", host)
 		}
 		entry.Forwards = append(entry.Forwards, config.RemoteForwardEntry{Type: ftype, Bind: spec.BindAddr, Target: spec.TargetAddr})
-		found = true
 		return c.UpsertRemoteHost(entry)
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, i18n.M.ErrorPrefix, err)
 		return 1
 	}
-	_ = found
 	fmt.Printf("added %s forward %s -> %s to %q (takes effect on next connect)\n", ftype, spec.BindAddr, spec.TargetAddr, host)
 	return 0
 }

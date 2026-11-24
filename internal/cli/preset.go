@@ -54,13 +54,3 @@ func (m *chatTUI) runPresetCommand(input string) tea.Cmd {
 	m.noticePresetFolded()
 	return nil
 }
-
-// runWorkModeCommand keeps the legacy dispatch name compiling; /work-mode and
-// /profile delegate to the same handler.
-func (m *chatTUI) runWorkModeCommand(input string) tea.Cmd {
-	if len(tokenizeArgs(input)) > 2 {
-		m.noticePresetFolded()
-		return nil
-	}
-	return m.runPresetCommand(input)
-}

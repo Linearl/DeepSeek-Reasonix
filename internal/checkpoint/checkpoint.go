@@ -558,24 +558,21 @@ func (s *Store) gcLocked() {
 	}
 	// Collect recoverable checkpoints (have file payloads) oldest first.
 	all := s.all()
-	type entry struct {
-		c *Checkpoint
-	}
-	var withFiles []entry
+	var withFiles []*Checkpoint
 	for _, c := range all {
 		if c.SchemaVersion < SchemaV3 && len(c.Files) > 0 {
-			withFiles = append(withFiles, entry{c: c})
+			withFiles = append(withFiles, c)
 		}
 	}
 	// Expire payloads for all but the newest retainN.
 	if len(withFiles) > s.retainN {
 		expiredAny := false
-		for _, e := range withFiles[:len(withFiles)-s.retainN] {
-			if s.protectTurns[e.c.Turn] {
+		for _, c := range withFiles[:len(withFiles)-s.retainN] {
+			if s.protectTurns[c.Turn] {
 				continue
 			}
-			if err := s.expirePayloadLocked(e.c); err != nil {
-				slog.Warn("checkpoint: expire payload failed", "turn", e.c.Turn, "err", err)
+			if err := s.expirePayloadLocked(c); err != nil {
+				slog.Warn("checkpoint: expire payload failed", "turn", c.Turn, "err", err)
 				continue
 			}
 			expiredAny = true
@@ -589,16 +586,16 @@ func (s *Store) gcLocked() {
 	if err != nil || size <= s.blobQuota {
 		return
 	}
-	for _, e := range withFiles {
+	for _, c := range withFiles {
 		if size <= s.blobQuota {
 			break
 		}
-		if s.protectTurns[e.c.Turn] || e.c.ExpiredFilePayload {
+		if s.protectTurns[c.Turn] || c.ExpiredFilePayload {
 			continue
 		}
 		// Rough: expire and recompute size.
-		if err := s.expirePayloadLocked(e.c); err != nil {
-			slog.Warn("checkpoint: expire payload failed", "turn", e.c.Turn, "err", err)
+		if err := s.expirePayloadLocked(c); err != nil {
+			slog.Warn("checkpoint: expire payload failed", "turn", c.Turn, "err", err)
 			continue
 		}
 		s.pruneBlobsLocked()

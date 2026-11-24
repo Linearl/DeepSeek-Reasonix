@@ -318,17 +318,14 @@ func titleProviderConfig(entry *config.ProviderEntry) provider.Config {
 	}
 }
 
-// switchModel rebuilds the controller with a new model, carrying over the
-// conversation history. This replicates the TUI/desktop model-switch path.
+// switchModelExpected rebuilds the controller with a new model, carrying over
+// the conversation history (the TUI/desktop model-switch path). An empty
+// expectedPath keeps the legacy unscoped contract.
 //
 // The heavy steps (Snapshot, Build, the old controller's Close) all run OFF
 // s.mu — holding the write lock would wedge every HTTP handler on s.ctl()'s
 // RLock for the duration (mirrors the acp rebuildSession fix and PR #5920).
 // bindMu serializes the switch against /resume, /new, /fork.
-func (s *Server) switchModel(ctx context.Context, ref string) error {
-	return s.switchModelExpected(ctx, ref, "")
-}
-
 func (s *Server) switchModelExpected(ctx context.Context, ref, expectedPath string) error {
 	s.bindMu.Lock()
 	defer s.bindMu.Unlock()
@@ -548,12 +545,9 @@ func (s *Server) rebuildWithOptions(ctx context.Context, old *control.Controller
 	return res.Controller, nil
 }
 
-// switchEffort persists a new reasoning-effort level for the active provider and
-// rebuilds the controller in the same bindMu epoch.
-func (s *Server) switchEffort(ctx context.Context, level string) error {
-	return s.switchEffortExpected(ctx, level, "")
-}
-
+// switchEffortExpected persists a new reasoning-effort level for the active
+// provider and rebuilds the controller in the same bindMu epoch. An empty
+// expectedPath keeps the legacy unscoped contract.
 func (s *Server) switchEffortExpected(ctx context.Context, level, expectedPath string) error {
 	s.bindMu.Lock()
 	defer s.bindMu.Unlock()

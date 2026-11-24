@@ -5,9 +5,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 
-	"reasonix/internal/agent"
 	"reasonix/internal/i18n"
 )
 
@@ -50,7 +48,7 @@ func (m *chatTUI) openResumePicker() {
 		if i == activeIdx {
 			status = "active"
 		}
-		label := sessionPickerLabel(entry.session)
+		label := sessionSummary(entry.session, 60)
 		description := entry.session.ModTime.Local().Format("2006-01-02 15:04")
 		if entry.project != "" {
 			label = fmt.Sprintf("[%s] %s", entry.project, label)
@@ -63,7 +61,7 @@ func (m *chatTUI) openResumePicker() {
 	}
 	m.resumePick = &resumePicker{
 		entries: entries, sel: sel, active: activeIdx,
-		quick: &quickPicker{kind: quickPickerResume, title: i18n.M.ResumePickTitle, items: items, selected: sel},
+		quick: &quickPicker{title: i18n.M.ResumePickTitle, items: items, selected: sel},
 	}
 }
 
@@ -153,7 +151,7 @@ func (m chatTUI) renderResumePicker() string {
 	var b strings.Builder
 	b.WriteString(accent(i18n.M.ResumePickTitle) + "\n")
 	for i, entry := range r.entries {
-		label := sessionPickerLabel(entry.session)
+		label := sessionSummary(entry.session, 60)
 		if entry.project != "" {
 			label = fmt.Sprintf("[%s] %s", entry.project, label)
 		}
@@ -164,20 +162,4 @@ func (m chatTUI) renderResumePicker() string {
 	}
 	b.WriteString(dim(i18n.M.ResumePickHint))
 	return choicePanelStyle.Width(w).Render(b.String())
-}
-
-// sessionPickerLabel is the "N turns · display title" line, truncated to fit.
-// Explicit session renames win, then topic titles, then the raw preview.
-func sessionPickerLabel(s agent.SessionInfo) string {
-	preview := s.CustomTitle
-	if preview == "" {
-		preview = s.TopicTitle
-	}
-	if preview == "" {
-		preview = s.Preview
-	}
-	if preview == "" {
-		preview = "(no user message yet)"
-	}
-	return recoverySessionBadge(s) + fmt.Sprintf("%d turns · %s", s.Turns, ansi.Truncate(preview, 60, "…"))
 }

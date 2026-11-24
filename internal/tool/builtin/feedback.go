@@ -116,21 +116,15 @@ func SetFeedbackNotify(fn func(FeedbackNote) error) {
 	feedbackNotify = fn
 }
 
-// feedbackSummary folds a note's text to at most maxSummaryLines non-empty
-// lines, trimmed — the message-side excerpt (1016: md carries the payload,
-// the message carries the pointer).
-func feedbackSummary(text string, maxLines int) string {
-	return feedbackSummaryBounded(text, maxLines, feedbackSummaryMaxBytes)
-}
-
 // feedbackSummaryMaxBytes is the byte ceiling for the folded summary — the
 // notification rides a single message, so the summary must stay bounded (1016
 // size ceiling). The cut is rune-safe (task 1057): a multi-byte character is
 // never sliced mid-sequence.
 const feedbackSummaryMaxBytes = 512
 
-// feedbackSummaryBounded is feedbackSummary with an extra byte ceiling: the
-// ≤3-line fold runs first, then the joined result is clipped to at most
+// feedbackSummaryBounded folds a note's text to at most maxLines non-empty
+// lines, trimmed — the message-side excerpt (1016: md carries the payload,
+// the message carries the pointer) — then clips the joined result to at most
 // maxBytes bytes on a rune boundary.
 func feedbackSummaryBounded(text string, maxLines int, maxBytes int) string {
 	var kept []string
@@ -573,7 +567,7 @@ func (submitFeedback) Execute(ctx context.Context, args json.RawMessage) (string
 		FileName: filepath.Base(path),
 		Kind:     p.Kind,
 		Title:    strings.TrimSpace(p.Title),
-		Summary:  feedbackSummary(p.Text, 3),
+		Summary:  feedbackSummaryBounded(p.Text, 3, feedbackSummaryMaxBytes),
 	}
 	if note.Title == "" {
 		note.Title = firstLine(p.Text)

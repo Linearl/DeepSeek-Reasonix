@@ -84,7 +84,7 @@ func TestAcquireHonorsDeadlineAndRecoversAfterRelease(t *testing.T) {
 
 func TestAcquireWithExternalTimeoutBoundsOnlyFileLockRetries(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.lock")
-	releaseExternal, err := tryLockFile(path)
+	releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 	if err != nil {
 		t.Fatalf("hold external file lock: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestAcquireLocalContentionReturnsWhenCallerCancels(t *testing.T) {
 // before the fix).
 func TestAcquireWithExternalTimeoutReturnsWhenCallerCancels(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.lock")
-	releaseExternal, err := tryLockFile(path)
+	releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 	if err != nil {
 		t.Fatalf("hold external file lock: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestAcquireWithExternalTimeoutReturnsWhenCallerCancels(t *testing.T) {
 // forever while the lock stays held elsewhere.
 func TestAcquireWithBackgroundContextIsBounded(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.lock")
-	releaseExternal, err := tryLockFile(path)
+	releaseExternal, err := tryLockFileMode(path, ModeExclusive)
 	if err != nil {
 		t.Fatalf("hold external file lock: %v", err)
 	}

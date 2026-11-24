@@ -1,4 +1,4 @@
-package permission
+package shellsafe
 
 import (
 	"strings"
@@ -122,7 +122,7 @@ func TestNormalizeBashSafeRedirectsForMatch(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := normalizeBashSafeRedirectsForMatch(tt.in)
+			got, ok := NormalizeBashSafeRedirectsForMatch(tt.in)
 			if ok != tt.ok {
 				t.Fatalf("ok = %v, want %v (got %q)", ok, tt.ok, got)
 			}
@@ -134,14 +134,14 @@ func TestNormalizeBashSafeRedirectsForMatch(t *testing.T) {
 }
 
 func TestNormalizeBashSafeRedirectsPreservesControlSyntax(t *testing.T) {
-	got, ok := normalizeBashSafeRedirectsForMatch("git log >/dev/null\nrm -rf /tmp/x")
+	got, ok := NormalizeBashSafeRedirectsForMatch("git log >/dev/null\nrm -rf /tmp/x")
 	if !ok {
 		t.Fatal("safe redirect should normalize while preserving the newline")
 	}
 	if !strings.Contains(got, "\n") {
 		t.Fatalf("normalized command lost the control newline: %q", got)
 	}
-	if !containsShellSyntax(got) {
+	if !ContainsShellSyntax(got) {
 		t.Fatalf("normalized command should still be treated as shell syntax: %q", got)
 	}
 }

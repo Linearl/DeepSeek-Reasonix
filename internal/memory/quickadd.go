@@ -33,9 +33,6 @@ func AppendDoc(path, note string) error {
 			return err
 		}
 	}
-	if err := ensureDestinationNotSymlink(path); err != nil {
-		return err
-	}
 
 	existing, _ := fileencoding.ReadFileUTF8(path) // missing → new file
 	body := string(existing)
@@ -71,9 +68,6 @@ func writeDocBytes(path string, body []byte) error {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return err
 		}
-	}
-	if err := ensureDestinationNotSymlink(path); err != nil {
-		return err
 	}
 
 	return fileutil.AtomicWriteFile(path, body, 0o644)

@@ -1679,7 +1679,7 @@ func pickSessionToResume() (string, int) {
 		when := s.ModTime.Local().Format("01-02 15:04")
 		items[i] = menuItem{
 			name: when,
-			desc: sessionSummary(s),
+			desc: sessionSummary(s, 0),
 		}
 	}
 	idx, err := selectOne(i18n.M.PickSessionLabel, items)
