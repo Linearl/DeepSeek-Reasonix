@@ -9,7 +9,7 @@
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 
 /*

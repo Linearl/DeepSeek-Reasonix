@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from "react";
-import { CSS_EASE_OUT, DUR_BASE, prefersReducedMotion } from "./motion";
+import { CSS_EASE_OUT, DUR_NORMAL, prefersReducedMotion } from "./motion";
 
 /**
  * Animates a container's height between 0 and its scrollHeight whenever
@@ -42,10 +42,10 @@ export function useCollapseAnimation(
     if (prevOpen.current === open) return;
     prevOpen.current = open;
 
-    const configuredDuration = opts?.duration ?? DUR_BASE;
+    const configuredDuration = opts?.duration ?? DUR_NORMAL;
     const duration = prefersReducedMotion()
       ? 0
-      : (Number.isFinite(configuredDuration) && configuredDuration >= 0 ? configuredDuration : DUR_BASE) * 1000;
+      : (Number.isFinite(configuredDuration) && configuredDuration >= 0 ? configuredDuration : DUR_NORMAL) * 1000;
     let superseded = false;
     let settled = false;
     const finish = () => {

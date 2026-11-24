@@ -138,9 +138,9 @@ export function groupSessionsForWall(
 export const SESSION_WALL_HOVER_LAYER_EST_W = 630;
 export const SESSION_WALL_HOVER_LAYER_EST_H = 420;
 
-// Hover-open delay: same anti-flicker gate as the project tree's hover card
-// (350ms) — sweeping the cursor across the wall must not pop layers.
-export const SESSION_WALL_HOVER_OPEN_DELAY_MS = 350;
+// Hover-open delay: same anti-flicker gate as the project tree's hover card —
+// sweeping the cursor across the wall must not pop layers.
+// tl1798：值收口 lib/motion.ts（MENU_HOVER_OPEN_DELAY_MS，拍板统一 300ms，原 350）。
 
 // tl 1177b raised the hover data width to 8 (backend recentExcerptCount); a
 // list field already carrying the full width skips the on-demand tail fetch.

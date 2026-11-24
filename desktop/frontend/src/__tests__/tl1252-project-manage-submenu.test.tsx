@@ -23,7 +23,8 @@ import { JSDOM } from "jsdom";
 import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot } from "react-dom/client";
-import { ContextMenu, CONTEXT_MENU_HOVER_OPEN_MS, type ContextMenuItem } from "../components/ContextMenu";
+import { ContextMenu, type ContextMenuItem } from "../components/ContextMenu";
+import { MENU_HOVER_OPEN_DELAY_MS } from "../lib/motion";
 
 let passed = 0;
 let failed = 0;
@@ -158,7 +159,7 @@ async function flush() {
   await new Promise((resolve) => setTimeout(resolve, 0));
 }
 async function dwell() {
-  await new Promise((resolve) => setTimeout(resolve, CONTEXT_MENU_HOVER_OPEN_MS + 80));
+  await new Promise((resolve) => setTimeout(resolve, MENU_HOVER_OPEN_DELAY_MS + 80));
 }
 function menuButtons(): HTMLElement[] {
   return [...document.querySelectorAll("[role=\"menuitem\"]")].filter((el): el is HTMLElement => el instanceof HTMLElement);

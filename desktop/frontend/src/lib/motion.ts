@@ -1,14 +1,21 @@
 // Shared timing configuration for CSS and Web Animations API transitions.
 // The curves mirror the desktop CSS motion tokens.
 
-/** 120ms — color/border hovers, tooltips. */
+/** 120ms — color/border hovers, tooltips. Matches CSS --dur-fast. */
 export const DUR_FAST = 0.12;
 
-/** 180ms — popovers, menus, small enters. Matches CSS --dur-base. */
-export const DUR_BASE = 0.18;
+/** 200ms — popovers, menus, small enters. Matches CSS --dur-normal (tl1798 三档 120/200/300). */
+export const DUR_NORMAL = 0.2;
 
-/** 340ms — drawers, modals, panel slides. Matches CSS --dur-slow. */
-export const DUR_SLOW = 0.34;
+/** 300ms — drawers, modals, panel slides. Matches CSS --dur-slow. */
+export const DUR_SLOW = 0.3;
+
+/** 300ms — menu hover-open delay（tl1798 拍板统一：全部菜单/子菜单/图墙 hover 展开共用，
+ * 禁止组件内私有 `*_HOVER_*_MS` 常量——扫过不弹、停留才弹防误触窗口）. */
+export const MENU_HOVER_OPEN_DELAY_MS = 300;
+
+/** 300ms — menu hover-close grace delay（tl1798 拍板与 open 同源同值：移出后短暂宽限防误关）. */
+export const MENU_HOVER_CLOSE_DELAY_MS = 300;
 
 /** Fast-out/decelerate curve used by expanding and entrance animations. */
 export const CSS_EASE_OUT = "cubic-bezier(0.2, 0.72, 0.2, 1)";

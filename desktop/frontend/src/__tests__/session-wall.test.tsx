@@ -43,6 +43,7 @@ function ok(value: boolean, label: string) {
 }
 
 const wall = await import("../lib/sessionWall");
+const motion = await import("../lib/motion");
 const { SessionWallPanel } = await import("../components/SessionWallPanel");
 const { LocaleProvider } = await import("../lib/i18n");
 await import("react");
@@ -50,9 +51,9 @@ const { createRoot } = await import("react-dom/client");
 const { act } = await import("react");
 import type { SessionMeta } from "../lib/types";
 
-// tl 1188: the hover layer opens after SESSION_WALL_HOVER_OPEN_DELAY_MS; a
+// tl 1188: the hover layer opens after MENU_HOVER_OPEN_DELAY_MS (tl1798 unified); a
 // little over that covers the timer fire plus the excerpt fetch microtasks.
-const HOVER_WAIT = wall.SESSION_WALL_HOVER_OPEN_DELAY_MS + 100;
+const HOVER_WAIT = motion.MENU_HOVER_OPEN_DELAY_MS + 100; // tl1798: 统一菜单延迟 300ms（原 wall 私有 350）
 const flush = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const hoverLayer = () => document.querySelector<HTMLElement>(".session-wall-hover-layer");
 

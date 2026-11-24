@@ -288,15 +288,24 @@
   --hl-builtin: #56b6c2;
   --hl-meta: #7f848e;
 
-  /* motion — shared timing + easing tokens. Durations mirror the values
-   * already used across the app (0.12 / 0.18 / 0.34 / 0.42s); easings reuse the
-   * existing curves. The global prefers-reduced-motion block at EOF collapses
+  /* motion — shared timing + easing tokens（tl1798 动效三档，20261124 拍板：
+   * hover 时长收拢 120/200/300 三档，数值只定义在本层，组件只引用档位名）。
+   * 归并映射：80/100/120/130/140/150/160ms→fast；180/200ms→normal；280/300ms→slow。
+   * --dur-slower=420ms 为大覆盖层淡出专档（非 hover 档，保留）。
+   * 主题可覆盖档值（见 graphite 段），档位名全局唯一。
+   * The global prefers-reduced-motion block at EOF collapses
    * every animation to ~0ms and removes transitions, so these tokens are safe
    * to reuse freely without per-rule reduce overrides. */
-  --dur-fast: 120ms; /* color/border hovers, tooltips */
-  --dur-base: 180ms; /* popovers, menus, small enters */
-  --dur-slow: 340ms; /* drawers, modals, panel slides */
-  --dur-slower: 420ms; /* large overlay fades */
+  --dur-fast: 120ms; /* hover 反馈快档：color/border hovers, tooltips, 小钮位移 */
+  --dur-normal: 200ms; /* hover 中档 + popovers, menus, small enters */
+  --dur-slow: 300ms; /* hover 慢档 + drawers, modals, panel slides */
+  --dur-slower: 420ms; /* large overlay fades（非 hover 档） */
+  /* hover 增强 token（主交互 hover 用，禁新写字面量）：--hover-dim 当前无等价
+   * 引用属预期（背景加深 8% 供后续 hover 增强任务引用）；--hover-lift/-shadow
+   * 已接既有等价处（translateY(-2px)、mem-doc/-fact 投影）。 */
+  --hover-lift: 2px;
+  --hover-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
+  --hover-dim: 8%;
   --ease-out: cubic-bezier(0.2, 0.72, 0.2, 1); /* fast-out / decelerate */
   --ease-decelerate: cubic-bezier(0.2, 0.7, 0.1, 1); /* soft landing (splash) */
   --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1); /* symmetric */
@@ -2031,7 +2040,7 @@ a[href] {
   color: var(--fg-dim);
   font: inherit;
   text-align: left;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .sidebar__new {
   display: flex;
@@ -2385,7 +2394,7 @@ a[href] {
    300ms 防误触窗口与 15s 折回计时仍完全由 useSidebarHoverBehavior 的
    状态/定时器判定（task826 钉死，本任务零改动），本块只让「已决定的
    折叠/展开」在视觉上平滑落地——动画时长不参与任何判定。选型
-   180ms（--dur-base；任务书 150-250ms 区间中段，且比 layout 列宽过渡
+   180ms（--dur-normal；任务书 150-250ms 区间中段，且比 layout 列宽过渡
    0.16s 略长，内容渐隐覆盖列宽收拢全程不脱节）+ --ease-out（仓库标准
    减速曲线，darwin 侧栏同款）。全部规则挂在 .app--ui-settled 首屏门
    下：门由 App 首帧绘制完成后置位，首屏渲染与状态恢复零动画。
@@ -2399,9 +2408,9 @@ a[href] {
    解耦约束），由 layout 列宽 0.16s 收拢过渡兜底。 */
 .app--ui-settled:not(.app--darwin) .sidebar {
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
-    display var(--dur-base) allow-discrete;
+    opacity var(--dur-normal) var(--ease-out),
+    transform var(--dur-normal) var(--ease-out),
+    display var(--dur-normal) allow-discrete;
 }
 .app--ui-settled:not(.app--darwin) .sidebar--collapsed {
   opacity: 0;
@@ -2409,8 +2418,8 @@ a[href] {
 }
 .app--ui-settled .workbench-dock {
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
+    opacity var(--dur-normal) var(--ease-out),
+    transform var(--dur-normal) var(--ease-out);
 }
 @starting-style {
   .app--ui-settled:not(.app--darwin) .sidebar:not(.sidebar--collapsed) {
@@ -2642,7 +2651,7 @@ a[href] {
   font-weight: 500;
   line-height: 1.25;
   border-radius: var(--button-radius);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .chip--icon {
   width: var(--button-icon-size);
@@ -3556,7 +3565,7 @@ a[href] {
   font-size: var(--text-md);
   text-align: center;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .warm-collapse:hover {
   color: var(--fg);
@@ -5357,7 +5366,7 @@ a[href] {
   font-size: var(--text-md);
   padding: 9px 13px;
   border-radius: var(--radius-md);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .welcome__ex:hover {
   color: var(--fg);
@@ -5614,7 +5623,7 @@ a[href] {
   background: transparent;
   color: var(--fg-faint);
   box-shadow: none;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .msg-meta__btn:hover:not(:disabled),
 .msg-meta__btn:focus-visible:not(:disabled),
@@ -5650,7 +5659,7 @@ a[href] {
   color: var(--fg-dim);
   padding: 0;
   box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-color) 12%, transparent);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .rewind__btn:hover,
 .rewind__btn:focus-visible,
@@ -5936,7 +5945,7 @@ a[href] {
   width: 64px;
   padding: 4px;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) ease;
 }
 .msg-attachment--image:hover {
   transform: scale(1.08);
@@ -6719,7 +6728,7 @@ button.reasoning-summary:focus-visible {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
-  transition: grid-template-rows var(--dur-base) var(--ease-out);
+  transition: grid-template-rows var(--dur-normal) var(--ease-out);
 }
 .process-card[data-open="true"] .process-card__wrap {
   grid-template-rows: 1fr;
@@ -6733,7 +6742,7 @@ button.reasoning-summary:focus-visible {
   box-sizing: border-box;
   border-top: 1px solid var(--border-soft);
   background: var(--bg-soft);
-  animation: card-body-in var(--dur-base) var(--ease-out) both;
+  animation: card-body-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes card-body-in {
   from {
@@ -7486,7 +7495,7 @@ button.reasoning-summary:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 
 .mermaid-diagram__icon-btn:hover,
@@ -7737,7 +7746,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-elev);
   color: var(--fg-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .image-viewer__close:hover {
   background: var(--bg-soft);
@@ -7865,7 +7874,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-elev);
   color: var(--fg-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .image-viewer__annotate:hover {
   background: var(--bg-soft);
@@ -8047,7 +8056,7 @@ body > .mermaid-diagram--fullscreen {
   font: inherit;
   font-size: var(--text-xs);
   line-height: 1.25;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, gap 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), gap var(--dur-fast);
 }
 .turn-actions__label-inline {
   display: inline-flex;
@@ -8820,7 +8829,7 @@ body > .mermaid-diagram--fullscreen {
   font: inherit;
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .undo-rewind__btn:hover {
   border-color: var(--accent-soft);
@@ -9722,7 +9731,7 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .composer-content-trigger svg {
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-normal) var(--ease-out);
 }
 
 .composer-content-trigger:hover:not(:disabled),
@@ -10447,7 +10456,7 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .anchored-popover[data-ready="true"][data-state="open"] {
-  animation: popover-in var(--dur-base) var(--ease-out) both;
+  animation: popover-in var(--dur-normal) var(--ease-out) both;
 }
 
 .anchored-popover[data-state="closing"] {
@@ -11230,7 +11239,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
   text-align: left;
-  transition: color 0.12s;
+  transition: color var(--dur-fast);
 }
 .capsule-panel__ended-toggle:hover,
 .capsule-panel__ended-toggle:focus-visible {
@@ -11462,7 +11471,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font-size: var(--font-status, 11px);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .capsule-bash-detail__copy {
   margin-left: 0;
@@ -11995,7 +12004,7 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.25;
   border-radius: var(--button-radius);
   white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 .btn:hover {
   background: var(--button-bg-hover);
@@ -12173,7 +12182,7 @@ button.statusbar__mcp:focus-visible {
 /* Todo shelf: header actions (collapse/close) appear on card hover/focus. */
 .prompt-shelf--todo .prompt-shelf__header-actions {
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .prompt-shelf--todo .prompt-shelf__card--collapsed {
   height: 48px;
@@ -12351,7 +12360,7 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.35;
   padding: 7px 9px;
   text-align: left;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 .prompt-action:disabled {
   cursor: default;
@@ -13805,7 +13814,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg-faint);
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .workspace-iconbtn:hover {
   color: var(--fg);
@@ -14128,7 +14137,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   transform-origin: top left;
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 .floating-menu button {
   display: flex;
@@ -15123,7 +15132,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   justify-content: flex-end;
   z-index: var(--z-drawer-backdrop);
-  animation: backdrop-in var(--dur-base) var(--ease-out) both;
+  animation: backdrop-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes backdrop-in {
   from {
@@ -15139,7 +15148,7 @@ button.statusbar__mcp:focus-visible {
 /* Overlays that opt into exit animation via useMountTransition flip
  * data-state="closing" before unmount; reverse the backdrop fade. */
 .drawer-backdrop[data-state="closing"] {
-  animation: backdrop-out var(--dur-base) var(--ease-out) both;
+  animation: backdrop-out var(--dur-normal) var(--ease-out) both;
 }
 .drawer-backdrop--subtle {
   background: color-mix(in srgb, var(--scrim-color) 16%, transparent);
@@ -15168,7 +15177,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .palette[data-state="closing"] {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 @keyframes palette-in {
   from {
@@ -15457,7 +15466,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .session-wall[data-state="closing"] {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 .session-wall__head {
   display: flex;
@@ -15787,7 +15796,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .wf-panel-backdrop[data-state="closing"] .wf-panel {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 .wf-panel__toolbar {
   display: flex;
@@ -16006,7 +16015,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 10px; /* 833-radius-md */
   cursor: pointer;
   color: var(--fg);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 .wf-node:hover {
   border-color: var(--border-2, var(--border));
@@ -16545,7 +16554,7 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   border-radius: 999px;
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-out);
+  transition: width var(--dur-normal) var(--ease-out);
 }
 .res-panel__section .settings-field__hint-line {
   margin: 8px 0 0;
@@ -17238,7 +17247,7 @@ button.statusbar__mcp:focus-visible {
 .mem-doc:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
+  box-shadow: var(--hover-shadow);
 }
 .mem-doc::before {
   content: "";
@@ -17426,7 +17435,7 @@ button.statusbar__mcp:focus-visible {
 .mem-fact:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
+  box-shadow: var(--hover-shadow);
 }
 .mem-fact--archived {
   --mem-type-color: var(--fg-faint);
@@ -18422,7 +18431,7 @@ button.statusbar__mcp:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   border-top: 1px solid var(--border-soft);
-  transition: background 0.12s ease;
+  transition: background var(--dur-fast) ease;
 }
 .cap-mcp-list-row:first-child {
   border-top: 0;
@@ -19574,7 +19583,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   font: inherit;
   text-align: left;
-  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
 }
 .cap-skill-card:hover,
 .cap-skill-card:focus-within {
@@ -19945,7 +19954,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--project-accent, var(--accent));
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
 }
 .subagents-color-swatch:hover {
   transform: scale(1.08);
@@ -20360,7 +20369,7 @@ button.statusbar__mcp:focus-visible {
   justify-content: center;
   padding: 24px;
   overflow: hidden;
-  animation: backdrop-in var(--dur-base) var(--ease-out) both;
+  animation: backdrop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .topicbar__worktree-btn {
@@ -20569,11 +20578,11 @@ button.statusbar__mcp:focus-visible {
 /* Exit animations for modals/backdrops driven by useDeferredClose. */
 .management-modal[data-state="closing"],
 .settings-modal[data-state="closing"] {
-  animation: modal-out var(--dur-base) var(--ease-out) both;
+  animation: modal-out var(--dur-normal) var(--ease-out) both;
 }
 .management-modal-backdrop[data-state="closing"],
 .settings-modal-backdrop[data-state="closing"] {
-  animation: backdrop-out var(--dur-base) var(--ease-out) both;
+  animation: backdrop-out var(--dur-normal) var(--ease-out) both;
 }
 
 /* ── history manager: searchable list with preview and actions ─────────────── */
@@ -20758,7 +20767,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  transition: border-color 0.12s, transform 0.12s cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow 0.12s;
+  transition: border-color var(--dur-fast), transform var(--dur-fast) cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow var(--dur-fast);
 }
 .hist-item:hover {
   border-color: var(--fg-faint);
@@ -22702,7 +22711,7 @@ button.statusbar__mcp:focus-visible {
   font-family: var(--mono);
   font-size: var(--text-2xs);
   overflow: hidden;
-  transition: background-color 120ms ease;
+  transition: background-color var(--dur-fast) ease;
 }
 .provider-model-draft__option + .provider-model-draft__option {
   border-top: 1px solid var(--border-soft);
@@ -24543,7 +24552,7 @@ button.statusbar__mcp:focus-visible {
   font: inherit;
   padding: 9px 11px;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 .bot-step-chip:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
@@ -26112,11 +26121,11 @@ button.statusbar__mcp:focus-visible {
   text-align: left;
   padding: 12px 13px;
   cursor: pointer;
-  transition: border-color 0.13s ease, transform 0.13s cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow 0.13s ease;
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow var(--dur-fast) ease;
 }
 .theme-card:hover {
   border-color: var(--button-border-hover);
-  transform: translateY(-2px);
+  transform: translateY(var(--hover-lift));
 }
 .theme-card--on {
   border-color: var(--accent);
@@ -26778,7 +26787,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: var(--bg-soft);
   overflow: hidden;
-  animation: todobar-in var(--dur-base) var(--ease-out) both;
+  animation: todobar-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes todobar-in {
   from {
@@ -26794,7 +26803,7 @@ button.statusbar__mcp:focus-visible {
   gap: 6px;
   max-height: 220px;
   overflow-y: auto;
-  animation: todo-list-in var(--dur-base) var(--ease-out) both;
+  animation: todo-list-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes todo-list-in {
   from {
@@ -27678,7 +27687,7 @@ button.statusbar__mcp:focus-visible {
 }
 .composer-context__thumb--interactive {
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) ease;
 }
 .composer-context__thumb--interactive:hover {
   transform: scale(1.08);
@@ -27778,7 +27787,7 @@ button.statusbar__mcp:focus-visible {
   width: min(240px, 100%);
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
-  animation: composer-selection-in var(--dur-base) var(--ease-out) both;
+  animation: composer-selection-in var(--dur-normal) var(--ease-out) both;
 }
 .composer-context__item--selection .composer-context__fileicon {
   color: var(--accent);
@@ -28705,7 +28714,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .right-panel__tab:hover { color: var(--fg); }
 .right-panel__tab--active {
@@ -28744,7 +28753,7 @@ button.statusbar__mcp:focus-visible {
   pointer-events: auto;
   user-select: none;
   --wails-draggable: no-drag;
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-normal) ease;
 }
 
 /* tl1744: 问号帮助菜单按钮——常驻窗口控件左侧的标题栏入口。尺寸/层级/拖拽豁免
@@ -29841,7 +29850,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .project-tree__time-filter-opt:hover {
@@ -29877,7 +29886,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .project-tree__color-opt:hover {
   background: var(--sidebar-hover);
@@ -30164,7 +30173,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs);
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.12s;
+  transition: color var(--dur-fast);
 }
 
 .project-tree__topic-window-toggle:hover {
@@ -30824,7 +30833,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   transform-origin: top left;
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes menu-pop-in {
   from {
@@ -30978,7 +30987,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   backdrop-filter: blur(12px);
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .transcript-selection-action button {
@@ -31047,7 +31056,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
   box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   backdrop-filter: blur(12px);
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .transcript-selection-result-card__head {
@@ -34504,7 +34513,7 @@ button.statusbar__mcp:focus-visible {
   --r-l: 11px;
   --radius: 8px;
   --dur-fast: 130ms;
-  --dur-base: 220ms;
+  --dur-normal: 220ms;
   --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -35176,7 +35185,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-elev));
-  transform: translateY(-2px);
+  transform: translateY(var(--hover-lift));
 }
 
 :root[data-theme-style] .msg {
@@ -35337,7 +35346,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 11px; /* 833-radius-wl:theme-variant */
   background: var(--bg-elev);
   box-shadow: var(--app-graphite-shadow);
-  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  transition: border-color var(--dur-normal) var(--ease-out), box-shadow var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
 }
 
 :root[data-theme-style] .composer-card:focus-within {
@@ -36260,7 +36269,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 11px; /* 833-radius-wl:theme-variant */
   background: var(--bg-elev);
   box-shadow: var(--app-graphite-shadow-float);
-  animation: graphite-palette-in var(--dur-base) var(--ease-out) both;
+  animation: graphite-palette-in var(--dur-normal) var(--ease-out) both;
 }
 
 :root[data-theme-style] .palette__inputrow,
@@ -37165,7 +37174,7 @@ button.statusbar__mcp:focus-visible {
   flex-shrink: 0;
   margin-right: 8px;
   gap: 6px;
-  transition: background 0.16s var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 .context-ring:hover,
 :root[data-theme-style] .context-ring:hover {
@@ -38345,7 +38354,7 @@ button.statusbar__mcp:focus-visible {
   color: inherit;
   cursor: pointer;
   min-height: calc(var(--theme-row-h, 34px) * 3.5);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .theme-lib-card:hover {
@@ -42515,7 +42524,7 @@ button.statusbar__mcp:focus-visible {
   user-select: none;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .project-tree__filter-section-toggle:hover {
@@ -46289,7 +46298,7 @@ button.statusbar__mcp:focus-visible {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .composer-run-strip__more:hover,
 .composer-run-strip__more[aria-expanded="true"] {
@@ -46414,7 +46423,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 .collab-dispatch__row:hover {
   border-color: var(--button-border-hover);
