@@ -48,7 +48,11 @@ ok(/onSelect: \(tab: SettingsTab, query\?: string\) => void;/.test(nav), "Settin
 // tl1282: onClick 展开为多行块（先 commitQuery 记录检索历史，再转发查询词），
 // 764 的转发语义不变，锚点改为按块内两条调用断言。
 ok(nav.includes("commitQuery();") && nav.includes("onSelect(id, query);"), "nav item click forwards the current query");
-ok(panel.includes("const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(null);"), "pending lab entry state exists in SettingsPanel");
+// tl1791：初始化器随深链落位扩为 initialFocus lab 变体（无深链时仍 null，
+// 764 语义零变化）——钉同步到新形态：状态本体 + 深链种子两行分别收口。
+ok(panel.includes("const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(")
+  && panel.includes('() => (initialFocus?.target === "lab" ? (initialFocus.entry as ExperimentFeatureId) : null),'),
+  "pending lab entry state exists in SettingsPanel (tl1791: seeded from the lab deep-link focus, null when absent)");
 ok(panel.includes("findLabEntryIdByQuery(LAB_LAYOUT_FOR_SEARCH, query, t) as ExperimentFeatureId | null"), "selectTab resolves the query to a lab entry via the shared layout");
 ok(panel.includes("focusEntry={pendingLabEntry}"), "ExperimentalSection receives the focus entry");
 ok(panel.includes("focusEntry?: ExperimentFeatureId | null }"), "ExperimentalSection accepts focusEntry (optional, zero behavior when absent)");
