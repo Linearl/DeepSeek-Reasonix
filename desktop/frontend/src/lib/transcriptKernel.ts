@@ -414,6 +414,44 @@ export class TranscriptKernel {
     return snapshot.scrollHeight - snapshot.clientHeight - snapshot.scrollTop <= BOTTOM_THRESHOLD_PX;
   }
 
+  /** tl 1776: the bottom verdict for the width-compensation pre-reflow facts
+   * sampler — the measured verdict above, OR the tail-floor witness. While
+   * output streams, the follow engine pins the floor once per chunk and the
+   * scroll events those writes emit can be delivered after the next chunk
+   * already grew scrollHeight: an observation taken there measures a bottom
+   * gap that is pure follow-lag, not reader intent (under fast streaming this
+   * is the steady state). If such a sample feeds preReflowFacts, the next
+   * width compensation reads facts.atBottom=false while this kernel's intent
+   * is tail, picks the line/block target, and begin() demotes the tail view
+   * to a reader — the viewport snaps back to a captured old position and
+   * streaming follow stays dead until the user scrolls by hand (the tl 1776
+   * bounce report). The witness: a tail-intent viewport still sitting on the
+   * floor the writer last aimed at (within this same tolerance) is IN
+   * follow-lag by construction — real reader travel leaves that floor, so
+   * tl 1740's momentum semantics are untouched.
+   *
+   * `lastTailFloor` is the writer's record of the most recent tail-class
+   * write (null before the first one / after a surface re-attach); the kernel
+   * never writes scroll offsets, so the floor travels in as a parameter and
+   * the writer stays the single owner of what was written.
+   *
+   * `witnessed` is true only when the witness CHANGED the verdict (measured
+   * not-at-bottom, rescued to at-bottom) — the hook uses it for the
+   * tail-floor-witness diagnostic, so a field report can tell a rescued
+   * follow-lag sample from a plain measured one. The hook must not re-derive
+   * any part of this (tl 1204: one authority, one formula). */
+  atBottomForFacts(
+    snapshot: { scrollTop: number; scrollHeight: number; clientHeight: number },
+    lastTailFloor: number | null,
+  ): { atBottom: boolean; witnessed: boolean } {
+    const measured = this.isViewportAtBottom(snapshot);
+    if (measured) return { atBottom: true, witnessed: false };
+    const witnessed = this.intentValue === "tail"
+      && lastTailFloor != null
+      && Math.abs(snapshot.scrollTop - lastTailFloor) <= BOTTOM_THRESHOLD_PX;
+    return { atBottom: witnessed, witnessed };
+  }
+
   /** tl 1204: the authoritative restore-landing entry — the ONE place that
    * decides how a freshly restored surface is positioned, derived from the
    * authoritative anchor alone. A tail anchor lands on the bottom synchronously

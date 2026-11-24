@@ -18,14 +18,32 @@ export class TranscriptViewportWriter {
   private frozen = false;
   private readonly follower = new SmoothTailFollower();
   private readonly smoothFollow: () => boolean;
+  // tl 1776: the floor this writer last aimed a tail-class write at (the
+  // measured maximum at that moment). This is the streaming tail-follow race
+  // witness: while output streams, the follow engine pins the floor once per
+  // chunk, and the scroll events those writes emit can land in the window
+  // where scrollHeight has already grown past it — an observation taken there
+  // reads "not at the bottom" purely because of that growth, not because the
+  // reader moved. The facts sampler (capturePreReflowFacts) consults this
+  // floor: a viewport still sitting on it (within the bottom tolerance) while
+  // the kernel intent is tail is a tail view in follow-lag, so the sample must
+  // record at-bottom. Cleared on attach: another surface's floor says nothing
+  // about this one.
+  private tailFloor: number | null = null;
 
   constructor(options: { smoothFollow?: () => boolean } = {}) {
     this.smoothFollow = options.smoothFollow ?? (() => labFlagEnabled("smoothScrollFollow"));
   }
 
+  /** tl 1776: the floor of the most recent tail-follow-class write (null
+   * before the first one / after a surface re-attach). Read only by the
+   * pre-reflow facts sampler; the write path stays the single owner. */
+  get lastTailFloor(): number | null { return this.tailFloor; }
+
   attach(element: HTMLElement | null, generation: number): void {
     this.element = element;
     this.generation = generation;
+    this.tailFloor = null;
     if (!element) this.follower.reset();
   }
 
@@ -54,6 +72,11 @@ export class TranscriptViewportWriter {
       ? Math.max(0, Math.min(maximum, request.offset))
       : maximum;
     const before = element.scrollTop;
+    // tl 1776: a non-finite request IS the tail class — every one of them aims
+    // at the current floor, instant or smooth, accepted or no-op alike. Record
+    // it after the reject gates so a refused write (frozen/stale) never claims
+    // a floor the viewport never received.
+    if (!Number.isFinite(request.offset)) this.tailFloor = maximum;
     // tl 1165: smooth tail follow. Only the tail-class write (the non-finite
     // floor request behind the `tail-follow` owner) is eligible; everything
     // else keeps the pre-1165 instant write below.

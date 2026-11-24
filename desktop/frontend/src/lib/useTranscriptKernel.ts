@@ -597,10 +597,16 @@ export function useTranscriptKernel({
   // caret on a non-text node i.e. a block gap or image, unmeasurable line
   // box, caret drifting more than a line from the top edge) returns null and
   // the block-level anchor of the same facts stays in charge.
-  const captureLineAnchor = useCallback((geometry: TranscriptViewportSnapshot): LineAnchor | null => {
+  // tl 1204 (predating tl 1776): the internal gate used to ask
+  // kernel.isViewportAtBottom directly, which made this file hold FOUR literal
+  // asks of the authority against the SSOT gate's exactly-one. The verdict now
+  // travels in from the callers (both facts samplers hand the kernel's
+  // witness-fused verdict — tl 1776 atBottomForFacts — so a follow-lag sample
+  // also skips the line capture: at the tail there is no first line to keep).
+  const captureLineAnchor = useCallback((atBottom: boolean): LineAnchor | null => {
     const element = scrollRef.current;
     if (!element) return null;
-    if (kernel.isViewportAtBottom(geometry)) return null;
+    if (atBottom) return null;
     const doc = element.ownerDocument;
     const caretAt = typeof doc.caretRangeFromPoint === "function" ? doc.caretRangeFromPoint.bind(doc) : null;
     if (!caretAt) return null;
@@ -635,7 +641,13 @@ export function useTranscriptKernel({
     // block anchor rather than anchor the wrong text.
     if (lineOffsetFromViewportTop > lineRect.height) return null;
     return { blockKey, range: probe, lineOffsetFromViewportTop };
-  }, [kernel]);
+  }, []);
+
+  // tl 1776: the streaming tail-follow race witness lives in the kernel
+  // authority (atBottomForFacts) — tl 1204 keeps the formula in one place and
+  // this hook must not re-derive any part of it. The sampler passes the
+  // writer's floor record; see TranscriptKernel.atBottomForFacts for the
+  // mechanism.
 
   // tl 1699: the viewport facts captured BEFORE a rewrap. A rewrap changes the
   // scroller's width, and everything measured after that change describes the
@@ -655,15 +667,28 @@ export function useTranscriptKernel({
     if (facts && Math.abs(facts.width - width) > 0.5) return facts;
     const geometry = snapshot();
     if (!geometry) return facts;
+    // tl 1776: the measured verdict alone misreads a tail view in follow-lag
+    // as a reader; the kernel's witness-corrected verdict feeds the facts,
+    // and a bottom verdict skips the line capture — the reader is at the
+    // tail, there is no first line to keep.
+    const verdict = kernel.atBottomForFacts(geometry, writer.lastTailFloor);
+    if (verdict.witnessed) {
+      recordTranscriptScrollDiagnostic("tail-floor-witness", {
+        width,
+        scrollTop: geometry.scrollTop,
+        floor: writer.lastTailFloor,
+        intent: kernel.intent,
+      });
+    }
     const next: PreReflowFacts = {
       width,
-      atBottom: kernel.isViewportAtBottom(geometry),
+      atBottom: verdict.atBottom,
       firstVisible: visibleAnchorOf(geometry),
-      line: captureLineAnchor(geometry),
+      line: captureLineAnchor(verdict.atBottom),
     };
     preReflowRef.current = next;
     return next;
-  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf]);
+  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf, writer]);
 
   // The width epoch advanced (a rewrap was compensated): the next rewrap's
   // pre-state must be measured in the new width.
@@ -677,17 +702,21 @@ export function useTranscriptKernel({
     frameSnapshot = null;
     const geometry = snapshot();
     if (!geometry) return;
+    // tl 1776: same witness fusion as capturePreReflowFacts (the kernel's
+    // single verdict) — the refreshed epoch must not seed the next rewrap
+    // with a follow-lag misread either.
+    const atBottom = kernel.atBottomForFacts(geometry, writer.lastTailFloor).atBottom;
     preReflowRef.current = {
       width: element.clientWidth,
-      atBottom: kernel.isViewportAtBottom(geometry),
+      atBottom,
       firstVisible: visibleAnchorOf(geometry),
       // Measured in the NEW width epoch: the next rewrap's pre-state. The
       // line anchor re-captures here too, so a multi-frame transition keeps
       // a fresh line anchor every frame (each frame's keep-alive aims at the
       // line the reader is looking at as of that frame).
-      line: captureLineAnchor(geometry),
+      line: captureLineAnchor(atBottom),
     };
-  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf]);
+  }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf, writer]);
 
   // tl 1699: the width-reflow compensation target.
   //   tail  → the reader was at the bottom BEFORE the rewrap (the pre-rewrap
