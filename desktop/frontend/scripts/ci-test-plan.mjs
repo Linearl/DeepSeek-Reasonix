@@ -1,4 +1,5 @@
 import { readdirSync } from "node:fs";
+import { suiteFlags } from "./tsx-test.mjs";
 
 // Union of the former Linux desktop unit commands, including pnpm's pretest.
 // Dedicated entrypoints remain authoritative for tests needing asset loaders.
@@ -16,12 +17,26 @@ export function testPlan(scripts, discovered) {
       discover = true;
       return;
     }
-    // Keep Node and tsx invocation modes, including custom loaders, intact.
     const testPath = args.find(arg => /^src\/.*\.(?:test\.tsx?|tsx)$/.test(arg));
     const key = testPath ?? JSON.stringify(args);
+    const raw = JSON.stringify(args);
     const previous = explicit.get(key);
-    if (previous && JSON.stringify(previous.args) !== JSON.stringify(args)) throw new Error(`conflicting test invocation: ${key}`);
-    explicit.set(key, { key, args, serial: key.endsWith("history-performance-benchmark.tsx") });
+    // Fail closed on the RAW invocation (tl1788): two scripts claiming the
+    // same suite with different loaders/config must still be a hard error.
+    // Comparison intentionally uses the pre-normalization argv, because the
+    // normalized face below is identical for every tsx suite by design.
+    if (previous && previous.raw !== raw) throw new Error(`conflicting test invocation: ${key}`);
+    // Every tsx suite then runs through the ONE canonical face from
+    // tsx-test.mjs (asset stubs + tsconfig.tsx-runner.json). Owner scripts
+    // historically wired stubs per-suite and only for three remote suites —
+    // every other asset-importing suite dispatched through its owner script
+    // crashed with ERR_UNKNOWN_FILE_EXTENSION (tl1774/tl1767/tl1739r2
+    // family). Normalizing here closes that hole for the whole CI plan
+    // without touching the package.json scripts themselves.
+    const normalized = args[0] === "tsx" && testPath
+      ? ["tsx", ...suiteFlags(testPath)]
+      : args;
+    explicit.set(key, { key, raw, args: normalized, serial: key.endsWith("history-performance-benchmark.tsx") });
   }
   function expand(name, stack = []) {
     if (stack.includes(name) || typeof scripts[name] !== "string") throw new Error(`invalid script dependency: ${name}`);
