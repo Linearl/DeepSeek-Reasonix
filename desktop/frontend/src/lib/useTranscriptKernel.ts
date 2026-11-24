@@ -603,7 +603,7 @@ export function useTranscriptKernel({
   // travels in from the callers (both facts samplers hand the kernel's
   // witness-fused verdict — tl 1776 atBottomForFacts — so a follow-lag sample
   // also skips the line capture: at the tail there is no first line to keep).
-  const captureLineAnchor = useCallback((geometry: TranscriptViewportSnapshot, atBottom: boolean): LineAnchor | null => {
+  const captureLineAnchor = useCallback((atBottom: boolean): LineAnchor | null => {
     const element = scrollRef.current;
     if (!element) return null;
     if (atBottom) return null;
@@ -684,7 +684,7 @@ export function useTranscriptKernel({
       width,
       atBottom: verdict.atBottom,
       firstVisible: visibleAnchorOf(geometry),
-      line: captureLineAnchor(geometry, verdict.atBottom),
+      line: captureLineAnchor(verdict.atBottom),
     };
     preReflowRef.current = next;
     return next;
@@ -714,7 +714,7 @@ export function useTranscriptKernel({
       // line anchor re-captures here too, so a multi-frame transition keeps
       // a fresh line anchor every frame (each frame's keep-alive aims at the
       // line the reader is looking at as of that frame).
-      line: captureLineAnchor(geometry, atBottom),
+      line: captureLineAnchor(atBottom),
     };
   }, [captureLineAnchor, kernel, snapshot, visibleAnchorOf, writer]);
 
