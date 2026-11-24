@@ -2271,6 +2271,8 @@ export const zhTW: Record<DictKey, string> = {
   "tasklist.tab.list": "任務列表",
   "tasklist.refresh": "重新整理",
   "tasklist.close": "關閉",
+  "tasklist.board.open": "瀏覽器開啟",
+  "tasklist.board.stale": "看板可能過期（匯出早於資料庫），可在任務目錄執行 python scripts/tl.py export 重新整理。",
   "tasklist.loading": "讀取任務資料庫中…",
   "tasklist.cached": "快取",
   "tasklist.retry": "重試",

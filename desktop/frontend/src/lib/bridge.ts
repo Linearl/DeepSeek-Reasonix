@@ -1390,6 +1390,16 @@ export interface TestTasklistDBResult {
   readOnly: boolean;
 }
 
+/** tl1775 面板头部「浏览器打开」结果：打开 tl.py export 静态看板
+ * （tasklist.html，与 db 同目录）。stale=true = 导出早于数据库（可能过期，
+ * 只提示不拦截——Go 侧不自动跑 export）。 */
+export interface TasklistBoardOpenResult {
+  path: string;
+  stale: boolean;
+  opened: boolean;
+  error: string;
+}
+
 export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings, SessionCatalogBindings, ProjectTreeOrganizationBindings, HistoryCatalogBindings, TaskCatalogBindings, BlankProjectBindings, QualityFloorBindings, SessionTitleBindings, ScrollDiagnosticBindings, RemoteProjectBindings, MCPAppBindings, PinnedContextBindings, FollowupBindings {
   /** Task 36 Phase 1: answer an app:takeover-request prompt; false when stale. */
   ResolveTakeoverDecision(marker: string, accept: boolean): Promise<boolean>;
@@ -2265,6 +2275,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   QueryTasks(path: string, filters: TasklistQueryFilters): Promise<TasklistQueryResult>;
   TestTasklistDB(path: string): Promise<TestTasklistDBResult>;
   OpenTasklistDBLocation(path: string): Promise<void>;
+  // tl1775: 在系统默认浏览器打开 tl.py export 静态看板（非阻塞、无终端窗口）。
+  OpenTasklistBoard(path: string): Promise<TasklistBoardOpenResult>;
   SetExperimentalTasklistPanel(enabled: boolean): Promise<void>;
   SetTasklistDBPath(path: string): Promise<void>;
   // Task 173: the collaboration panel gates (settings → 实验特性 → 跨会话通信).
@@ -7536,6 +7548,7 @@ function makeMockApp(): AppBindings {
     async QueryTasks() { return { path: "", rows: [], total: 0, limited: false, elapsedMs: 0 }; },
     async TestTasklistDB() { return { path: "", ok: false, tasks: 0, error: "browser mock has no tasklist database", readOnly: true }; },
     async OpenTasklistDBLocation() { console.info("mock OpenTasklistDBLocation"); },
+    async OpenTasklistBoard() { console.info("mock OpenTasklistBoard"); return { path: "", stale: false, opened: false, error: "browser mock cannot open the exported board" }; },
     async SetExperimentalTasklistPanel() {},
     async SetTasklistDBPath() {},
     async ScanDagMigration() { return { sessions: [], scanned: 0, backups: 0, elapsedMs: 0 }; },

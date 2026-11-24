@@ -2937,6 +2937,8 @@ export const zh: Record<DictKey, string> = {
   "tasklist.tab.list": "任务列表",
   "tasklist.refresh": "刷新",
   "tasklist.close": "关闭",
+  "tasklist.board.open": "浏览器打开",
+  "tasklist.board.stale": "看板可能过期（导出早于数据库），可在任务目录运行 python scripts/tl.py export 刷新。",
   "tasklist.loading": "读取任务数据库中…",
   "tasklist.cached": "缓存",
   "tasklist.retry": "重试",
