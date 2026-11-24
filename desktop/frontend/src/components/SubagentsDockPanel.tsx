@@ -720,17 +720,39 @@ function SubagentDetailView({
     const seq = ++liveSeq.current;
     let cancelled = false;
     let busy = false;
+    // tl1766: only the FIRST pull of a subscription may show the loading
+    // note — the initial mount, a retry bump, or the running→ended
+    // re-subscribe (each creates a fresh closure). Refresh polls keep
+    // whatever state is on screen: resetting to loading on every poll made
+    // the 工作过程 area blank back to 正在读取历史… on each 2s tick whenever
+    // mid-run reads still returned empty/pending — the user-visible flicker
+    // (loading note unmounting the projection below, then pending+projection
+    // returning, in a loop).
+    let firstPullOfSubscription = true;
     const pull = () => {
       if (busy) return;
       busy = true;
-      // Show the loading state for a first read (or after a failure/retry), but
-      // keep already-loaded content on screen while a refresh re-pulls — a
-      // continue_from re-read must not blank the pane.
-      setLive((prev) => (prev.messages.length > 0 && !prev.failed ? prev : { loading: true, failed: false, messages: [] }));
+      if (firstPullOfSubscription) {
+        firstPullOfSubscription = false;
+        // Show the loading state for a first read (or after a failure/retry), but
+        // keep already-loaded content on screen while a refresh re-pulls — a
+        // continue_from re-read must not blank the pane.
+        setLive((prev) => (prev.messages.length > 0 && !prev.failed ? prev : { loading: true, failed: false, messages: [] }));
+      }
       onReadSubagent(sessionPath, ref)
         .then((messages) => {
           if (cancelled || seq !== liveSeq.current) return;
-          setLive({ loading: false, failed: false, messages });
+          setLive((prev) => {
+            // tl1766: mid-run the autosave transcript only grows, so a
+            // successful-but-empty result after content was loaded is a
+            // transient read race, not "the work disappeared" — keep the
+            // loaded content (the unconditional overwrite was the flicker's
+            // amplifier). The genuinely-empty pre-first-snapshot window still
+            // lands on the pending state; ended reads overwrite
+            // unconditionally, exactly as before.
+            if (entry.running && messages.length === 0 && prev.messages.length > 0) return prev;
+            return { loading: false, failed: false, messages };
+          });
         })
         .catch((err) => {
           if (cancelled || seq !== liveSeq.current) return;
@@ -884,8 +906,14 @@ function SubagentDetailView({
             )}
           </div>
           {/* tl1537 双保险：首快照未落的窗口由内存投影顶上（0 延迟），
-              transcript 内容落盘后让位给上面的权威流。 */}
-          {entry.running && liveItems.length === 0 && !live.loading && !live.failed ? liveToolsSection : null}
+              transcript 内容落盘后让位给上面的权威流。
+              tl1766: the gate no longer excludes live.loading — the
+              projection IS the zero-delay channel for exactly this
+              no-content-yet window, so a first read still in flight must
+              not unmount it (paired with the pull-side loading reset, that
+              unmount was the 2s flicker). !live.failed stays: a genuine
+              failure keeps the honest retryable note (tl1202). */}
+          {entry.running && liveItems.length === 0 && !live.failed ? liveToolsSection : null}
         </>
       ) : (
         <>
