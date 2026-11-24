@@ -75,6 +75,13 @@ type shellSnapshot struct {
 	probeFunc    func(string) bool
 	probeMu      sync.Mutex
 	probeCache   map[string]bool
+	// tl1771: cachePrimed holds the lowercased paths primed from the persisted
+	// probe cache this pass (probe successes logged once via
+	// noteProbeCacheHit). cacheHits records the primed paths that actually
+	// verified this pass — the programmatic cache-hit evidence beside the slog
+	// line. Both set only on the Windows build branch.
+	cachePrimed map[string]bool
+	cacheHits   []string
 	// tl1257: LookPath 结果与 probe 结果同类——快照发现数据，按名缓存。
 	// 决策表每次 resolveShell 调用都会现跑 exec.LookPath（PATH 全目录 stat
 	// 扫描），真机实测单次 ~90-300ms 且永不缓存，是设置页 ⑦ 块与每次
@@ -116,6 +123,9 @@ func (s *shellSnapshot) probe(path string) bool {
 	}
 	v := probe(path)
 	s.probeCache[path] = v
+	if v {
+		s.noteProbeCacheHit(path)
+	}
 	return v
 }
 
@@ -268,8 +278,17 @@ func buildShellSnapshot(goos, prefer, configPath string) *shellSnapshot {
 	}
 	if goos == "windows" {
 		snap.bashCands, snap.sources = windowsBashCandidateSources(prefer, configPath, windowsRegistryGitRoots(), exec.LookPath, fileExists)
+		// tl1771: persisted probe successes verify first (same exists + probe
+		// gate as every candidate), so a healthy restart pays one probe instead
+		// of the full three-route walk; a stale entry fails verification and
+		// drops through to that walk unchanged.
+		snap.primeShellProbeCache()
 		snap.psCands = windowsPowerShellCandidates()
 		snap.caps = windowsShellCapabilities(snap)
+		// Rewrite the persisted set: fresh successes join, entries this pass
+		// proved dead are evicted. Best-effort — no discovery outcome depends
+		// on the write.
+		snap.refreshShellProbeCache()
 	} else {
 		snap.caps = unixShellCapabilities(snap)
 	}
@@ -491,6 +510,10 @@ func windowsShellCapabilities(snap *shellSnapshot) []ShellCapability {
 		if path == "" || !snap.exists(path) || snap.isWSL(path) || !snap.probe(path) {
 			return false
 		}
+		// tl1771: record the winner's attribution so the persisted probe cache
+		// reports the same source the capability does (a PATH-resolved bash has
+		// no candidate-list entry of its own to carry it).
+		snap.sources[strings.ToLower(path)] = source
 		gitBash.Available = true
 		gitBash.Path = path
 		gitBash.Source = source
