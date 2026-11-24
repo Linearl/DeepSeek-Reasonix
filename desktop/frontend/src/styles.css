@@ -29998,6 +29998,68 @@ button.statusbar__mcp:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* ── tl1797：对话 tab 悬停卡片（三区块：身份/运行/消耗）────────────────
+   复用既有 hover-card 弹出层（tl1769 同款机制：body portal + position:fixed
+   + pointer-events:none，不新建弹窗体系）；弹出层不抢悬停所以标签上的
+   mouseleave 语义不被破坏。定位由 TabBar 内联写入 left/top（tab 正下方
+   8px，水平钳位在视口内）。标题/行值 anywhere 断长词——长标题换行完整
+   展示不溢出（tl1769 验收①同款手法）。 */
+.tabbar__hover-card {
+  position: fixed;
+  z-index: var(--z-menu);
+  width: max-content;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-elev);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tabbar__hover-card-title {
+  color: var(--fg);
+  font-size: var(--text-sm);
+  font-weight: 550;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.tabbar__hover-card-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tabbar__hover-card-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.tabbar__hover-card-row-label {
+  flex: 0 0 auto;
+  color: var(--fg-faint);
+}
+
+.tabbar__hover-card-row-value {
+  color: var(--fg-dim);
+  overflow-wrap: anywhere;
+}
+
+.tabbar__hover-card-row--running .tabbar__hover-card-row-value {
+  color: var(--accent);
+}
+
+.tabbar__hover-card-row--attention .tabbar__hover-card-row-value {
+  color: var(--warn);
+}
+
 /* 938：「编辑职责」弹窗（AnchoredPopover portal 到 body，529 先例）。
    批39 返修（1538 用户验收反馈「太小」）：320px 卡片宽 → 内容弹窗先例同级
    min(1100px, 94vw)（照 .reasonix-confirm-dialog--wide 链预览弹窗写法；
