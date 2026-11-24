@@ -6864,4 +6864,14 @@ export const zhTW: Record<DictKey, string> = {
   "status.elapsedLabel": "執行時間",
   "status.elapsedTitle": "會話執行時間——與右側欄概覽「會話指標」卡同讀數",
 
+  // tl1744：右上角問號說明選單。三項沿用命令面板詞條（palette.cmd.productDocs /
+  // palette.cmd.exportLogs / palette.cmd.about）；兩項 gh-issue-submit 鏈路與
+  // 預填 prompt 為本任務新鍵（{repo} 佔位；/gh-issue-submit 調用詞由
+  // ghIssueComposerPrompt 原樣拼在開頭，不進詞條）。
+  "helpMenu.open": "說明",
+  "helpMenu.reportIssue": "問題回報",
+  "helpMenu.featureRequest": "給產品提需求",
+  "helpMenu.issuePromptBug": "請幫我向 {repo} 提交一個 bug 報告：用儲存庫的 bug 範本，先搜尋已有 issue 排除重複，再起草給我確認。問題描述與重現步驟：",
+  "helpMenu.issuePromptFeature": "請幫我向 {repo} 提交一個功能需求：用儲存庫的 feature 範本，先搜尋已有 issue 排除重複，再起草給我確認。需求背景與期望：",
+
 };

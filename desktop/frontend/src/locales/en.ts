@@ -6933,6 +6933,17 @@ export const en = {
   "status.elapsedLabel": "Elapsed",
   "status.elapsedTitle": "Session elapsed time — same readout as the overview's session metrics card",
 
+  // tl1744: top-right help menu. Three items reuse the command-palette strings
+  // (palette.cmd.productDocs / palette.cmd.exportLogs / palette.cmd.about);
+  // the two gh-issue-submit entries and their prefill prompts are new keys
+  // ({repo} placeholder; the literal /gh-issue-submit token is prepended by
+  // ghIssueComposerPrompt and stays out of locale files).
+  "helpMenu.open": "Help",
+  "helpMenu.reportIssue": "Report an issue",
+  "helpMenu.featureRequest": "Request a feature",
+  "helpMenu.issuePromptBug": "Please file a bug report against {repo}: use the repo's bug template, search existing issues for duplicates first, then draft it for my confirmation. Problem description and reproduction steps: ",
+  "helpMenu.issuePromptFeature": "Please file a feature request against {repo}: use the repo's feature template, search existing issues for duplicates first, then draft it for my confirmation. Feature background and expectations: ",
+
 };
 
 export type DictKey = keyof typeof en;
