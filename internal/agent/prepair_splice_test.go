@@ -168,12 +168,16 @@ func TestRegisterPreRepairSpliceWritesChecksumsAndNeverTouchesProjection(t *test
 		BackupTranscript: backupPath,
 		Stamp:            "20261110T010000",
 		Plan:             plan,
+		Source:           PreRepairSpliceSourceManual,
 	})
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	if entry.SegmentHash == "" || entry.BoundaryPrevHash == "" || entry.BoundaryNextHash == "" {
 		t.Fatalf("entry = %+v, want the three locally recomputed checksums", entry)
+	}
+	if entry.Source != PreRepairSpliceSourceManual {
+		t.Fatalf("source = %q, want %q (登记必须携带来源标记)", entry.Source, PreRepairSpliceSourceManual)
 	}
 	if entry.OwnerMessages != 4 {
 		t.Fatalf("ownerMessages = %d, want 4 (trim 口径：[C,C2,F,G])", entry.OwnerMessages)
@@ -203,8 +207,64 @@ func TestRegisterPreRepairSpliceWritesChecksumsAndNeverTouchesProjection(t *test
 		BackupTranscript: backupPath,
 		Stamp:            "20261110T010000",
 		Plan:             plan,
+		Source:           PreRepairSpliceSourceManual,
 	}); err == nil {
 		t.Fatal("a duplicate registration must be refused (idempotent)")
+	}
+}
+
+// 来源闸（tl1674 阶段二）：auto/manual 二选一，空值与陌生值拒绝——自动与
+// 手动两条触发路径共用登记面，来源是唯一可观测区分键，不留「来历不明」件。
+func TestRegisterPreRepairSpliceRequiresSource(t *testing.T) {
+	dir := t.TempDir()
+	ownerPath, backupPath := seedSplicePair(t, dir, "topic")
+	plan, err := CheckPreRepairSplice(ownerPath, backupPath, 0)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	for _, source := range []string{"", "unknown-origin"} {
+		_, err := RegisterPreRepairSplice(ownerPath, PreRepairSpliceRequest{
+			BackupDir:        filepath.Dir(backupPath),
+			BackupTranscript: backupPath,
+			Stamp:            "20261110T010000",
+			Plan:             plan,
+			Source:           source,
+		})
+		if err == nil {
+			t.Fatalf("source=%q must be refused (no unattributed registrations)", source)
+		}
+	}
+	if HasPreRepairSplice(ownerPath, filepath.Dir(backupPath)) {
+		t.Fatal("a refused registration must not write the ledger")
+	}
+	// 合法来源照常落袋，且 auto/manual 都被接受（共用判据的两条路径）。
+	for _, source := range []string{PreRepairSpliceSourceAuto, PreRepairSpliceSourceManual} {
+		// 每轮换一个备份目录，避开幂等闸（幂等闸自身已被上游钉覆盖）。
+		backupDir := filepath.Join(dir, "topic.pre-repair-20261110T0100"+map[string]string{PreRepairSpliceSourceAuto: "0", PreRepairSpliceSourceManual: "1"}[source])
+		altPath := filepath.Join(backupDir, "topic.jsonl")
+		if err := os.MkdirAll(backupDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(backupPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(altPath, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		entry, err := RegisterPreRepairSplice(ownerPath, PreRepairSpliceRequest{
+			BackupDir:        backupDir,
+			BackupTranscript: altPath,
+			Stamp:            "20261110T01000" + map[string]string{PreRepairSpliceSourceAuto: "0", PreRepairSpliceSourceManual: "1"}[source],
+			Plan:             plan,
+			Source:           source,
+		})
+		if err != nil {
+			t.Fatalf("register source=%s: %v", source, err)
+		}
+		if entry.Source != source {
+			t.Fatalf("entry source = %q, want %q", entry.Source, source)
+		}
 	}
 }
 
