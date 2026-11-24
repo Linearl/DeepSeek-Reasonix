@@ -31,7 +31,10 @@ import { formatMessageTimestamp } from "../lib/messageTimestamp";
 // 只在消息真带附件引用时才进包。
 const MessageAttachments = lazy(() => import("./MessageAttachments").then((module) => ({ default: module.MessageAttachments })));
 
-function formatTime(ms: number): string {
+// tl1758 改名消歧：旧名 formatTime 与绝对时间戳族（lib/messageTimestamp
+// formatTimestampMs）撞名易诱发抄错形态；本函数实为三档聊天气泡适配器
+// （绑定渲染时刻 now + locale，委托 lib 三档单源，tl1012），行为零变化。
+function formatChatTimestamp(ms: number): string {
   if (!ms) return "";
   const date = new Date(ms);
   return formatMessageTimestamp(date, new Date(), getLocale());
@@ -177,7 +180,7 @@ export function ChannelMessageStream({
           同族行样式；未清空/已恢复时零渲染）。 */}
       {Boolean(clearedAt) && (
         <div className="channel-chat__tombstone">
-          {t("collabGroup.chat.historyCleared", { time: formatTime(clearedAt ?? 0) })}
+          {t("collabGroup.chat.historyCleared", { time: formatChatTimestamp(clearedAt ?? 0) })}
         </div>
       )}
       {messages.length === 0 && (
@@ -188,7 +191,7 @@ export function ChannelMessageStream({
         if (m.cancelledAt) {
           return (
             <div key={m.id} className="channel-chat__tombstone">
-              {t("collabGroup.chat.recalled", { sender: own ? t("collabGroup.chat.you") : directoryTitle(m.sender), time: formatTime(m.cancelledAt) })}
+              {t("collabGroup.chat.recalled", { sender: own ? t("collabGroup.chat.you") : directoryTitle(m.sender), time: formatChatTimestamp(m.cancelledAt) })}
             </div>
           );
         }
@@ -226,7 +229,7 @@ export function ChannelMessageStream({
               <span className={`channel-chat__typebadge channel-chat__typebadge--${own ? "human" : "session"}`}>
                 {own ? t("collabGroup.identity.human") : t("collabGroup.chat.typeSession")}
               </span>
-              <span className="channel-chat__time" title={new Date(m.at).toLocaleString()}>{formatTime(m.at)}</span>
+              <span className="channel-chat__time" title={new Date(m.at).toLocaleString()}>{formatChatTimestamp(m.at)}</span>
             </div>
             {dispatchRecipients ? (
               <div
