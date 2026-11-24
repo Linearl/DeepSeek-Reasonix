@@ -309,7 +309,6 @@ var labFeatureTiers = []labFeatureTier{
 // 逐键给理由；键消亡后应从此清单移除）。
 var labNonFeatureKeys = map[string]string{
 	"experimental_preapprove_managed":            "task 231/364 域：入口并入 autopilot 卡，非表A 46 项，不挂档位",
-	"experimental_autopilot_composer":            "tl1796：composer 模式条 autopilot 档显隐 opt-in 门（tl1741 撤 [desktop] autopilot 镜像键后前端死读致选项永失的返修写点）——入口为 autopilot 卡内行级开关，非表A 46 项，不挂档位",
 	"experimental_cascade_approval":              "task 225：派遣审批回投任务源（815 核验：sessionCollab 卡内行级开关已交付，非缺口；家族伴生行不挂独立徽章，621 附属行口径）",
 	"experimental_fallback_model":                "task 242：额度耗尽切 fallback_model（815 核验：722 点1 已迁 modelStrategy 卡行级开关+灯，非缺口；模型策略域伴生行不挂独立徽章）",
 	"experimental_collab_background_delivery":    "task 224：协作投递后台化——boot-resolved 服务端开关（collab_drain_gate.go：drain_inbox 注册与 pump 跳过均取 boot 快照，翻转重启才生效），config-only 是合理形态（815 定档不建卡）",
@@ -609,12 +608,10 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// tl1746: fixed-key-set rule — the tasklist-panel switch must survive
 		// every settings save. Off (default) renders no palette entry and no
 		// lab card; the panel's data channel is mode=ro only when on.
-		fmt.Fprintf(&b, "experimental_tasklist_panel = %v   # desktop: embedded read-only tasklist panel (tl1746 phase 1; off = no entries, tl serve/export/tl.py untouched)\n", c.Desktop.ExperimentalTasklistPanel)
-		// tl1796: fixed-key-set rule (81/123 lesson) — the composer
-		// autopilot-offer gate must survive every settings save. Off (default)
-		// keeps the mode bar at the three-tier ask/auto/yolo layout byte-for-byte.
-		fmt.Fprintf(&b, "experimental_autopilot_composer = %v   # desktop: offer the autopilot tier in the composer mode bar (tl1796 opt-in; off = three-tier bar unchanged)\n", c.Desktop.ExperimentalAutopilotComposer)
-		// tl1746: conditionally rendered — written only once the override is
+	fmt.Fprintf(&b, "experimental_tasklist_panel = %v   # desktop: embedded read-only tasklist panel (tl1746 phase 1; off = no entries, tl serve/export/tl.py untouched)\n", c.Desktop.ExperimentalTasklistPanel)
+	// tl1796 r2：experimental_autopilot_composer 渲染行随撤开关退役
+	// （autopilot 档恒显，deprecated 清单承接存量键；tl1741 collab_hub 同款）。
+	// tl1746: conditionally rendered — written only once the override is
 		// set (staging_dir precedent); empty = the built-in default under the
 		// global workspace. Read-only consumption regardless of the value.
 		if p := c.Desktop.TasklistDBPath; p != "" {

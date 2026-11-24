@@ -424,10 +424,8 @@ type SettingsView struct {
 	// permanently-off lesson).
 	ExperimentalTasklistPanel bool   `json:"experimentalTasklistPanel"`
 	TasklistDBPath            string `json:"tasklistDbPath"`
-	// tl1796: composer autopilot-offer gate readback — rendered in both views
-	// for the same permanently-off lesson (the startup replay feeds
-	// applyDesktopPreferences before the settings page ever opens).
-	ExperimentalAutopilotComposer bool   `json:"experimentalAutopilotComposer"`
+	// tl1796 r2：ExperimentalAutopilotComposer 读回字段随撤开关退役——
+	// autopilot 档恒显，无键可读（tl1741 撤 Autopilot 镜像同款收场）。
 	SessionStorage                string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -820,10 +818,8 @@ type DesktopStartupSettingsView struct {
 	// permanently-off lesson).
 	ExperimentalTasklistPanel bool   `json:"experimentalTasklistPanel"`
 	TasklistDBPath            string `json:"tasklistDbPath"`
-	// tl1796: composer autopilot-offer gate readback — rendered in both views
-	// for the same permanently-off lesson (the startup replay feeds
-	// applyDesktopPreferences before the settings page ever opens).
-	ExperimentalAutopilotComposer bool   `json:"experimentalAutopilotComposer"`
+	// tl1796 r2：ExperimentalAutopilotComposer 读回字段随撤开关退役——
+	// autopilot 档恒显，无键可读（tl1741 撤 Autopilot 镜像同款收场）。
 	SessionStorage                string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
@@ -1738,8 +1734,6 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// tl1746: tasklist-panel switch + db-path family key readback.
 		view.ExperimentalTasklistPanel = cfg.Desktop.ExperimentalTasklistPanel
 		view.TasklistDBPath = cfg.Desktop.TasklistDBPath
-		// tl1796: composer autopilot-offer gate readback (two-view lesson).
-		view.ExperimentalAutopilotComposer = cfg.Desktop.ExperimentalAutopilotComposer
 		// Task 705: cross-session message auto-fold readback.
 		view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold
 		// Task 704: trajectory view switch readback (boot snapshot).
@@ -2048,7 +2042,6 @@ func (a *App) Settings() SettingsView {
 		ExperimentalSplitView:         cfg.Desktop.ExperimentalSplitView,
 		ExperimentalTasklistPanel:     cfg.Desktop.ExperimentalTasklistPanel,     // tl1746 tasklist panel switch
 		TasklistDBPath:                cfg.Desktop.TasklistDBPath,                // tl1746 db-path family key
-		ExperimentalAutopilotComposer: cfg.Desktop.ExperimentalAutopilotComposer, // tl1796 composer offer gate
 		ExperimentalTrajectoryView:    cfg.Desktop.ExperimentalTrajectoryView,    // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the

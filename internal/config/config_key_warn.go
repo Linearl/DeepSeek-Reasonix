@@ -49,6 +49,11 @@ var deprecatedConfigKeys = map[string]string{
 	"desktop.experimental_cdp_debug_port":        "retired key (tl1741): the WebView2 CDP debug endpoint (loopback-only random port) now starts unconditionally",
 	"agent.experimental_runtime_reuse":           "retired key (tl1741): the runtime assembly reuse pool is now always on — the switch was removed",
 	"desktop.experimental_runtime_reuse":         "retired key (tl1741): [desktop] mirror of the runtime-reuse switch; the [agent] key retired with it",
+	// tl1796 r2（装机实测打回）：一期 opt-in 键随撤开关退役——composer 模式条
+	// autopilot 档恒显（用户口径「任何时候都应该出现」），存量手写键
+	// （true/false 皆然）由本清单承接：WARN 可见不阻断，fixed-key-set 渲染
+	// 下次保存清行。
+	"desktop.experimental_autopilot_composer": "retired key (tl1796 r2): the composer mode bar always offers the autopilot tier — the opt-in switch was removed",
 }
 
 // unknownKeyWarned tracks which unrecognized keys this process has already
