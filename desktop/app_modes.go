@@ -160,10 +160,20 @@ func (a *App) SetModeForTab(tabID, mode string) []string {
 	} else if tab.toolApprovalMode == control.ToolApprovalYolo {
 		tab.toolApprovalMode = control.ToolApprovalAsk
 	}
+	// tl1795 audit finding: this legacy setter bypassed the task-325 reverse
+	// linkage — "normal"/"plan" under a holding autopilot flipped approval to
+	// ask and left the unattended flag standing (the exact stale-posture
+	// shape tl1795 closes on the tier path). Same fail-closed family, same
+	// live-posture drop.
+	autopilotClosed := closeAutopilotForOffYolo(tab, tab.toolApprovalMode)
 	ctrl := tab.Ctrl
 	approvalMode := tab.toolApprovalMode
 	tabIDForSave := tab.ID
 	a.mu.Unlock()
+	if autopilotClosed {
+		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+		dropAutopilotLivePosture(ctrl)
+	}
 	drained := applyTabModeToController(ctrl, normalized)
 	drained = append(drained, applyTabToolApprovalModeToController(ctrl, approvalMode)...)
 	a.mu.Lock()
