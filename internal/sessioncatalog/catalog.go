@@ -429,6 +429,12 @@ func (c *Catalog) writerLoop() {
 }
 
 func (c *Catalog) recomputeTopic(ctx context.Context, tx *sql.Tx, key TopicKey) error {
+	// tl1799: the session-derived fallback below (for catalog-only topics,
+	// metadata_present=0) must name the conversation in the same order the
+	// contact directory does — agent.DisplayTitleFromMeta:
+	// custom_title > topic_title > preview/stem. The old topic_title-first
+	// order made a catalog-only topic with a manual custom title show the
+	// topic name in the sidebar while the directory showed the custom one.
 	key.Scope, key.WorkspaceRoot = normalizeScope(key.Scope, key.WorkspaceRoot)
 	rootKey := key.workspaceKey
 	if key.Scope == "project" && rootKey == "" {
@@ -453,7 +459,7 @@ func (c *Catalog) recomputeTopic(ctx context.Context, tx *sql.Tx, key TopicKey) 
 		last_activity_at,recovery_state,recovery_branch_count,
 		recovery_unresolved_count,recovery_cleanup_eligible_count,health
 	) SELECT ?,?,?,?,
-		COALESCE(NULLIF((SELECT COALESCE(NULLIF(topic_title,''), preview, '')
+		COALESCE(NULLIF((SELECT COALESCE(NULLIF(custom_title,''), NULLIF(topic_title,''), preview, '')
 			FROM catalog_sessions WHERE scope=? AND workspace_root_key=? AND topic_id=?
 			ORDER BY recovery_copy ASC, last_activity_at DESC, path ASC LIMIT 1),''), ?),
 		MAX(
