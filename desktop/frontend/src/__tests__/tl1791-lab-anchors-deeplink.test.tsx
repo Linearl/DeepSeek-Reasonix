@@ -315,10 +315,10 @@ ok(appSrc.includes('parseLabDeepLink(window.location.hash)') && appSrc.includes(
   "App listens for lab deep links at boot AND on every hashchange (open half)");
 ok(appSrc.includes('setSettingsFocus({ target: "lab", entry })') && appSrc.includes('openPage({ kind: "settings", tab: "experimental" })'),
   "App consumption routes into settingsFocus + openPage(experimental)");
-ok(appSrc.includes("clearSettingsHash();") && appSrc.includes("settingsHashSyncMounted"),
+ok(appSrc.includes("clearSettingsHash();") && appSrc.includes("settingsPageRef"),
   "App clears the settings hash when the settings page closes / leaves the lab tab");
-ok(appSrc.includes("if (!labDeepLinkConsumed.current) clearSettingsHash();"),
-  "mount-time sync skips clearing exactly when this boot consumed a deep link (stale-frame guard)");
+ok(appSrc.includes("if (wasSettings && !isSettings) clearSettingsHash();"),
+  "hash clearing rides the settings-page close transition only (StrictMode-safe: no once flags, dev-probe lesson)");
 ok(panelSrc.includes('window.addEventListener("hashchange", onLabHashChange)'),
   "SettingsPanel retarget half: mounted-panel hashchange listener wired");
 ok(panelSrc.includes('initialFocus?.target === "lab" ? "experimental" : (initialTab ?? "general")'),

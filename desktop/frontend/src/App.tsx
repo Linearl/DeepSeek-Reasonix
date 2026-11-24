@@ -1115,12 +1115,10 @@ export default function App() {
   // entry 合法性不在装配层校验（那要把 lab 布局解析拉进主 chunk，棘轮预算
   // 不划算）——格式由 parseLabDeepLink 把关，存在性由面板消费点把关，未知
   // id 落实验室页默认视图（分享的卡已下线 = 打开实验室页，无害）。
-  const labDeepLinkConsumed = useRef(false);
   useEffect(() => {
     const openLabDeepLink = () => {
       const entry = parseLabDeepLink(window.location.hash);
       if (!entry) return;
-      labDeepLinkConsumed.current = true;
       setSettingsFocus({ target: "lab", entry });
       openPage({ kind: "settings", tab: "experimental" });
     };
@@ -1128,20 +1126,20 @@ export default function App() {
     window.addEventListener("hashchange", openLabDeepLink);
     return () => window.removeEventListener("hashchange", openLabDeepLink);
   }, [openPage, setSettingsFocus]);
-  // 深链往返防脏态：设置页关闭或切离实验室页时清掉设置 hash（replaceState，
-  // 无历史条目、无 hashchange 回环）。挂载首帧跳过一次且仅当本次确有深链
-  // 消费——boot 消费路径的 openPage 下一帧才提交，首帧本 effect 先看到旧的
-  // workspace 页，直接清会把刚消费的 hash 当脏态抹掉；无消费的残留设置
-  // hash（#settings/ 其他形态）照清。
-  const settingsHashSyncMounted = useRef(false);
+  // 深链往返防脏态：只在「设置页 → 非设置页」的真实关闭沿（或设置页开着但
+  // 切离实验室页的沿）清设置 hash（replaceState，无历史条目、无 hashchange
+  // 回环）。不用挂载首帧 once 跳过标志——StrictMode（main.tsx 生产也包裹）
+  // 会双跑挂载 effect，once 标志第二次跑即失效，会把刚消费的深链 hash 当
+  // 脏态抹掉（dev 探针实测踩中）；转换判定对双跑幂等（首帧 prev=初值空，
+  // 无转换、零动作；boot 消费只发生 openPage，无「离开设置页」的沿）。
+  const settingsPageRef = useRef<{ kind: string; tab: string }>({ kind: "", tab: "" });
   useEffect(() => {
-    if (page.kind === "settings" && page.tab === "experimental") return;
-    if (!settingsHashSyncMounted.current) {
-      settingsHashSyncMounted.current = true;
-      if (!labDeepLinkConsumed.current) clearSettingsHash();
-      return;
-    }
-    clearSettingsHash();
+    const prev = settingsPageRef.current;
+    settingsPageRef.current = { kind: page.kind, tab: page.kind === "settings" ? page.tab : "" };
+    const wasSettings = prev.kind === "settings";
+    const isSettings = page.kind === "settings";
+    if (wasSettings && !isSettings) clearSettingsHash();
+    else if (wasSettings && isSettings && page.tab !== "experimental") clearSettingsHash();
   }, [page]);
   // Task 670: fork first-launch notice — same launch window as the chime
   // gate. The Go side owns the gate (switch + mute + version record); the
