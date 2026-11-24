@@ -379,3 +379,90 @@ func TestTasklistOverviewCacheIsConcurrencySafe(t *testing.T) {
 		t.Fatalf("concurrent overview: %v", err)
 	}
 }
+
+// ----- tl1775 从浏览器打开看板 -----
+
+// stubTasklistBoardOpener replaces the openTasklistBoardFile injection seam
+// for the duration of one test（绝不真开浏览器）.
+func stubTasklistBoardOpener(t *testing.T, fn func(string) error) {
+	t.Helper()
+	prev := openTasklistBoardFile
+	openTasklistBoardFile = fn
+	t.Cleanup(func() { openTasklistBoardFile = prev })
+}
+
+func TestOpenTasklistBoardOpensFreshExport(t *testing.T) {
+	dbPath := seedTasklistDB(t)
+	board := filepath.Join(filepath.Dir(dbPath), tasklistBoardFileName)
+	if err := os.WriteFile(board, []byte("<!DOCTYPE html><html><body>board</body></html>"), 0o644); err != nil {
+		t.Fatalf("write board: %v", err)
+	}
+	var got string
+	stubTasklistBoardOpener(t, func(p string) error { got = p; return nil })
+	res := (&App{}).OpenTasklistBoard(dbPath)
+	if res.Error != "" {
+		t.Fatalf("unexpected error: %s", res.Error)
+	}
+	if !res.Opened {
+		t.Fatal("Opened must be true after a successful hand-off")
+	}
+	if res.Stale {
+		t.Fatal("fresh export (board mtime >= db mtime) must not be stale")
+	}
+	if res.Path != board {
+		t.Fatalf("board path = %q, want %q", res.Path, board)
+	}
+	if got != board {
+		t.Fatalf("opener received %q, want %q", got, board)
+	}
+}
+
+func TestOpenTasklistBoardStaleStillOpens(t *testing.T) {
+	dbPath := seedTasklistDB(t)
+	board := filepath.Join(filepath.Dir(dbPath), tasklistBoardFileName)
+	if err := os.WriteFile(board, []byte("<html>stale</html>"), 0o644); err != nil {
+		t.Fatalf("write board: %v", err)
+	}
+	// 看板 mtime 拨早 1h（db 刚写 = now）：html 早于 db → Stale。
+	stale := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(board, stale, stale); err != nil {
+		t.Fatalf("chtimes: %v", err)
+	}
+	var got string
+	stubTasklistBoardOpener(t, func(p string) error { got = p; return nil })
+	res := (&App{}).OpenTasklistBoard(dbPath)
+	if res.Error != "" {
+		t.Fatalf("unexpected error: %s", res.Error)
+	}
+	if !res.Stale {
+		t.Fatal("board older than db must be flagged stale")
+	}
+	if !res.Opened || got != board {
+		t.Fatalf("stale board must still open (opened=%v got=%q)", res.Opened, got)
+	}
+}
+
+func TestOpenTasklistBoardMissingDB(t *testing.T) {
+	stubbed := false
+	stubTasklistBoardOpener(t, func(p string) error { stubbed = true; return nil })
+	res := (&App{}).OpenTasklistBoard(filepath.Join(t.TempDir(), "nope.db"))
+	if res.Error == "" || !strings.Contains(res.Error, "任务数据库不存在") {
+		t.Fatalf("missing db must surface the friendly error, got %q", res.Error)
+	}
+	if res.Opened || stubbed {
+		t.Fatal("must not open anything when the db is missing")
+	}
+}
+
+func TestOpenTasklistBoardNotExported(t *testing.T) {
+	dbPath := seedTasklistDB(t)
+	var got string
+	stubTasklistBoardOpener(t, func(p string) error { got = p; return nil })
+	res := (&App{}).OpenTasklistBoard(dbPath)
+	if res.Error == "" || !strings.Contains(res.Error, "看板尚未导出") {
+		t.Fatalf("missing board must surface the export hint, got %q", res.Error)
+	}
+	if res.Opened || got != "" {
+		t.Fatal("must not open anything when the board is not exported")
+	}
+}

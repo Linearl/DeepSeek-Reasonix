@@ -34,6 +34,8 @@ import (
 	"sync"
 	"time"
 
+	"reasonix/internal/proc"
+
 	_ "modernc.org/sqlite" // 纯 Go 零 CGO（仓内既有依赖，projectiondb/memory 同驱动）
 )
 
@@ -418,4 +420,68 @@ func (a *App) OpenTasklistDBLocation(path string) error {
 		return fmt.Errorf("无法确定任务数据库路径（APPDATA 未设置），请手动指定数据库路径")
 	}
 	return a.RevealPath(resolved)
+}
+
+// ----- tl1775 从浏览器打开看板 -----
+
+// TasklistBoardOpenResult is the 面板头部「浏览器打开」按钮 payload.
+type TasklistBoardOpenResult struct {
+	Path   string `json:"path"`   // 看板 html 实际路径
+	Stale  bool   `json:"stale"`  // true = 导出早于数据库（看板可能过期）
+	Opened bool   `json:"opened"` // true = 已交给系统默认浏览器
+	Error  string `json:"error"`  // 非空 = 失败原因（前端直接展示）
+}
+
+// tasklistBoardFileName 与 tl.py HTML_PATH 同名同目录约定（<TLDIR>/
+// tasklist.html）：tl.py export 的 html 产物固定落在 db 同目录。
+const tasklistBoardFileName = "tasklist.html"
+
+// openTasklistBoardFile hands the board file to the OS shell（注入缝：
+// 测试替换为捕获桩，绝不真开浏览器）.
+var openTasklistBoardFile = defaultOpenTasklistBoardFile
+
+// defaultOpenTasklistBoardFile opens the board in the system default browser
+// without blocking and without flashing a terminal: cmd /c start backgrounds
+// the file-association launch and proc.Command hides the console window on
+// Windows（AGENTS 纪律：禁 explorer 前台阻塞——start 后台化；首个 "" 是 start
+// 的窗口标题占位，路径含空格由 exec 的 argv 转义自动加引号）. Never Waits.
+func defaultOpenTasklistBoardFile(path string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return proc.Command("cmd", "/c", "start", "", path).Start()
+	case "darwin":
+		return proc.Command("open", path).Start()
+	default:
+		return proc.Command("xdg-open", path).Start()
+	}
+}
+
+// OpenTasklistBoard opens the tl.py export 看板（tasklist.html，与 db 同目录）
+// in the system default browser（tl1775：方案 a=静态看板，file 关联打开；
+// tl serve 动态版不在本期）. Staleness = board mtime earlier than db mtime;
+// 过期不拦截也不自动跑 export（非目标：不改 export 逻辑、不拉 python 子进程）
+// ——只在结果里标 Stale，由面板提示「可刷新」.
+func (a *App) OpenTasklistBoard(path string) TasklistBoardOpenResult {
+	resolved := resolveTasklistDBPath(path)
+	res := TasklistBoardOpenResult{}
+	if err := statTasklistDB(resolved); err != nil {
+		res.Error = err.Error()
+		return res
+	}
+	board := filepath.Join(filepath.Dir(resolved), tasklistBoardFileName)
+	res.Path = board
+	bfi, err := os.Stat(board)
+	if err != nil || bfi.IsDir() {
+		res.Error = fmt.Sprintf("看板尚未导出：%s（在任务目录运行 python scripts/tl.py export 生成）", board)
+		return res
+	}
+	if dbfi, err := os.Stat(resolved); err == nil && bfi.ModTime().Before(dbfi.ModTime()) {
+		res.Stale = true
+	}
+	if err := openTasklistBoardFile(board); err != nil {
+		res.Error = fmt.Sprintf("无法在系统浏览器打开看板：%v", err)
+		return res
+	}
+	res.Opened = true
+	return res
 }
