@@ -7,7 +7,8 @@
 //  2) pre-repair 备份在版本管理表里**可见**（按宿主会话归属挂计数徽标），
 //     但**不**被算进副本链（链式合成是阶段二，候拍板，本件禁做）。
 //
-// 同时钉住红线：阶段二的拼接/合成逻辑不得出现在本件改动面里。
+// 阶段一红线（阶段二实现不得越界）已随阶段二拍板转正（20261124）履约退役
+// ——tl1674b 把它翻转为正向钉：阶段二拼接登记实现面在场。详见该断言处注释。
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,15 +61,14 @@ test("tl1674: pre-repair 副本在版本管理区可见（徽标按 ownerPath �
   assert.match(src, /settings\.recoveryCopiesPreRepairBadge/, "徽标缺文案键");
 });
 
-test("tl1674 阶段一红线：不得出现阶段二的拼接/合成链实现", () => {
+test("tl1674 阶段二（20261124 拍板转正）：拼接登记实现面在场", () => {
   const src = read("../components/RecoveryCopiesSection.tsx");
-  // 阶段二 = 把 pre-repair 纳入「合成最长链」（拼接点登记/段边界/元信息重算）。
-  // 阶段一只做「可见 + 修复入口」，这里钉住不得越界。
-  assert.doesNotMatch(
-    src,
-    /preRepair.*(concat|merge).*chain|preRepairSplice|拼接点登记/i,
-    "疑似出现阶段二拼接实现",
-  );
+  // 本断言原为阶段一红线「不得出现阶段二的拼接/合成链实现」（候拍板期禁
+  // 做越界）。阶段二已由用户拍板转正（tl1674 commit_ref 20261124）并由
+  // tl1674b 交付（手动拼接入口+链预览+来源标记，纯元信息操作）——红线履
+  // 约退役，改为正向钉住阶段二实现面在场（含 1787 续作先行落地的登记徽
+  // 标）。注释保留判据史，防后来者误以为红线仍在。
+  assert.match(src, /preRepairSplice|拼接点登记|MergePreRepairSplice/i, "阶段二拼接登记实现面缺失（转正交付被回退？）");
   // 徽标不得把 pre-repair 计入 copies 计数（仍只显示真实副本数）。
   const badgeIdx = src.indexOf('data-pre-repair-badge=""');
   const cellIdx = src.lastIndexOf("×{group.copies.length}", badgeIdx);
