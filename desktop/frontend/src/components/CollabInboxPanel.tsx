@@ -26,6 +26,7 @@ import { useT } from "../lib/i18n";
 import { groupForProject, loadProjectGroupAssign, loadProjectGroups } from "../lib/projectGroups";
 import { onCollabMailChanged as onCollabMailChangedRuntime } from "../lib/inboxEvents";
 import { acquireOverlayOrder } from "../lib/stackingOrder";
+import { formatTimestampMs } from "../lib/messageTimestamp";
 
 export type CollabMailEntry = {
   id: string;
@@ -289,10 +290,9 @@ type Bucket = (typeof BUCKETS)[number];
 type StateFilter = (typeof STATES)[number];
 type OrderFilter = (typeof ORDERS)[number];
 
-function formatTime(ms: number): string {
-  if (!ms) return "";
-  return new Date(ms).toLocaleString();
-}
+// tl1758：本地 formatTime 并入 lib/messageTimestamp.formatTimestampMs（同构守卫版，
+// 行为逐字节不变）。
+const formatTime = formatTimestampMs;
 
 // 任务461-P4: the dropdown option label is the session name; the hover title is
 // the address breadcrumb 「项目 › 分组 › 会话名 › contact_id」. Missing segments

@@ -60,3 +60,26 @@ export function formatCalendarDate(ms: number): string {
   const date = new Date(ms);
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
+
+// tl1758 (C6): absolute "full" timestamp family, single-sourced from the four
+// collab panels (dispatch / notifications / inbox / group) that each carried a
+// private `formatTime(ms)` doing `new Date(ms).toLocaleString()`. Three of the
+// four guarded the falsy-ms case with "" and one (notifications) didn't — the
+// guardless copy is the drift this consolidation removes; 0 now renders ""
+// everywhere instead of a misleading 1970 epoch stamp (declared edge, see
+// tl1758 report). The format itself (toLocaleString) is untouched — same
+// bytes as before for every positive ms.
+export function formatTimestampMs(ms: number): string {
+  if (!ms) return "";
+  return new Date(ms).toLocaleString();
+}
+
+// Same consolidation for the feedback panel's ISO-string variant: invalid
+// input echoes the original string back (not "") so a malformed timestamp
+// stays visible instead of silently vanishing. Behaviour byte-identical to
+// the local function it replaces.
+export function formatIsoTimestamp(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString();
+}

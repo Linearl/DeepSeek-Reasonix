@@ -17,6 +17,7 @@ import { createPortal } from "react-dom";
 import { app } from "../lib/bridge";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { useT } from "../lib/i18n";
+import { formatTimestampMs } from "../lib/messageTimestamp";
 import { ChannelChatPanel, type ChannelChatBindings } from "./ChannelChatPanel";
 
 export type CollabViewCard = { id: string; title: string; status: string; updatedAt: number };
@@ -97,10 +98,9 @@ export const COLLAB_GROUP_POLL_MS = 30_000;
 // 任务587 同款退避：失败后 2s/4s/8s/15s 自动重试，成功即复位。
 export const collabGroupRetryDelaysMs = [2_000, 4_000, 8_000, 15_000];
 
-function formatTime(ms: number): string {
-  if (!ms) return "";
-  return new Date(ms).toLocaleString();
-}
+// tl1758：本地 formatTime 并入 lib/messageTimestamp.formatTimestampMs（同构守卫版，
+// 行为逐字节不变）。
+const formatTime = formatTimestampMs;
 
 type PanelTab = "sessions" | "channels";
 
