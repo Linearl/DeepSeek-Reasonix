@@ -104,6 +104,7 @@ export const zhTW: Record<DictKey, string> = {
   "action.subagentCancel": "終止子代理",
   "action.terminalInsert": "插入終端輸出",
   "action.qualityFloorSet": "設定品質下限",
+  "action.approvalTierSet": "切換審批檔位",
   "action.diagExport": "匯出診斷資訊",
   "action.folderPick": "選擇資料夾",
   "action.goalOperation": "目標操作",

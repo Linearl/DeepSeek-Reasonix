@@ -2450,7 +2450,7 @@ export default function App() {
     [activeTabId, clearControllerGoal, collaborationMode, goal, patchActiveComposerProfile, setControllerCollaborationMode],
   );
   const applyToolApprovalMode = useCallback(
-    (m: ToolApprovalMode) => {
+    async (m: ToolApprovalMode) => {
       if (!activeTabId) return;
       if (m === "yolo") {
         if (toolApprovalMode !== "yolo") {
@@ -2476,6 +2476,10 @@ export default function App() {
       // 真值到达前盖不回来。
       const autopilotDrops = composerProfile.autopilot;
       const dropsLabelStuck = autopilotDrops && composerProfile.collaborationMode === "autopilot";
+      // tl1795: capture the pre-switch posture for the failure rollback below
+      // — the optimistic patch must not survive a backend that never landed.
+      const prevApproval = composerProfile.toolApprovalMode;
+      const prevLabel = composerProfile.collaborationMode;
       patchActiveComposerProfile(
         autopilotDrops
           ? {
@@ -2491,12 +2495,32 @@ export default function App() {
             : ["toolApprovalMode"],
       );
       if (autopilotDrops) {
-        void setControllerApprovalTier(m);
+        try {
+          await setControllerApprovalTier(m);
+        } catch (error) {
+          // tl1795 fail-fast: the tier switch did not land backend-side
+          // (tab gone/replaced). Roll the optimistic bare-flag drop back so
+          // the bar cannot lie "attended" while the backend stays autopilot,
+          // then surface the error — a silent failure here used to pin the
+          // stale profile against the persisted tab state across restarts
+          // (UI 读 yolo、后端读 autopilot，ask 仍按 15s 自决).
+          patchActiveComposerProfile(
+            {
+              toolApprovalMode: prevApproval,
+              autopilot: true,
+              ...(dropsLabelStuck ? { collaborationMode: prevLabel } : {}),
+            },
+            dropsLabelStuck
+              ? ["toolApprovalMode", "autopilot", "collaborationMode"]
+              : ["toolApprovalMode", "autopilot"],
+          );
+          showToast(formatActionError("action.approvalTierSet", error), "error");
+        }
         return;
       }
       void setControllerToolApprovalMode(m);
     },
-    [activeTabId, composerProfile.autopilot, composerProfile.collaborationMode, patchActiveComposerProfile, setControllerApprovalTier, setControllerToolApprovalMode, toolApprovalMode],
+    [activeTabId, composerProfile.autopilot, composerProfile.collaborationMode, composerProfile.toolApprovalMode, patchActiveComposerProfile, setControllerApprovalTier, setControllerToolApprovalMode, showToast, toolApprovalMode],
   );
   // Fork: sub-agent delegation tier is a per-tab setting; the + menu is the
   // only entry point now (it needs no frequent switching).

@@ -6441,13 +6441,21 @@ export function useController() {
   // Task 595: the four-tier single-select wire (ask|auto|yolo|autopilot).
   // Picking an attended tier while autopilot holds leaves autopilot in the
   // same backend call, so a mode-bar click always lands its tier in one hop.
+  // tl1795 fail-fast: a tier switch the backend could not land must reach the
+  // caller — the optimistic bare-flag drop in applyToolApprovalMode rolls
+  // back on this rejection. A swallowed rejection used to pin the stale
+  // profile against the persisted tab state across the restart window (UI
+  // showed YOLO, backend stayed autopilot, ask still self-answered).
   const setApprovalTierForTab = useCallback(async (tabId: string, tier: ToolApprovalMode | "autopilot"): Promise<void> => {
     if (!tabId) return;
     const epoch = statesRef.current.get(tabId)?.promptEpoch ?? 0;
-    const drained = await app.SetApprovalTierForTab(tabId, tier).catch(() => undefined);
-    const ids = Array.isArray(drained) ? drained : [];
-    if (ids.length) dispatchTo(tabId, { type: "approval_drained", ids, epoch });
-    await refreshMetaForTab(tabId);
+    try {
+      const drained = await app.SetApprovalTierForTab(tabId, tier);
+      const ids = Array.isArray(drained) ? drained : [];
+      if (ids.length) dispatchTo(tabId, { type: "approval_drained", ids, epoch });
+    } finally {
+      await refreshMetaForTab(tabId);
+    }
   }, [dispatchTo, refreshMetaForTab]);
 
   const setApprovalTier = useCallback(async (tier: ToolApprovalMode | "autopilot"): Promise<void> => {
