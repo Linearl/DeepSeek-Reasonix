@@ -61,7 +61,7 @@
   background: transparent;
   color: var(--fg-faint);
   opacity: 0.86;
-  transition: color 0.12s, background 0.12s, opacity 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast);
 }
 
 .app-chrome__panel-toggle--left {
@@ -219,12 +219,11 @@
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: transparent;
-  transition:
-    color 0.14s ease,
-    border-color 0.14s ease,
-    background 0.14s ease,
-    right 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    right var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    transform var(--dur-fast) cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .app--darwin .app-chrome--tabs .app-chrome__panel-toggle--left {
@@ -262,10 +261,9 @@
   background: color-mix(in srgb, var(--fg-faint) 14%, transparent);
   opacity: 0;
   transform: scale(0.82);
-  transition:
-    opacity 0.14s ease,
-    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
-    background 0.14s ease;
+  transition: opacity var(--dur-fast) ease,
+    transform var(--dur-normal) cubic-bezier(0.2, 0.8, 0.2, 1),
+    background var(--dur-fast) ease;
 }
 
 .app--darwin .app-chrome--tabs .app-chrome__panel-toggle--left svg,
@@ -441,11 +439,10 @@
   color: var(--fg-dim);
   isolation: isolate;
   overflow: hidden;
-  transition:
-    color 0.14s ease,
-    border-color 0.14s ease,
-    background 0.14s ease,
-    transform 0.16s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: color var(--dur-fast) ease,
+    border-color var(--dur-fast) ease,
+    background var(--dur-fast) ease,
+    transform var(--dur-fast) cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .app--windows .app-chrome--native-tabs .app-chrome__panel-toggle--left,
@@ -472,10 +469,9 @@
   background: color-mix(in srgb, var(--fg-faint) 13%, transparent);
   opacity: 0;
   transform: scale(0.82);
-  transition:
-    opacity 0.14s ease,
-    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
-    background 0.14s ease;
+  transition: opacity var(--dur-fast) ease,
+    transform var(--dur-normal) cubic-bezier(0.2, 0.8, 0.2, 1),
+    background var(--dur-fast) ease;
 }
 
 .app--windows .app-chrome--native-tabs .app-chrome__panel-toggle svg,
@@ -875,7 +871,7 @@
   opacity: 0;
   color: var(--fg-faint);
   pointer-events: none;
-  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+  transition: opacity var(--dur-fast) ease, background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 
 .tabbar__tab:hover .tabbar__tab-close,
@@ -980,16 +976,15 @@
   font: inherit;
   font-size: var(--text-sm);
   cursor: pointer;
-  transition:
-    width 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    min-width 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    max-width 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    flex-basis 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    padding 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    gap 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
-    border-color 0.12s,
-    background 0.12s,
-    color 0.12s;
+  transition: width var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    min-width var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    max-width var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    flex-basis var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    padding var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    gap var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
+    border-color var(--dur-fast),
+    background var(--dur-fast),
+    color var(--dur-fast);
 }
 .tabbar__command:hover {
   border-color: var(--border-2, var(--border));
@@ -1374,12 +1369,11 @@
   color: var(--fg-faint);
   background: transparent;
   line-height: 1;
-  transition:
-    right 0.28s cubic-bezier(0.2, 0.72, 0.2, 1),
+  transition: right var(--dur-slow) cubic-bezier(0.2, 0.72, 0.2, 1),
     background var(--dur-fast),
     border-color var(--dur-fast),
     color var(--dur-fast),
-    transform 0.16s var(--ease-out);
+    transform var(--dur-fast) var(--ease-out);
 }
 
 :root[data-theme-style] .app-chrome__panel-toggle svg {

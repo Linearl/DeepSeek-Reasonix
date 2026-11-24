@@ -2026,7 +2026,7 @@ a[href] {
   color: var(--fg-dim);
   font: inherit;
   text-align: left;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .sidebar__new {
   display: flex;
@@ -2637,7 +2637,7 @@ a[href] {
   font-weight: 500;
   line-height: 1.25;
   border-radius: var(--button-radius);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .chip--icon {
   width: var(--button-icon-size);
@@ -3551,7 +3551,7 @@ a[href] {
   font-size: var(--text-md);
   text-align: center;
   cursor: pointer;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .warm-collapse:hover {
   color: var(--fg);
@@ -5352,7 +5352,7 @@ a[href] {
   font-size: var(--text-md);
   padding: 9px 13px;
   border-radius: var(--radius-md);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .welcome__ex:hover {
   color: var(--fg);
@@ -5609,7 +5609,7 @@ a[href] {
   background: transparent;
   color: var(--fg-faint);
   box-shadow: none;
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .msg-meta__btn:hover:not(:disabled),
 .msg-meta__btn:focus-visible:not(:disabled),
@@ -5645,7 +5645,7 @@ a[href] {
   color: var(--fg-dim);
   padding: 0;
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-  transition: background 120ms ease, border-color 120ms ease;
+  transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
 }
 .rewind__btn:hover,
 .rewind__btn:focus-visible,
@@ -5931,7 +5931,7 @@ a[href] {
   width: 64px;
   padding: 4px;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) ease;
 }
 .msg-attachment--image:hover {
   transform: scale(1.08);
@@ -7481,7 +7481,7 @@ button.reasoning-summary:focus-visible {
   background: transparent;
   color: var(--fg-faint);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
 }
 
 .mermaid-diagram__icon-btn:hover,
@@ -7732,7 +7732,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-elev);
   color: var(--fg-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .image-viewer__close:hover {
   background: var(--bg-soft);
@@ -7860,7 +7860,7 @@ body > .mermaid-diagram--fullscreen {
   background: var(--bg-elev);
   color: var(--fg-dim);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
 }
 .image-viewer__annotate:hover {
   background: var(--bg-soft);
@@ -8042,7 +8042,7 @@ body > .mermaid-diagram--fullscreen {
   font: inherit;
   font-size: var(--text-xs);
   line-height: 1.25;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, gap 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), gap var(--dur-fast);
 }
 .turn-actions__label-inline {
   display: inline-flex;
@@ -8815,7 +8815,7 @@ body > .mermaid-diagram--fullscreen {
   font: inherit;
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s, color 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast), color var(--dur-fast);
 }
 .undo-rewind__btn:hover {
   border-color: var(--accent-soft);
@@ -11225,7 +11225,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg-faint);
   font-size: var(--font-status, 11px);
   text-align: left;
-  transition: color 0.12s;
+  transition: color var(--dur-fast);
 }
 .capsule-panel__ended-toggle:hover,
 .capsule-panel__ended-toggle:focus-visible {
@@ -11457,7 +11457,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   color: var(--fg-dim);
   font-size: var(--font-status, 11px);
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .capsule-bash-detail__copy {
   margin-left: 0;
@@ -11990,7 +11990,7 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.25;
   border-radius: var(--button-radius);
   white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s, background 0.12s, box-shadow 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 .btn:hover {
   background: var(--button-bg-hover);
@@ -12168,7 +12168,7 @@ button.statusbar__mcp:focus-visible {
 /* Todo shelf: header actions (collapse/close) appear on card hover/focus. */
 .prompt-shelf--todo .prompt-shelf__header-actions {
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-fast) ease;
 }
 .prompt-shelf--todo .prompt-shelf__card--collapsed {
   height: 48px;
@@ -12346,7 +12346,7 @@ button.statusbar__mcp:focus-visible {
   line-height: 1.35;
   padding: 7px 9px;
   text-align: left;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 .prompt-action:disabled {
   cursor: default;
@@ -13800,7 +13800,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: transparent;
   color: var(--fg-faint);
-  transition: color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), background var(--dur-fast);
 }
 .workspace-iconbtn:hover {
   color: var(--fg);
@@ -16001,7 +16001,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 10px; /* 833-radius-md */
   cursor: pointer;
   color: var(--fg);
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 .wf-node:hover {
   border-color: var(--border-2, var(--border));
@@ -18417,7 +18417,7 @@ button.statusbar__mcp:focus-visible {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: stretch;
   border-top: 1px solid var(--border-soft);
-  transition: background 0.12s ease;
+  transition: background var(--dur-fast) ease;
 }
 .cap-mcp-list-row:first-child {
   border-top: 0;
@@ -19569,7 +19569,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   font: inherit;
   text-align: left;
-  transition: border-color 0.12s, background 0.12s, transform 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast), transform var(--dur-fast);
 }
 .cap-skill-card:hover,
 .cap-skill-card:focus-within {
@@ -19940,7 +19940,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--project-accent, var(--accent));
   cursor: pointer;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
 }
 .subagents-color-swatch:hover {
   transform: scale(1.08);
@@ -20753,7 +20753,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
-  transition: border-color 0.12s, transform 0.12s cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow 0.12s;
+  transition: border-color var(--dur-fast), transform var(--dur-fast) cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow var(--dur-fast);
 }
 .hist-item:hover {
   border-color: var(--fg-faint);
@@ -22697,7 +22697,7 @@ button.statusbar__mcp:focus-visible {
   font-family: var(--mono);
   font-size: var(--text-2xs);
   overflow: hidden;
-  transition: background-color 120ms ease;
+  transition: background-color var(--dur-fast) ease;
 }
 .provider-model-draft__option + .provider-model-draft__option {
   border-top: 1px solid var(--border-soft);
@@ -24538,7 +24538,7 @@ button.statusbar__mcp:focus-visible {
   font: inherit;
   padding: 9px 11px;
   text-align: left;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition: border-color var(--dur-fast) ease, background var(--dur-fast) ease;
 }
 .bot-step-chip:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
@@ -26107,7 +26107,7 @@ button.statusbar__mcp:focus-visible {
   text-align: left;
   padding: 12px 13px;
   cursor: pointer;
-  transition: border-color 0.13s ease, transform 0.13s cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow 0.13s ease;
+  transition: border-color var(--dur-fast) ease, transform var(--dur-fast) cubic-bezier(0.34, 1.4, 0.5, 1), box-shadow var(--dur-fast) ease;
 }
 .theme-card:hover {
   border-color: var(--button-border-hover);
@@ -27673,7 +27673,7 @@ button.statusbar__mcp:focus-visible {
 }
 .composer-context__thumb--interactive {
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: transform var(--dur-fast) ease;
 }
 .composer-context__thumb--interactive:hover {
   transform: scale(1.08);
@@ -28700,7 +28700,7 @@ button.statusbar__mcp:focus-visible {
   background: transparent;
   border: none;
   border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
 }
 .right-panel__tab:hover { color: var(--fg); }
 .right-panel__tab--active {
@@ -29836,7 +29836,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .project-tree__time-filter-opt:hover {
@@ -29872,7 +29872,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-sm);
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 .project-tree__color-opt:hover {
   background: var(--sidebar-hover);
@@ -30159,7 +30159,7 @@ button.statusbar__mcp:focus-visible {
   font-size: var(--text-xs);
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.12s;
+  transition: color var(--dur-fast);
 }
 
 .project-tree__topic-window-toggle:hover {
@@ -37160,7 +37160,7 @@ button.statusbar__mcp:focus-visible {
   flex-shrink: 0;
   margin-right: 8px;
   gap: 6px;
-  transition: background 0.16s var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 .context-ring:hover,
 :root[data-theme-style] .context-ring:hover {
@@ -38340,7 +38340,7 @@ button.statusbar__mcp:focus-visible {
   color: inherit;
   cursor: pointer;
   min-height: calc(var(--theme-row-h, 34px) * 3.5);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition: border-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
 }
 
 .theme-lib-card:hover {
@@ -42510,7 +42510,7 @@ button.statusbar__mcp:focus-visible {
   user-select: none;
   text-align: left;
   cursor: pointer;
-  transition: background 0.12s, color 0.12s;
+  transition: background var(--dur-fast), color var(--dur-fast);
 }
 
 .project-tree__filter-section-toggle:hover {
@@ -46284,7 +46284,7 @@ button.statusbar__mcp:focus-visible {
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
 }
 .composer-run-strip__more:hover,
 .composer-run-strip__more[aria-expanded="true"] {
@@ -46409,7 +46409,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.12s, background 0.12s;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
 }
 .collab-dispatch__row:hover {
   border-color: var(--button-border-hover);
