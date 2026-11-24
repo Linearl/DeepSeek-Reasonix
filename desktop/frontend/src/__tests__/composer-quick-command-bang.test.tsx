@@ -108,6 +108,41 @@ Object.defineProperty(dom.window.HTMLElement.prototype, "offsetHeight", {
     return 0;
   },
 });
+// tl-prered 治本补齐（预存红 25/8 真根因，非 skip）：@tanstack/virtual-core 的
+// 视口量测走 clientWidth/clientHeight（virtual-core dist getRect），jsdom 无布局
+// 引擎、clientHeight 恒 0 → calculateRange 判 outerSize===0 → range=null →
+// getVirtualItems() 返回空 → 菜单壳（.slashmenu）渲染而行（role=option）永远
+// 不挂载——8 条行内容断言全数落空（25/8 多轮同红同数；姊妹套件从未断言行
+// 内容，故此洞只在首个断言虚拟化行内容的套件暴露）。stub 与既有
+// getBoundingClientRect/offsetHeight 桩同一份形态清单。
+Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", {
+  configurable: true,
+  get(this: HTMLElement) {
+    if (this.classList.contains("slashmenu")) return 360;
+    if (this.classList.contains("slashmenu__row")) return 34;
+    return 0;
+  },
+});
+Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", {
+  configurable: true,
+  get: () => 360,
+});
+// 噪声清理（非阻塞项）：本套件静态 import react-dom 先于 JSDOM 安装，React 以
+// canUseDOM=false 初始化 → isInputEventSupported 定格 false（react-dom-client
+// .development.js:28070-28073 仅在模块 init 探测）→ ChangeEventPlugin 对
+// textarea 恒走 IE9 兜底路径（:21271-21275），focusin/focusout 调
+// attachEvent/detachEvent（:3746-3755）。该 TypeError 不影响断言（onChange 走
+// keyup 兜底照常投递，实测加与不加均 33/33），但会往输出里掺未捕获异常噪声；
+// 装 no-op shim 恢复 polyfill 预期语义（activeElement 赋值照常、propertychange
+// 通道为空），输出零噪声。
+Object.defineProperty(dom.window.HTMLElement.prototype, "attachEvent", {
+  configurable: true,
+  value: () => {},
+});
+Object.defineProperty(dom.window.HTMLElement.prototype, "detachEvent", {
+  configurable: true,
+  value: () => {},
+});
 Object.defineProperty(window, "matchMedia", {
   configurable: true,
   value: () => ({
