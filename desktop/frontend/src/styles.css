@@ -11871,9 +11871,16 @@ button.statusbar__mcp:focus-visible {
   justify-content: flex-end;
   flex-wrap: wrap;
 }
+/* tl1768r2：z-index 由 --z-overlay-backdrop(1300) 提升到 --z-popover-elevated(1303)——
+   确认弹窗可从协作中心主面板(--z-popover 1301)内点出（信件多选删除/清空、通知清空），
+   1300 < 1301 会被主面板全屏盖住（用户真机实测「点删除无弹窗」）。任务 984 同根因
+   同修法先例（collab-inbox-detail-backdrop，9b0832d841）；CollabHubPanel 外点关闭
+   规则②本就把 .modal-backdrop 家族排除在「外点」之外（面板之上的语义浮层），
+   DOM 层级对齐该设计。代价：confirm 开启态 toast/tooltip(1302) 落半透明背衬之后，
+   与 980/984 已接受的取舍一致。 */
 .reasonix-confirm-backdrop {
   --wails-draggable: no-drag;
-  z-index: var(--z-overlay-backdrop);
+  z-index: var(--z-popover-elevated);
 }
 .reasonix-confirm-dialog {
   max-width: 420px;
