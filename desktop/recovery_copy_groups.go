@@ -158,6 +158,10 @@ func recoveryCopiesByMain(dir string) (map[string][]RecoveryCopyView, []string, 
 	if err != nil {
 		return nil, nil, err
 	}
+	// tl1793: one titles read per directory — the display-name chain consults
+	// the session-titles overrides, and reading that file per copy would
+	// multiply the panel's listing cost by the copy count.
+	titles := loadSessionTitles(dir)
 	byMain := map[string][]RecoveryCopyView{}
 	order := []string{}
 	for _, entry := range entries {
@@ -176,7 +180,7 @@ func recoveryCopiesByMain(dir string) (map[string][]RecoveryCopyView, []string, 
 		if _, seen := byMain[mainPath]; !seen {
 			order = append(order, mainPath)
 		}
-		view := RecoveryCopyView{Path: full, Label: recoveryDisplayName(full)}
+		view := RecoveryCopyView{Path: full, Label: recoveryDisplayNameFor(full, titles)}
 		if info, err := entry.Info(); err == nil {
 			view.Bytes = info.Size()
 			view.Modified = info.ModTime().Format(time.RFC3339)
@@ -192,11 +196,13 @@ func recoveryCopyGroupsIn(dir string) ([]RecoveryCopyGroupView, error) {
 	if err != nil {
 		return nil, err
 	}
+	// tl1793: same single titles read per directory as the copies above.
+	titles := loadSessionTitles(dir)
 	out := []RecoveryCopyGroupView{}
 	for _, mainPath := range order {
 		group := RecoveryCopyGroupView{
 			MainPath:  mainPath,
-			MainLabel: recoveryDisplayName(mainPath),
+			MainLabel: recoveryDisplayNameFor(mainPath, titles),
 			Directory: dir,
 			Copies:    byMain[mainPath],
 		}
@@ -221,9 +227,10 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	if !ok {
 		return RecoveryCopyGroupView{}, false
 	}
+	titles := loadSessionTitles(dir)
 	group := RecoveryCopyGroupView{
 		MainPath:  mainPath,
-		MainLabel: recoveryDisplayName(mainPath),
+		MainLabel: recoveryDisplayNameFor(mainPath, titles),
 		Directory: dir,
 		Copies:    make([]RecoveryCopyView, 0, len(copies)),
 	}
@@ -272,23 +279,58 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 	return group, true
 }
 
-// recoveryDisplayName prefers the topic title from the meta sidecar, because that
-// is the name the user gave this conversation and sees in the session list. The
-// transcript filename is an internal id they never see, so it is only a fallback.
+// recoveryDisplayName resolves the name the user knows this conversation by,
+// walking the same title chain the sidebar and the trash listing render:
+// the meta sidecar's custom_title (user rename) then topic_title (auto title),
+// then the directory's session-titles overrides, and only then the file stem.
+// tl1793: the panel used to read topic_title alone, so a conversation whose
+// name lived in custom_title (user rename) or the titles sidecar fell through
+// to the raw session-id stem — the internal string the user reported seeing on
+// four panel rows while the trash listing rendered proper Chinese titles for
+// the same files (the listing chain reads custom_title first).
 func recoveryDisplayName(transcriptPath string) string {
+	return recoveryDisplayNameFor(transcriptPath, nil)
+}
+
+// recoveryDisplayNameFor is recoveryDisplayName with a caller-supplied
+// session-titles map. The group scans read one directory's titles once and
+// pass it down (a hundreds-of-conversations titles file read per row would
+// multiply the panel's open cost); single-path callers pass nil and the map
+// is loaded here.
+func recoveryDisplayNameFor(transcriptPath string, titles map[string]string) string {
+	if title := recoverySidecarTitle(transcriptPath); title != "" {
+		return title
+	}
+	if title, ok := titles[filepath.Base(transcriptPath)]; ok && strings.TrimSpace(title) != "" {
+		return strings.TrimSpace(title)
+	}
+	if title, ok := loadSessionTitles(filepath.Dir(transcriptPath))[filepath.Base(transcriptPath)]; ok && strings.TrimSpace(title) != "" {
+		return strings.TrimSpace(title)
+	}
+	return recoveryLabel(transcriptPath)
+}
+
+// recoverySidecarTitle reads the branch meta sidecar's two title fields in the
+// sidebar's own precedence: custom_title first, then topic_title. Missing or
+// unreadable sidecar is the ordinary fallback case and returns "".
+func recoverySidecarTitle(transcriptPath string) string {
 	if metaPath := store.SessionMeta(transcriptPath); metaPath != "" {
 		if b, err := os.ReadFile(metaPath); err == nil {
 			var meta struct {
-				TopicTitle string `json:"topic_title"`
+				TopicTitle  string `json:"topic_title"`
+				CustomTitle string `json:"custom_title"`
 			}
 			if json.Unmarshal(b, &meta) == nil {
+				if title := strings.TrimSpace(meta.CustomTitle); title != "" {
+					return title
+				}
 				if title := strings.TrimSpace(meta.TopicTitle); title != "" {
 					return title
 				}
 			}
 		}
 	}
-	return recoveryLabel(transcriptPath)
+	return ""
 }
 
 // recoveryLabel renders a transcript path as the session id, dropping the
