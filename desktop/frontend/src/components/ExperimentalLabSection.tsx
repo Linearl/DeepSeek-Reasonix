@@ -2067,7 +2067,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   <ul className="set-lab-brief__list">
                     {([
                       "decisionPatterns",
-                      "decisionPatternsLayered",
                       "heartbeatBackground",
                       "stalledIntentNudge",
                       "standardContinuation",
@@ -2114,23 +2113,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     ))}
                   </SettingsOptions>
                 </SettingsField>
-                {/* tl1772：注入分层伴生开关（decisionPatterns 行下方）。开=注入
-                    只带索引行+按需读全文硬指令（省 85%+），关=原全量注入逐字
-                    节一致（回退路径）。注入面现读 config，保存即生效。 */}
-                <SettingsField label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))} hint={t("settings.decisionPatternsLayeredHint")} icon={<Sparkles size={18} />}>
-                  <SettingsOptions layout="field" className="set-seg">
-                    {[false, true].map((on) => (
-                      <button
-                        key={String(on)}
-                        className={`set-seg__btn${Boolean(s.experimentalDecisionPatternsLayered) === on ? " set-seg__btn--on" : ""}`}
-                        disabled={busy}
-                        onClick={() => void apply(() => app.SetExperimentalDecisionPatternsLayered(on))}
-                      >
-                        {t(on ? "settings.decisionPatternsLayered.on" : "settings.decisionPatternsLayered.off")}
-                      </button>
-                    ))}
-                  </SettingsOptions>
-                </SettingsField>
+                {/* tl1772r2：注入分层行移出本卡——迁「安全/成本控制」卡（键/
+                    setter 零变化，memoryIndexSlim 722 点6 同款；用户 20261124
+                    验收拍板归组）。 */}
                 <SettingsField label={t("settings.decisionPatternsCreateTask")} hint={t("settings.decisionPatternsCreateTaskHint")} icon={<Sparkles size={18} />}>
                   <button
                     type="button"
@@ -2611,6 +2596,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       onClick={() => void apply(() => app.SetMemoryIndexSlim(on))}
                     >
                       {t(on ? "settings.memoryIndexSlim.on" : "settings.memoryIndexSlim.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* tl1772r2（原 smartAutomation 卡「决策模式」族卡成员行移组）：
+                  决策模式注入分层——用户 20261124 验收拍板归组本卡（键
+                  experimental_decision_patterns_layered 与 setter 零变化）。
+                  与上行「记忆注入瘦身」是两个不同开关：本行只动 autopilot
+                  注入的决策模式段，不动背景记忆索引段；两态语义见 hint。 */}
+              <SettingsField label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))} hint={t("settings.decisionPatternsLayeredHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalDecisionPatternsLayered) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalDecisionPatternsLayered(on))}
+                    >
+                      {t(on ? "settings.decisionPatternsLayered.on" : "settings.decisionPatternsLayered.off")}
                     </button>
                   ))}
                 </SettingsOptions>
