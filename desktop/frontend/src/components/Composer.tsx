@@ -3767,6 +3767,17 @@ export function Composer({
     if (channelMode) return;
     const videos = files.filter(isVideoFile);
     if (videos.length === 0) return;
+    // tl1767r3：门控关（videoInputEnabled=false）时本函数此前在 attachFiles
+    // 调用点被整个跳过，attachOtherFiles 的过滤器又明确排除视频——视频四路
+    // 全不收、零提示静默丢弃（用户真机包113 现象：46MB mp4 添加无反应）。
+    // 此处补 toast 如实提示。channelMode 静默跳过是 tl1441 ③ 有意设计（群聊
+    // 六件能力清单无视频，提示去开 video 不可兑现），保持不变。>50MB 文件
+    // 同走本提示而非 videoTooLarge：门控关时文件不会被添加，尺寸检查无意义，
+    // 「超 50MB 上限」会误导用户以为瘦身即可用（实际模型根本收不了视频）。
+    if (!videoInputEnabled) {
+      showToast(t("composer.videoInputDisabledHint"), "warn");
+      return;
+    }
     for (const file of videos) {
       updatePendingPasteForDraft(sourceDraftKey, 1);
       try {
@@ -3821,7 +3832,9 @@ export function Composer({
     const sourceDraftKey = activeDraftKeyRef.current;
     void attachImageFiles(files, sourceDraftKey);
     if (audioInputEnabled) void attachAudioFiles(files, sourceDraftKey);
-    if (videoInputEnabled) void attachVideoFiles(files, sourceDraftKey);
+    // tl1767r3：video 无条件进本路，门控判定在 attachVideoFiles 内——门控关
+    // 时出「未开启视频输入」提示而非静默；门控开时行为与旧守卫逐字节一致。
+    void attachVideoFiles(files, sourceDraftKey);
     void attachOtherFiles(files, sourceDraftKey);
   };
 
