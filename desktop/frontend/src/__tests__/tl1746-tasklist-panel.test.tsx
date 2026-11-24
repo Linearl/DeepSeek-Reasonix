@@ -359,8 +359,8 @@ console.log("\ntl1746 tasklist panel: overview/list behavior + lab gate + wiring
   ok(paneRegistry.includes('"tasklistPanel"'), "LAB_PANE_IDS whitelists tasklistPanel");
   const tiers = read("src/lib/experimentTiers.ts");
   ok(tiers.includes('tasklistPanel: "unstable"'), "experimentTiers registers tasklistPanel as unstable");
-  ok(tiers.includes("unstable: 4,"), "LAB_TIER_COUNTS pins unstable=4 (tl1746 3→4)");
-  ok(tiers.includes("總數 88→89") || tiers.includes("总数 88→89"), "counts note documents 88→89");
+  ok(tiers.includes("unstable: 7,"), "LAB_TIER_COUNTS pins unstable=7 (tl1746 3→4 后经 tl1787 ranges×2+prepairAutosplice 步进至 7，tl1758 轮补同步)");
+  ok(tiers.includes("總數 88→89") || tiers.includes("总数 88→89") || tiers.includes("总数 91→94"), "counts note documents the ratchet chain");
 
   // Go 侧同档登记（对账另一半）：render.go tasklistPanel 条目 unstable + 家族子键。
   const goRender = read("../../internal/config/render.go");
