@@ -29944,6 +29944,15 @@ button.statusbar__mcp:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* tl1769：hover 卡预览行——完整对话名升级为首行标题后，最近消息预览降级为
+   此补充行；anywhere 断长词，长预览换行完整展示不裁剪（与职责行同纪律）。 */
+.project-tree__hover-card-preview {
+  color: var(--fg-faint);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 /* 938：「编辑职责」弹窗（AnchoredPopover portal 到 body，529 先例）。
    批39 返修（1538 用户验收反馈「太小」）：320px 卡片宽 → 内容弹窗先例同级
    min(1100px, 94vw)（照 .reasonix-confirm-dialog--wide 链预览弹窗写法；

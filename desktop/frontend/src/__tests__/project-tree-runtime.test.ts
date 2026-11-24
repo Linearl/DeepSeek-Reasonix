@@ -629,14 +629,15 @@ eq(
     "my-project",
   ),
   {
-    title: "Full first-message preview",
+    title: "Busy topic",
     statusLabel: "projectTree.status.streaming",
     metaLine: "3 turns",
     exactTime: "",
     projectLabel: "my-project",
     purpose: "",
+    preview: "Full first-message preview",
   },
-  "hover card model shows the full preview and carries turns, status, and project",
+  "hover card model leads with the full topic name and carries the preview, turns, status, and project (tl1769)",
 );
 
 // 938：hover 卡模型携带职责——传入即原样（去首尾空白）；缺省为空（不渲染行）。

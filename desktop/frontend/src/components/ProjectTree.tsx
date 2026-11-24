@@ -1949,7 +1949,10 @@ export function ProjectTree({
         : node.recovered
           ? t("projectTree.recovered")
           : "";
-      const title = [node.preview || "", label, recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
+      // tl1769（20261123 用户截图报）：tooltip 首行=完整对话名（不截断可换行）——
+      // 行内名称被省略号截断、运行符号再挤占时，hover 必须补全。预览/恢复标/
+      // IM 来源/状态/轮次/精确时间聚为第二行随后展示，职责行仍居末。
+      const titleDetails = [node.preview || "", recoveryLabel, imSourceTitle, statusLabel, metaFull, projectTreeDedupedExactTime(metaFull, exactTimeLabel)].filter(Boolean).join(" · ");
       // 938：hover 展示该会话登记的职责（sidecar purpose，按需拉取+缓存）。
       // 侧栏标题多为自动命名，purpose 才是真实职责——拼进 title 供原生 tooltip
       // 与 aria-label 展示；purposeRevision 订阅保证拉取到达后即时补上。
@@ -1964,8 +1967,9 @@ export function ProjectTree({
       const modelHoverKey = node.sessionPath || `${topicId ?? ""}\u0000${label}`;
       if (node.modelRef) rememberLiveSessionModel(modelHoverKey, node.modelRef);
       const modelHover = sessionModelHover(modelHoverKey, { modelRef: node.modelRef, metaModel: node.metaModel });
+      const titleWithName = [label, titleDetails].filter(Boolean).join("\n");
       const titleWithPurpose = [
-        titleWithSessionModel(title, modelHover, (key, values) => t(key, { ...values, model: modelRefDisplayLabel(values.model) })),
+        titleWithSessionModel(titleWithName, modelHover, (key, values) => t(key, { ...values, model: modelRefDisplayLabel(values.model) })),
         rowPurpose,
       ].filter(Boolean).join("\n");
       const topicMenuOpen = menuNodeKey === key;
@@ -3756,6 +3760,10 @@ export function ProjectTree({
             <div className="project-tree__hover-card-purpose">
               {hoverCard.sessionPath ? cachedSessionPurpose(hoverCard.sessionPath) ?? hoverCard.card.purpose : hoverCard.card.purpose}
             </div>
+          )}
+          {/* tl1769：预览行——完整对话名升级为首行标题后，最近消息预览降级为此补充行（与名同文不重复）。 */}
+          {hoverCard.card.preview && (
+            <div className="project-tree__hover-card-preview">{hoverCard.card.preview}</div>
           )}
           <div className="project-tree__hover-card-meta">
             {[hoverCard.card.metaLine, hoverCard.card.exactTime].filter(Boolean).join(" · ")}
