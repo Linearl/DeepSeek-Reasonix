@@ -105,18 +105,163 @@ func (a *Agent) preFoldSummaryInput(fold []provider.Message, instructions string
 	return fold
 }
 
+// preFoldFullSendInput is the tl1770 拍板②③ admission for the regular lane's
+// full-send summary input: the whole visible view (system + fold region +
+// verbatim D tail) rides the request — the conversation request's own shape,
+// so the provider's prefix-based cache covers it end to end (codex
+// compact.rs: history + appended instruction). When that request exceeds the
+// safe prompt budget, codex's over-window retry applies (compact.rs L311
+// "Trim from the beginning to preserve cache (prefix-based) and keep recent
+// messages intact"): whole replay units drop from the OLDEST end until the
+// request fits — never a mid-body elision, so the digest input stays
+// whole-message shaped and the newest content survives intact. An image-only
+// over-budget view routes to the transcript form instead (任务 1040
+// discipline: eliding text cannot shed an image; the slim form drops them for
+// real). inputMode may be flipped to SummaryInputSlim; the view itself is
+// never reshaped beyond the oldest-unit trim.
+func (a *Agent) preFoldFullSendInput(fullView []provider.Message, instructions string, inputMode *string) []provider.Message {
+	budget, enforced := a.safeSummaryPromptTokenLimit()
+	if !enforced {
+		budget = a.summaryInputBudget(instructions)
+	}
+	if budget <= 0 {
+		return fullView
+	}
+	if a.estimatedRequestTokens(a.summaryRequest(fullView, instructions)) <= budget {
+		return fullView
+	}
+	imageTokens := imageEstimateTokensOf(provider.Request{Messages: modelInputMessages(fullView)})
+	if imageTokens > 0 && a.estimatedRequestTokens(a.slimSummaryRequest(fullView, instructions)) <= budget {
+		*inputMode = SummaryInputSlim
+		return fullView
+	}
+	trimmed, dropped := a.trimSummaryInputFromHead(fullView, instructions, budget)
+	if dropped > 0 {
+		slog.Info("agent: full-send summary input trimmed from the head to the safe budget",
+			"dropped_messages", dropped, "kept_messages", len(trimmed),
+			"budget", budget, "model_ref", a.destinationModelRef())
+	}
+	return trimmed
+}
+
+// trimSummaryInputFromHead drops whole oldest replay units from a full-send
+// summary input until its request prices within budget (tl1770 拍板③, codex
+// compact.rs remove_first_item loop). Protected from the trim: the system
+// prefix, every compaction summary (the new digest's merge source — dropping
+// one would orphan the facts it accumulated), and at least the newest
+// trimmable unit (codex keeps recent messages intact; turn_input_len > 1
+// floor). The drop count is binary-searched against the calibrated
+// whole-request pricer — per-message pricing is NOT additive across the CJK
+// excess calibration, so every probe verifies with the real ruler. When even
+// the maximally trimmed form exceeds the budget it goes out unchanged: the
+// provider's own overflow lane owns it from there, exactly like codex's
+// single-item floor.
+func (a *Agent) trimSummaryInputFromHead(msgs []provider.Message, instructions string, budget int) ([]provider.Message, int) {
+	head := a.pinnedPrefixLen(msgs)
+	units := extractMessageUnits(msgs)
+	type dropSpan struct{ lo, hi int }
+	cands := make([]dropSpan, 0, len(units))
+	for _, u := range units {
+		if u.lo < head {
+			continue
+		}
+		protected := false
+		for i := u.lo; i < u.hi; i++ {
+			if isCompactionSummary(msgs[i]) {
+				protected = true
+				break
+			}
+		}
+		if !protected {
+			cands = append(cands, dropSpan{lo: u.lo, hi: u.hi})
+		}
+	}
+	// At most len(cands)-1 units may drop: the newest trimmable unit always
+	// stays (codex: keep recent messages intact).
+	price := func(drop int) int {
+		if drop == 0 {
+			return a.estimatedRequestTokens(a.summaryRequest(msgs, instructions))
+		}
+		cut := make([]bool, len(msgs))
+		for _, c := range cands[:drop] {
+			for i := c.lo; i < c.hi; i++ {
+				cut[i] = true
+			}
+		}
+		kept := make([]provider.Message, 0, len(msgs))
+		for i, m := range msgs {
+			if cut[i] {
+				continue
+			}
+			kept = append(kept, m)
+		}
+		return a.estimatedRequestTokens(a.summaryRequest(kept, instructions))
+	}
+	if len(cands) <= 1 || price(0) <= budget {
+		return msgs, 0
+	}
+	lo, hi := 0, len(cands)-1
+	for lo < hi {
+		mid := lo + (hi-lo)/2
+		if price(mid) <= budget {
+			hi = mid
+		} else {
+			lo = mid + 1
+		}
+	}
+	drop := lo
+	if price(drop) > budget {
+		// Even the floor form (system + protected summaries + newest unit)
+		// exceeds the budget: send the maximally trimmed form anyway — codex
+		// sends its single-item floor and lets the provider's verdict land.
+		drop = len(cands) - 1
+	}
+	cut := make([]bool, len(msgs))
+	for _, c := range cands[:drop] {
+		for i := c.lo; i < c.hi; i++ {
+			cut[i] = true
+		}
+	}
+	kept := make([]provider.Message, 0, len(msgs))
+	dropped := 0
+	for i, m := range msgs {
+		if cut[i] {
+			dropped++
+			continue
+		}
+		kept = append(kept, m)
+	}
+	return kept, dropped
+}
+
 // foldToSummary turns a fold region into one digest with exactly one provider
 // request. Pressure-time tool pruning is durable and happens before this call;
 // the summary request never performs a private second transformation.
 func (a *Agent) foldToSummary(ctx context.Context, fold []provider.Message, instructions string) (foldSummary, error) {
-	return a.foldToSummaryMode(ctx, fold, instructions, SummaryInputCachePrefix)
+	return a.foldToSummaryMode(ctx, fold, instructions, SummaryInputCachePrefix, nil)
 }
 
-func (a *Agent) foldToSummaryMode(ctx context.Context, fold []provider.Message, instructions, inputMode string) (foldSummary, error) {
+// foldToSummaryMode turns a fold region into one digest with exactly one
+// provider request. fullSend (tl1770 拍板②) overrides the region the request
+// carries: the regular lane sends the whole view instead of the fold region —
+// it arrives already admitted by preFoldFullSendInput at the planning site.
+// FoldTokens keeps reporting the FOLD region on the calibrated ruler (the
+// planning number the gate, the done line and the ladder read); the billed
+// full-send input shows up in the request's own cache readout (tl1770 观测行)
+// and the usage telemetry, never as a third ruler here.
+func (a *Agent) foldToSummaryMode(ctx context.Context, fold []provider.Message, instructions, inputMode string, fullSend []provider.Message) (foldSummary, error) {
 	// 任务 988 对账切片（随 1025 落地）：FoldTokens 与 src/proj 位同用校准尺
 	// （estimatedVisibleRequestTokens），静态 estimateMessagesTokens 只留内部
 	// 规划预算——否则 telemetry 一行里 fold/src/proj 三把尺，中文会话对账必歪。
 	res := foldSummary{Mode: CompactionModeSummarized, Spans: 1, FoldTokens: a.guardedSummaryInputTokens(fold), InputMode: inputMode}
+	if len(fullSend) > 0 {
+		if inputMode == SummaryInputSlim {
+			summary, usage, err := a.summarizeTranscript(ctx, fullSend, instructions)
+			res.Text, res.Usage = summary, usage
+			return res, err
+		}
+		return a.singleCallSummary(ctx, res, fullSend, instructions)
+	}
 	// 任务 1003: the mandatory pre-send check-and-fold. Only the replay form is
 	// folded here — the transcript form is a distinct input shape (slimmed
 	// bodies, no schemas) whose own rendering already bounds it, and its
@@ -251,8 +396,8 @@ func (a *Agent) singleCallSummary(ctx context.Context, res foldSummary, fold []p
 	return res, err
 }
 
-func (a *Agent) foldSummaryWithTelemetry(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string) (foldSummary, CompactionTelemetry, error) {
-	res, err := a.foldToSummaryMode(ctx, fold, instructions, inputMode)
+func (a *Agent) foldSummaryWithTelemetry(ctx context.Context, trigger string, fold []provider.Message, instructions string, sourceTokens int, inputMode string, fullSend []provider.Message) (foldSummary, CompactionTelemetry, error) {
+	res, err := a.foldToSummaryMode(ctx, fold, instructions, inputMode, fullSend)
 	tele := compactionTelemetryFromSummary(trigger, a.CacheState(), sourceTokens, res)
 	if err != nil {
 		tele.Error = err.Error()

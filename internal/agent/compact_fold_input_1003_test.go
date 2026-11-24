@@ -119,18 +119,22 @@ func TestSummaryInputPreFoldedUnderCeiling(t *testing.T) {
 		t.Fatalf("fixture request already fits the budget (%d <= %d); enlarge the fold to reproduce the over-window shape",
 			a.estimatedRequestTokens(a.summaryRequest(fold, "")), budget)
 	}
-	// Compaction must succeed (no 400) and the request must land under the
-	// window (the pre-fold happened before the send).
+	// Compaction must succeed and the request that LANDS must sit under the
+	// window. tl1770 拍板②③: the request now carries the whole view; its
+	// admission prices on the session ruler and head-trims to the safe budget,
+	// so a provider billing denser than a cold (never-calibrated) session can
+	// reject the first shot once — the 任务 1003 failure the pre-fold exists to
+	// prevent is the COMPACTION failing, not one absorbed overflow that the
+	// recalibration lane (learned factor) lands on the retry.
 	if err := prepareContext(context.Background(), a, CompactionTriggerPressure); err != nil {
 		t.Fatalf("pressure maintenance: %v", err)
 	}
 	if len(prov.reqs) == 0 {
 		t.Fatal("no summary request reached the provider")
 	}
-	for i, req := range prov.reqs {
-		if tokens := requestTokensOf(req); tokens > window {
-			t.Fatalf("summary request %d reached the provider over the window: %d > %d (pre-fold did not run before send)", i, tokens, window)
-		}
+	last := prov.reqs[len(prov.reqs)-1]
+	if tokens := requestTokensOf(last); tokens > window {
+		t.Fatalf("landed summary request reached the provider over the window: %d > %d", tokens, window)
 	}
 	// The visible view must have landed a projection (compaction made progress
 	// instead of falling back to the full history).

@@ -506,7 +506,7 @@ func TestChunkedFallbackPreservesFocusAndAggregatesTelemetry(t *testing.T) {
 	prov := &extractStubProvider{failFirst: 2, reply: "digest"}
 	a := New(prov, tool.NewRegistry(), extractStubSession(), Options{}, event.Discard)
 	fold := a.Session().Snapshot()
-	res, tele, err := a.foldSummaryWithChunkedFallback(context.Background(), CompactionTriggerManual, fold, focus, 321, SummaryInputCachePrefix)
+	res, tele, err := a.foldSummaryWithChunkedFallback(context.Background(), CompactionTriggerManual, fold, focus, 321, SummaryInputCachePrefix, nil)
 	if err != nil {
 		t.Fatalf("foldSummaryWithChunkedFallback: %v", err)
 	}

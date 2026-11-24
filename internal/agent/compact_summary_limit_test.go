@@ -139,11 +139,15 @@ func TestSummaryOverflowRecalibratesAndReplansSmaller(t *testing.T) {
 		t.Fatalf("prepare = %v", err)
 	}
 	summaries := prov.summaryRequests()
-	// 任务 1003: the pre-fold landed the request under the estimated budget,
-	// which (with the 3x-oversized output reserve) also fits the provider's
-	// denser window — no overflow, one summary, digest landed.
-	if prov.overflows != 0 || len(summaries) != 1 {
-		t.Fatalf("overflows=%d summaries=%d, want the pre-folded request to fit with no overflow", prov.overflows, len(summaries))
+	// 任务 1003's contract survives tl1770 拍板②③ in its failure-prevention
+	// form: the request now carries the whole view (full-send), admitted on
+	// the session ruler; a provider billing DENSER than that static ruler
+	// rejects the first shot once, and the recalibration lane re-plans with
+	// the learned factor so the retry lands — the digest still lands, the
+	// overflow is absorbed, and no request repeats byte-for-byte. What may
+	// not happen is the pre-1003 shape: repeated same-size failures.
+	if prov.overflows != 1 || len(summaries) < 1 {
+		t.Fatalf("overflows=%d summaries=%d, want exactly one absorbed overflow with the digest landed on the replan", prov.overflows, len(summaries))
 	}
 	for fp, n := range requestFingerprints(summaries) {
 		if n > 1 {

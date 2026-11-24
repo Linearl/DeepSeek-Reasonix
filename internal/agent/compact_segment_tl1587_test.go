@@ -156,11 +156,23 @@ func TestFullWindowSummaryInputStaysWithinSegmentBound(t *testing.T) {
 	if len(reqs) == 0 {
 		t.Fatal("no summary requests reached the provider")
 	}
-	budget, _ := a.summarySegmentInputBudget()
+	// tl1770 拍板②（用户 20261123 15:05）取代了本验收的请求侧口径：摘要请求
+	// 改全量送（整个视图+追加指令），不再受 25% 分段上限约束——分段上限继续
+	// 管住的是折叠区（boundedSummaryPrefixEnd 规划面不变）。请求侧的新上限
+	// = safe prompt budget（preFoldFullSendInput 的准入门）。
+	safe, enforce := a.safeSummaryPromptTokenLimit()
+	if !enforce {
+		t.Fatal("safe prompt limit not enforced on a known-window provider")
+	}
+	viewMessages := len(a.sess.conversation.Snapshot())
 	for i, req := range reqs {
-		if got := a.estimatedRequestTokens(req); got > budget {
-			t.Fatalf("summary request %d carried %d tokens, over the segment bound %d", i, got, budget)
+		if got := a.estimatedRequestTokens(req); got > safe {
+			t.Fatalf("summary request %d carried %d tokens, over the safe full-send budget %d", i, got, safe)
 		}
+	}
+	// 全量送形态：首请求 = 整个视图 + 一条追加指令。
+	if got, want := len(reqs[0].Messages), viewMessages+1; got != want {
+		t.Fatalf("first summary request carries %d messages, want %d (whole view + appended instruction)", got, want)
 	}
 	if r := a.sess.compactionState.LastReceipt; r == nil || r.Status != "applied" || latestDigest(a.sess.compactionState.Projection.Messages) == "" {
 		t.Fatalf("receipt = %+v, want an applied summary with a digest", r)

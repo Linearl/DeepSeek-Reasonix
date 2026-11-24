@@ -175,7 +175,7 @@ func TestChunkedFallbackFailureIsObservable(t *testing.T) {
 		}
 	}))
 
-	res, _, err := a.foldSummaryWithChunkedFallback(context.Background(), CompactionTriggerPressure, a.Session().Snapshot(), "focus", 321, SummaryInputCachePrefix)
+	res, _, err := a.foldSummaryWithChunkedFallback(context.Background(), CompactionTriggerPressure, a.Session().Snapshot(), "focus", 321, SummaryInputCachePrefix, nil)
 	if err != nil {
 		t.Fatalf("foldSummaryWithChunkedFallback = %v", err)
 	}

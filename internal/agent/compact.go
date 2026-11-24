@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"reasonix/internal/ablation"
@@ -727,6 +728,49 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 		return "", usage, err
 	}
 
+	// tl1770 观测增强（用户拍板 20261123 14:43）: every summary request logs a
+	// cache readout when its stream ends — cache_hit/cache_miss/ttft/
+	// prompt_tokens. The compaction usage already rode the UsageSource=
+	// compaction event with no log line, so an 800K full prefill that missed
+	// the prefix cache (tens-to-hundreds times the cost of a hit) had no
+	// per-request evidence to reconcile against. Observation only — no
+	// behavior reads this line. Registered after the stream opens: failures
+	// that never reach the wire (admission, no destination) have no readout
+	// and stay with the retry ladder's own logs.
+	streamStart := time.Now()
+	var firstChunkAt time.Time
+	defer func() {
+		ttftMs := int64(-1)
+		if !firstChunkAt.IsZero() {
+			ttftMs = firstChunkAt.Sub(streamStart).Milliseconds()
+		}
+		var prompt, hit, miss, cacheWrite, out int
+		var finish string
+		if usage != nil {
+			prompt = usage.PromptTokens
+			hit = usage.CacheHitTokens
+			miss = usage.CacheMissTokens
+			cacheWrite = usage.CacheWriteTokens
+			out = usage.CompletionTokens
+			finish = usage.FinishReason
+		}
+		fields := []any{
+			"session", a.sessionLogRef(), "model_ref", a.summaryDestinationRef(),
+			"prompt_tokens", prompt, "cache_hit_tokens", hit, "cache_miss_tokens", miss,
+			"cache_write_tokens", cacheWrite, "out_tokens", out,
+			"ttft_ms", ttftMs, "duration_ms", time.Since(streamStart).Milliseconds(),
+		}
+		if finish != "" {
+			fields = append(fields, "finish_reason", finish)
+		}
+		if err != nil {
+			fields = append(fields, "err", err.Error())
+			slog.Warn("agent: summary request cache readout", fields...)
+			return
+		}
+		slog.Info("agent: summary request cache readout", fields...)
+	}()
+
 	// Unblock on timeout if the stream stalls while open.
 	var b strings.Builder
 	var reasoning strings.Builder
@@ -759,6 +803,13 @@ func (a *Agent) runSummaryRequestWithBudget(ctx context.Context, req provider.Re
 					return truncateUTF8Bytes(r, summaryReasoningMaxBytes), usage, nil
 				}
 				return s, usage, nil
+			}
+			// tl1770 观测增强: TTFT reads the first chunk of ANY type that
+			// arrives after the stream opened — a wire-level first-token read,
+			// not a text-only one (usage-only streams still carry a latency
+			// shape worth reading).
+			if firstChunkAt.IsZero() {
+				firstChunkAt = time.Now()
 			}
 			switch chunk.Type {
 			case provider.ChunkText:

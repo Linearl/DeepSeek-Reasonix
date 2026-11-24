@@ -10,6 +10,16 @@ type foldRequest struct {
 	// slim renders the fold as one bounded transcript instead of the
 	// cache-aligned replay. It is a rung on the overflow ladder, never a default.
 	slim bool
+	// tl1770 拍板②（用户 20261123 15:05）: fullSend is the regular lane's
+	// summary input — the WHOLE model-visible view (system + fold region +
+	// verbatim D tail) plus the appended instruction, shaped like the
+	// conversation request itself so the provider's prefix-based cache covers
+	// it end to end (codex compact.rs sends history + appended instruction
+	// the same way). The region arrives already admitted — preFoldFullSendInput
+	// priced it at the planning site and head-trimmed it to the safe budget
+	// when it overflowed (拍板③). nil keeps the fold-region request: the focus
+	// 选段道, the slim ladder rung and the chunked fragments are unchanged.
+	fullSend []provider.Message
 }
 
 // summaryInputModeFor labels the summarizer input for telemetry and the
