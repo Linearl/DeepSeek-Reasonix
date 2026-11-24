@@ -838,8 +838,8 @@ export function Composer({
   // Task 261 (upstream #10425): clock-icon history picker + narrowed plain-ArrowUp
   // trigger. Off (default) keeps the exact legacy history behaviour.
   historyPickerEnabled?: boolean;
-  // tl1796 r2：autopilotEnabled（模式条/下拉 autopilot 档显隐门 prop）随撤
-  // 开关退役——autopilot 档恒显（tl1741 stable 档无开关口径同源）。
+  // tl1796 r2：autopilot 档显隐门 prop 随撤开关退役——autopilot 档恒显
+  // （tl1741 stable 档无开关口径同源）。
   onInsertQuickCommand?: (text: string) => void;
   // Task 721: the content menu's picker bottom entry opens the shared
   // quick-command manager dialog (owner controls the open state).
@@ -6644,7 +6644,7 @@ export function Composer({
                       运行中可切（审批条在待批时仍可用），补上「+」菜单运行中
                       不可点导致的中途开 autopilot 缺口。autopilot 隐含 yolo：
                       后端自动满足 325 前置并留痕，此处只发档位切换。 */}
-                  {/* tl1796 r2：autopilotEnabled 门随撤开关退役——第四档恒显。 */}
+                  {/* tl1796 r2：显隐门随撤开关退役——第四档恒显。 */}
                   <button
                     type="button"
                     className={`composer-modebar__item composer-modebar__item--autopilot${autopilotModeOn ? " composer-modebar__item--active" : ""}`}

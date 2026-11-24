@@ -1,97 +1,82 @@
 package config
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-// tl1796 — composer 模式条 autopilot 档显隐 opt-in 门（写点缺失返修）。
+// tl1796 r2 — composer 模式条 autopilot 档显隐开关回退：恒显落地。
 //
-// 根因（验收件①）：tl1741 撤 [desktop] autopilot 偏好键时连带撤了
-// SettingsView.Autopilot 镜像与 SetDesktopAutopilot 写点，但前端门
-// （App.tsx setAutopilotEnabled）仍读 settings.autopilot === true——字段
-// 永远缺失 ⇒ autopilotEnabled 恒 false ⇒ 模式下拉永久不含 autopilot 档。
-// 本件补新写点 experimental_autopilot_composer（config 字段+setter+渲染行）
-// 并登记 labNonFeatureKeys（tl1598 宪法 IV 账本门禁）。
+// 打回根因（装机实测，双重）：一期 opt-in 键默认关 = 选项默认缺失（切 YOLO
+// 后下拉仍无 autopilot，用户口径「任何时候都应该出现」）；config 渲染行把
+// 零值 false 显性化，观感「该键被异常关闭」（调查结论：唯一写点是 lab 卡
+// 行级开关 on/off 同一 setter，无批量翻转、无显式 false 写者——false 即
+// 默认值首次渲染，非被翻关）。
 //
-// 本文件钉持久化链路（验收件②③的机制底座）：默认关（铁律 2 = 关态渲染面
-// 与引入前逐字节一致）、翻转落盘、保存往返不丢（fixed-key-set 渲染行在位，
-// 81/123 教训）。
+// r2 语义（tl1741 stable 档无开关口径同源，collab_hub 先例）：键自 struct
+// 退役、渲染行随撤、deprecated 清单承接存量手写键（true/false 皆然，WARN
+// 可见不阻断，下次保存清行）；前端 autopilot 档恒显无门（前端钉见
+// desktop/frontend/src/__tests__/tl1796-autopilot-composer-offer.test.ts）。
 
-// TestAutopilotComposerDefaultOff tl1796 验收③底座：默认关 = 前端门读 false
-// = 模式条三档 ask/auto/yolo 布局不变。
-func TestAutopilotComposerDefaultOff(t *testing.T) {
-	d := Default()
-	if d.Desktop.ExperimentalAutopilotComposer {
-		t.Fatal("Default().Desktop.ExperimentalAutopilotComposer = true, want false（opt-in 默认关，铁律 2 零回归）")
-	}
+// TestAutopilotComposerSwitchRetiredFromRender r2 验收②：一期 opt-in 键随撤
+// 开关退役——fixed-key-set 渲染表收缩，渲染面不再输出该键（存量手写行下次
+// 保存即清）。
+func TestAutopilotComposerSwitchRetiredFromRender(t *testing.T) {
 	rendered := RenderTOMLForScope(Default(), RenderScopeUser)
-	if !strings.Contains(rendered, "experimental_autopilot_composer = false") {
-		t.Fatal("用户态渲染面缺 experimental_autopilot_composer = false 行——固定键集规则（81/123 教训）：不在渲染表的键下次保存即被丢弃，开关会自己翻回关")
+	if strings.Contains(rendered, "experimental_autopilot_composer") {
+		t.Fatal("退役开关键 experimental_autopilot_composer 仍出现在渲染面——fixed-key-set 未收缩，一期 opt-in 门回潮")
 	}
-}
-
-// TestAutopilotComposerFlipSurvivesSave tl1796 验收②底座：写点翻转→渲染→
-// 重新加载读回 true；关→读回 false。任何一次 settings 保存往返后开关不得
-// 自己回弹（这正是死读时代的永久消失形态）。
-func TestAutopilotComposerFlipSurvivesSave(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "reasonix.toml")
-
-	write := func(body string) *Config {
-		t.Helper()
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		return LoadForEdit(path)
-	}
-	load := func() *Config {
-		t.Helper()
-		return LoadForEdit(path)
-	}
-
-	on := write("")
-	if err := on.SetExperimentalAutopilotComposer(true); err != nil {
-		t.Fatalf("SetExperimentalAutopilotComposer(true) = %v", err)
-	}
-	// SaveToScope(RenderScopeUser)：[desktop] 键属用户态（project scope 有意
-	// 排除 desktop 偏好），生产 setter（applyConfigOnly→SaveTo 对用户配置路径）
-	// 走的正是 user scope——TempDir 路径的裸 SaveTo 会被 renderScopeForPath
-	// 判成 project scope 而丢掉整个 desktop 块，那是测试假阴性，不是缺陷。
-	if err := on.SaveToScope(path, RenderScopeUser); err != nil {
-		t.Fatalf("SaveToScope(user) = %v", err)
-	}
-	if reloaded := load(); !reloaded.Desktop.ExperimentalAutopilotComposer {
-		t.Fatal("开→保存→重载后读回 false——写点在保存往返中丢失（tl1796 缺陷形态回归）")
-	}
-
-	off := write("")
-	if err := off.SetExperimentalAutopilotComposer(false); err != nil {
-		t.Fatalf("SetExperimentalAutopilotComposer(false) = %v", err)
-	}
-	if err := off.SaveToScope(path, RenderScopeUser); err != nil {
-		t.Fatalf("SaveToScope(user) = %v", err)
-	}
-	if reloaded := load(); reloaded.Desktop.ExperimentalAutopilotComposer {
-		t.Fatal("关→保存→重载后读回 true——关态不落盘")
-	}
-}
-
-// TestAutopilotComposerRetiredKeyStillRetired tl1741 语义不回潮：撤掉的
-// [desktop] autopilot 主键保持退役（deprecated 承接、渲染面不再输出），
-// 新键是独立的 composer 显隐门，不是主键复活。
-func TestAutopilotComposerRetiredKeyStillRetired(t *testing.T) {
-	c := loadStableTierTOML(t, "")
-	rendered := RenderTOMLForScope(c, RenderScopeUser)
+	// 键退役但选项常开：渲染面不再有任何 autopilot 显隐门，且退役主键
+	// [desktop] autopilot 不复活（tl1741 拍板语义零回潮，r2 不加回）。
 	for _, line := range strings.Split(rendered, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "autopilot =") || strings.HasPrefix(trimmed, "autopilot = ") {
+		if strings.HasPrefix(trimmed, "autopilot =") {
 			t.Fatalf("退役主键 [desktop] autopilot 重新出现在渲染面（%q）——tl1741 拍板语义回潮", trimmed)
 		}
 	}
-	if !strings.Contains(rendered, "experimental_autopilot_composer =") {
-		t.Fatal("渲染面缺新键 experimental_autopilot_composer——写点不完整")
+}
+
+// TestAutopilotComposerSwitchRetiredDeprecatedLedger r2 验收②承接面：存量
+// 手写键（true/false 皆然）由 deprecated 清单承接——账本在册、加载不阻断、
+// 渲染面清行。
+func TestAutopilotComposerSwitchRetiredDeprecatedLedger(t *testing.T) {
+	hint, ok := deprecatedConfigKeys["desktop.experimental_autopilot_composer"]
+	if !ok {
+		t.Fatal("desktop.experimental_autopilot_composer 未入 deprecated 清单——存量手写键将按未知键告警，迁移提示丢失")
+	}
+	if !strings.Contains(hint, "always offers the autopilot tier") {
+		t.Fatalf("deprecated 提示未说明行为去向（%q）——承接提示必须指向「恒显」", hint)
+	}
+	for _, flag := range []string{"true", "false"} {
+		c := loadStableTierTOML(t, `
+[desktop]
+experimental_autopilot_composer = `+flag+`
+`)
+		if c == nil {
+			t.Fatalf("手写 %s 残留的 config 必须正常加载（deprecated 承接，WARN 可见不阻断）", flag)
+		}
+		rendered := RenderTOMLForScope(c, RenderScopeUser)
+		if strings.Contains(rendered, "experimental_autopilot_composer") {
+			t.Fatalf("手写 %s 残留未被渲染面清行（fixed-key-set 未收缩，WARN 将永不消失）", flag)
+		}
+	}
+}
+
+// TestAutopilotComposerOptionAlwaysOffered r2 验收①的 Go 侧语义钉：恒显=
+// 「不存在任何可关它的键」——编译期事实（struct 无字段）+ 渲染面无行共同
+// 构成双证据；本件补渲染面证据的负载形态（含既有键的完整用户态渲染不因
+// 移除该行缺行——fixed-key-set 其余键原样）。
+func TestAutopilotComposerOptionAlwaysOffered(t *testing.T) {
+	c := loadStableTierTOML(t, "")
+	rendered := RenderTOMLForScope(c, RenderScopeUser)
+	// 相邻键仍在位（撤行只撤一行，不牵连渲染表其余键——81/123 教验的反向
+	// 断言：本次是收缩而非漂移）。
+	for _, anchor := range []string{
+		"experimental_tasklist_panel = ",
+		"experimental_trajectory_view = ",
+	} {
+		if !strings.Contains(rendered, anchor) {
+			t.Fatalf("锚键 %s 从渲染面消失——撤行操作牵连了渲染表其余键", anchor)
+		}
 	}
 }

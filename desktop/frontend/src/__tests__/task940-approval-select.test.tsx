@@ -169,26 +169,27 @@ console.log("\ntask 940 composer approval-select dropdown");
     ok(trigger!.disabled === false, "③ enabled composer keeps the dropdown clickable");
 
     // ②-a 打开菜单选 yolo → 与按钮组同一条 onSetToolApprovalMode 链路。
+    // tl1796 r2：autopilot 档恒显（opt-in 门随撤开关退役）——菜单恒四档。
     await act(async () => { trigger!.click(); await new Promise((resolve) => setTimeout(resolve, 5)); });
     const optionValues = Array.from(document.querySelectorAll('[role="option"]')).map((node) => (node as HTMLElement).dataset.value);
-    assert.deepEqual(optionValues, ["ask", "auto", "yolo"], "the menu carries exactly the three approval tiers");
+    assert.deepEqual(optionValues, ["ask", "auto", "yolo", "autopilot"], "the menu carries exactly the four tiers (autopilot always offered, tl1796 r2)");
     await pickOption("yolo");
     ok(calls.approval.length === 1 && calls.approval[0] === "yolo",
       "② picking yolo routes through the same onSetToolApprovalMode link as the button group");
 
-    // ②-b autopilot 偏好开时第四档入选单，选中走 onSetCollaborationMode。
-    await paint({ autopilotEnabled: true });
+    // ②-b 第四档恒在入选单（tl1796 r2：无偏好前置），选中走 onSetCollaborationMode。
+    await paint({});
     const trigger2 = rootEl.querySelector<HTMLButtonElement>(".composer-approval-select");
-    ok(trigger2 !== null, "② autopilot preference: the dropdown still renders");
+    ok(trigger2 !== null, "② repainted: the dropdown still renders");
     await act(async () => { trigger2!.click(); await new Promise((resolve) => setTimeout(resolve, 5)); });
     const fourValues = Array.from(document.querySelectorAll('[role="option"]')).map((node) => (node as HTMLElement).dataset.value);
-    assert.deepEqual(fourValues, ["ask", "auto", "yolo", "autopilot"], "the menu adds the autopilot fourth tier");
+    assert.deepEqual(fourValues, ["ask", "auto", "yolo", "autopilot"], "the menu keeps the autopilot fourth tier");
     await pickOption("autopilot");
     ok(calls.collab.length === 1 && calls.collab[0] === "autopilot",
       "② picking autopilot routes through chooseTaskMode (the button group's fourth-tier link)");
 
     // ③ 禁用态：disabled composer 时触发器 disabled（同 approvalBarDisabled）。
-    await paint({ autopilotEnabled: false, disabled: true });
+    await paint({ disabled: true });
     const trigger3 = rootEl.querySelector<HTMLButtonElement>(".composer-approval-select");
     ok(trigger3 !== null && trigger3!.disabled === true,
       "③ a disabled composer disables the dropdown (same approvalBarDisabled gate)");

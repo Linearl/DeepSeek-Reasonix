@@ -147,7 +147,8 @@ const authority = { checkpoint: () => {}, ownsUI: () => true };
 const composerSrc = readFileSync(resolve(testDir, "../components/Composer.tsx"), "utf8");
 assert.ok(composerSrc.includes('composer-modebar__item--autopilot'), "模式条第四档按钮存在");
 assert.match(composerSrc, /data-mode=\{autopilotModeOn \? "autopilot" : toolApprovalMode\}/, "滑块档位跟随裸旗");
-assert.match(composerSrc, /data-autopilot=\{autopilotEnabled \? "on" : "off"\}/, "四格布局开关随偏好");
+// tl1796 r2：autopilot 档恒显（opt-in 门随撤开关退役）——四格布局不再随偏好，恒在。
+assert.match(composerSrc, /data-autopilot="on"/, "四格布局恒在（tl1796 r2 恒显，无键可关）");
 assert.ok(composerSrc.includes('onClick={() => chooseTaskMode("autopilot")}'), "第四档点击走档位切换");
 assert.ok(composerSrc.includes("(planModeOn || goalModeOn)"), "徽章只承载第二维（计划/目标）");
 assert.ok(!composerSrc.includes('t("composer.taskModeAutopilot")</span>\n              </span>\n              {autopilotModeOn'), "执行方式菜单不再有 autopilot 项（其关闭路径已失效）");

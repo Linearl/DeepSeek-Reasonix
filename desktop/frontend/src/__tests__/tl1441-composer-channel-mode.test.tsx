@@ -186,7 +186,6 @@ const hiddenProbeProps = baseProps({
   // 故意把会话专属 props 传满——隐藏必须是结构性门控，不是「没传就不在」：
   effort: { id: "high", name: "High" },
   qualityFloor: "delivery",
-  autopilotEnabled: true,
   splitActive: true,
   showContextWindowRing: true,
 });

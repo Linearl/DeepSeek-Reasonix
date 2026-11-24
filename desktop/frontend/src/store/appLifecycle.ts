@@ -4,8 +4,8 @@
 // state so a region reads the flag directly instead of receiving it through a prop chain
 // (task 38).
 //
-// tl1796 r2：autopilotEnabled（composer autopilot 档显隐门）随撤开关退役——
-// autopilot 档恒显，无键可关，本 store 不再承载该旗。
+// tl1796 r2：composer autopilot 档显隐旗随撤开关退役——autopilot 档恒显，
+// 无键可关，本 store 不再承载该旗。
 
 import { create } from "zustand";
 
