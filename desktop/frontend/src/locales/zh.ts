@@ -191,6 +191,21 @@ export const zh: Record<DictKey, string> = {
   "tabBar.tabActions": "标签页操作",
   "tabBar.commandSearch": "搜索 · 命令 · 打开文件",
   "tabBar.commandSearchCompact": "搜索",
+  // tl1797：tab 悬停卡片（三区块：身份/运行/消耗）
+  "tabBar.hoverCard.stateRunning": "运行中",
+  "tabBar.hoverCard.stateIdle": "空闲",
+  "tabBar.hoverCard.labelWorkspace": "工作区",
+  "tabBar.hoverCard.labelLastActivity": "最后活跃",
+  "tabBar.hoverCard.labelState": "状态",
+  "tabBar.hoverCard.labelElapsed": "已耗时",
+  "tabBar.hoverCard.labelModel": "模型",
+  "tabBar.hoverCard.effortValue": "力度 {{effort}}",
+  "tabBar.hoverCard.labelModes": "模式",
+  "tabBar.hoverCard.labelContext": "上下文",
+  "tabBar.hoverCard.context": "{{used}} / {{window}}（{{pct}}%）",
+  "tabBar.hoverCard.contextWithHeadroom": "{{used}} / {{window}}（{{pct}}%）· 距压缩阈值约 {{headroom}}（{{compactPct}}%）",
+  "tabBar.hoverCard.labelSessionCost": "会话成本",
+  "tabBar.hoverCard.labelTurns": "总轮次",
 
   // 任务 552:标签页概览面板（放大镜左侧入口）
   "tabOverview.title": "标签页概览",

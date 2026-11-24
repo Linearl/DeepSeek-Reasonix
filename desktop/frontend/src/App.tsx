@@ -241,11 +241,14 @@ import {
   type ExternalOpenerView,
   type SettingsView,
   type QualityFloor,
+  type ProjectNode,
   type TabMeta,
   type ToolApprovalMode,
   type WireCompletionSummary,
   type WorkspaceConflictView,
 } from "./lib/types";
+// tl1797：tab 悬停卡片补充数据 resolver 的树查找与载荷类型。
+import { findProjectNodeForTab, type TabHoverExtra } from "./lib/tabHoverCard";
 import { useComposerProfileStore } from "./app-runtime/composerProfileStore";
 import { useTabOrderSync } from "./app-runtime/tabOrderSync";
 import { useSidebarHoverBehavior } from "./app-runtime/useSidebarHoverBehavior";
@@ -5095,6 +5098,45 @@ export default function App() {
     }
   }, []);
 
+  // tl1797：tab 悬停卡片补充数据。TabMeta 直读字段（标题/工作区/运行态/模式）
+  // 由 TabBar 自持；这里只拉三样树/遥测数据：
+  //   ① ContextUsageForTab——上下文占用+会话成本（desktop/app_tab_status.go:45，
+  //      非活跃 tab 有界 2s 读，tl1500 刀①注释明示非护航面）；
+  //   ② ListProjectTree——按 topicId/sessionPath 找会话节点，取 lastActivityAt/
+  //      turns/modelRef/metaModel（queryCoalesce 白名单内，同一过渡窗共享）；
+  //   ③ 努力档——仅活跃会话可得（useController state.effort）；非活跃如实缺席
+  //      （卡片不渲染该行，不硬造）。
+  // 任何一路失败都只降级对应行，不整卡失败。file 型 tab 无会话节点，树查找
+  // 返回 undefined（findProjectNodeForTab 内建闸）。
+  const fetchTabHoverInfo = useCallback(async (tab: TabMeta): Promise<TabHoverExtra | null> => {
+    const [context, tree] = await Promise.all([
+      app.ContextUsageForTab(tab.id).catch(() => null),
+      app.ListProjectTree().catch(() => [] as ProjectNode[]),
+    ]);
+    const node = findProjectNodeForTab(tree, tab);
+    const effort = tab.id === activeTabId ? state.effort : undefined;
+    let effortLabel: string | undefined;
+    if (effort?.supported) {
+      const current = effort.current || "auto";
+      effortLabel = current === "auto"
+        ? t("common.auto")
+        : effort.options?.find((option) => option.id === current)?.name || current;
+    }
+    return {
+      lastActivityAt: node?.lastActivityAt ?? undefined,
+      turns: node?.turns ?? undefined,
+      modelRef: node?.modelRef ?? undefined,
+      metaModel: node?.metaModel ?? undefined,
+      effortLabel,
+      context: context && context.window > 0
+        ? { used: context.used, window: context.window, compactRatio: context.compactRatio }
+        : undefined,
+      sessionCost: context?.sessionCost,
+      sessionCurrency: context?.sessionCurrency,
+    };
+  }, [activeTabId, state.effort, t]);
+
+
   const handleNewTabInWorkspace = useCallback(async (hint: LastSessionWorkspaceInfo) => {
     closeTransientOverlays("new tab in workspace");
     setSidebarImDetailConnectionId("");
@@ -5956,6 +5998,7 @@ export default function App() {
               onToggleSplit={toggleSplitForTab}
               onFetchLastSessionWorkspace={fetchLastSessionWorkspace}
               onNewTabInWorkspace={(hint) => void handleNewTabInWorkspace(hint)}
+              onFetchTabHoverInfo={fetchTabHoverInfo}
               />
           </Suspense>
         )}

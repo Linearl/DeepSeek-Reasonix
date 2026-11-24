@@ -1,6 +1,7 @@
 import { PanelLeft, PanelRight, Search } from "lucide-react";
 import type { ReactNode } from "react";
 import { TabBar } from "./TabBar";
+import type { TabHoverExtra } from "../lib/tabHoverCard";
 import type { LastSessionWorkspaceInfo, TabMeta } from "../lib/types";
 import { useT } from "../lib/i18n";
 
@@ -38,6 +39,9 @@ export interface AppChromeProps {
   /** 任务546：新建会话「沿用最近会话的目录」（透传 TabBar；缺省则不渲染下拉）。 */
   onFetchLastSessionWorkspace?: () => Promise<LastSessionWorkspaceInfo | null>;
   onNewTabInWorkspace?: (hint: LastSessionWorkspaceInfo) => void;
+  /** tl1797：tab 悬停卡片补充数据 resolver（透传 TabBar；缺省则卡片只渲染
+   *  TabMeta 直读区块）。 */
+  onFetchTabHoverInfo?: (tab: TabMeta) => Promise<TabHoverExtra | null>;
 }
 
 export function AppChrome({
@@ -69,6 +73,7 @@ export function AppChrome({
   onToggleSplit,
   onFetchLastSessionWorkspace,
   onNewTabInWorkspace,
+  onFetchTabHoverInfo,
 }: AppChromeProps) {
   const t = useT();
   const darwinChrome = platform === "darwin";
@@ -98,6 +103,7 @@ export function AppChrome({
       onToggleSplit={onToggleSplit}
       onFetchLastSessionWorkspace={onFetchLastSessionWorkspace}
       onNewTabInWorkspace={onNewTabInWorkspace}
+      onFetchTabHoverInfo={onFetchTabHoverInfo}
     />
   );
 

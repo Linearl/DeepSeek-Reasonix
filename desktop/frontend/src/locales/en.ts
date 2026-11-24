@@ -196,6 +196,21 @@ export const en = {
   "tabBar.tabActions": "Tab actions",
   "tabBar.commandSearch": "Search · Command · Open file",
   "tabBar.commandSearchCompact": "Search",
+  // tl1797: tab hover card (three sections: identity / runtime / consumption)
+  "tabBar.hoverCard.stateRunning": "Running",
+  "tabBar.hoverCard.stateIdle": "Idle",
+  "tabBar.hoverCard.labelWorkspace": "Workspace",
+  "tabBar.hoverCard.labelLastActivity": "Last active",
+  "tabBar.hoverCard.labelState": "State",
+  "tabBar.hoverCard.labelElapsed": "Elapsed",
+  "tabBar.hoverCard.labelModel": "Model",
+  "tabBar.hoverCard.effortValue": "effort {{effort}}",
+  "tabBar.hoverCard.labelModes": "Modes",
+  "tabBar.hoverCard.labelContext": "Context",
+  "tabBar.hoverCard.context": "{{used}} / {{window}} ({{pct}}%)",
+  "tabBar.hoverCard.contextWithHeadroom": "{{used}} / {{window}} ({{pct}}%) · {{headroom}} to compaction ({{compactPct}}%)",
+  "tabBar.hoverCard.labelSessionCost": "Session cost",
+  "tabBar.hoverCard.labelTurns": "Turns",
 
   // task 552: tab overview panel (entry left of the search button)
   "tabOverview.title": "Tab overview",

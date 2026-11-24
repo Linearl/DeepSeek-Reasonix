@@ -3,6 +3,7 @@
 import { crossGroupDropIntent, isSplitViewEnabled, onSplitViewEnabledChange } from "../lib/splitView";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, DragEvent, KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { CheckCheck, ChevronDown, FileText, FolderSymlink, Plus, Search, X } from "lucide-react";
 import { normalizeCollaborationMode, normalizeMode, normalizeToolApprovalMode, type CollaborationMode, type LastSessionWorkspaceInfo, type Mode, type TabMeta, type ToolApprovalMode } from "../lib/types";
 import { projectColorValue } from "../lib/projectColors";
@@ -16,6 +17,10 @@ import { selectCloseInactiveIds, selectCloseOtherIds, selectCloseRightIds } from
 import { markTabsAllRead } from "../lib/readActivity";
 // 任务 506：标签栏自适应压缩开关（experimental_tab_compress，默认关）。
 import { labFlagEnabled, onLabFlagsChange, tabPermissionIndicatorMode } from "../lib/labFlags";
+// tl1797：tab 悬停卡片——纯模型与完整标题迁库（tabDisplayTitle/tabFullTitle
+// 原 TabBar 模块内函数，转 lib 供卡片模型与标签条共用同一事实源）。
+import { tabDisplayTitle, tabFullTitle, tabHoverCardModel, type TabHoverExtra, type TabHoverCardSections } from "../lib/tabHoverCard";
+import { useTick } from "../lib/workStatus";
 
 interface TabBarProps {
   tabs: TabMeta[];
@@ -38,6 +43,9 @@ interface TabBarProps {
   onFetchLastSessionWorkspace?: () => Promise<LastSessionWorkspaceInfo | null>;
   /** 任务546：用户选择「沿用最近会话的目录」（含失效回落，由挂载点处理提示）。 */
   onNewTabInWorkspace?: (hint: LastSessionWorkspaceInfo) => void;
+  /** tl1797：拉取悬停卡片补充数据（树查找 + ContextUsageForTab）；未提供时
+   * 卡片只渲染 TabMeta 直读字段（身份/运行两区块的直读部分）。 */
+  onFetchTabHoverInfo?: (tab: TabMeta) => Promise<TabHoverExtra | null>;
 }
 
 type DropSide = "before" | "after";
@@ -46,6 +54,21 @@ type DropSide = "before" | "after";
  * the pointer across the strip does not start speculative reads, short enough
  * that a real click still lands on a warm tab. */
 const HOVER_PREFETCH_DEBOUNCE_MS = 150;
+
+/** tl1797：悬停卡片弹出延迟。任务书定 400ms——比 prefetch 的 150ms 长
+ * （划过标签条不弹卡），比原生 tooltip 的 ~1s 短（卡片先到，原生 title 在
+ * 该签悬停期间置空避免双 tooltip）。 */
+const HOVER_CARD_DELAY_MS = 400;
+
+/** tl1797 悬停卡片状态：打开中的 tab id + 卡片定位锚（tab 元素）+ 异步补
+ * 充数据。extra 为 null = resolver 未提供/未返回；卡片先渲染 TabMeta 直读
+ * 区块，extra 到达后补渲染消耗区与模型/轮次/最后活跃行（与 tl1769 职责行
+ * 按需拉取同款：卡片即时出现，重数据后到填充）。 */
+interface TabHoverCardState {
+  tabId: string;
+  anchor: HTMLElement;
+  extra: TabHoverExtra | null;
+}
 
 /**
  * 任务 506 降宽档位（溢出驱动判据，修订自按标签数量分档的首版）：
@@ -132,23 +155,8 @@ function measureTabStripAvailWidth(bar: HTMLElement, strip: HTMLElement): number
   return Math.max(0, Math.round(avail));
 }
 
-function tabDisplayTitle(tab: TabMeta): string {
-  if (tab.tabType === "file" || tab.scope === "file") return tab.topicTitle?.trim() || tab.filePath?.split("/").filter(Boolean).pop() || "File";
-  const title = tab.topicTitle?.trim();
-  if (tab.scope === "global") return title || "Global";
-  return title || "Untitled";
-}
-
-function tabFullTitle(tab: TabMeta): string {
-  if (tab.tabType === "file" || tab.scope === "file") return tab.filePath || tabDisplayTitle(tab);
-  if (tab.scope === "global") {
-    const title = tabDisplayTitle(tab);
-    const workspaceName = tab.workspaceName?.trim() || "Global";
-    return title === workspaceName ? workspaceName : `${workspaceName} / ${title}`;
-  }
-  const workspaceName = tab.workspaceName?.trim() || "Project";
-  return `${workspaceName} / ${tabDisplayTitle(tab)}`;
-}
+// tl1797：tabDisplayTitle/tabFullTitle 迁 lib/tabHoverCard.ts（原位删除，
+// import 承接——标签条与悬停卡片同一事实源，不复制两份标题拼接逻辑）。
 
 function tabMode(tab: TabMeta): Mode {
   return normalizeMode(tab.mode);
@@ -185,7 +193,7 @@ function projectAccentStyle(color?: string): CSSProperties | undefined {
   return { "--project-accent": value } as CSSProperties;
 }
 
-export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabStopAndClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit, onFetchLastSessionWorkspace, onNewTabInWorkspace }: TabBarProps) {
+export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose, onTabStopAndClose, onTabsReorder, onNewTab, onOpenPalette, commandCompact = false, revealActiveSignal = 0, splitTabId = null, onToggleSplit, onFetchLastSessionWorkspace, onNewTabInWorkspace, onFetchTabHoverInfo }: TabBarProps) {
   // Task 70-1: the split is an experiment - with the switch off the menu below is
   // exactly the pre-split list.
   const [splitViewEnabled, setSplitViewEnabled] = useState(isSplitViewEnabled());
@@ -226,6 +234,11 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const suppressClickRef = useRef(false);
   const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   const hoverPrefetchTimer = useRef<number | null>(null);
+  // tl1797：悬停卡片定时器与状态。fetchGen 计数丢弃过期 resolver 结果
+  // （快速划过多签时，慢返回不得覆盖另一签的卡片数据）。
+  const [hoverCard, setHoverCard] = useState<TabHoverCardState | null>(null);
+  const hoverCardTimer = useRef<number | null>(null);
+  const hoverCardFetchGen = useRef(0);
   const backendActiveTabId = tabs.find((tab) => tab.active)?.id;
   const activeTabIdExists = Boolean(activeTabId && tabs.some((tab) => tab.id === activeTabId));
   const resolvedActiveTabId = activeTabIdExists ? activeTabId : backendActiveTabId;
@@ -243,6 +256,50 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   }, [backendActiveTabId, resolvedActiveTabId, revealActiveSignal, tabOrderKey]);
 
   useEffect(() => () => cancelHoverPrefetch(), []);
+
+  // ── tl1797：tab 悬停卡片 ────────────────────────────────────────────────
+  // 400ms 延迟弹卡（任务书定档）；移出/拖拽/右键菜单/关闭即收。extra 由
+  // App 注入的 resolver 异步拉取（树查找+ContextUsageForTab），卡片即时
+  // 渲染直读区块、extra 到达后填充（tl1769 职责行按需拉取同款）。
+  const cancelTabHoverCard = useCallback(() => {
+    if (hoverCardTimer.current !== null) {
+      window.clearTimeout(hoverCardTimer.current);
+      hoverCardTimer.current = null;
+    }
+    hoverCardFetchGen.current += 1;
+    setHoverCard((current) => (current ? null : current));
+  }, []);
+
+  const scheduleTabHoverCard = useCallback((element: HTMLElement, tab: TabMeta) => {
+    if (hoverCardTimer.current !== null) window.clearTimeout(hoverCardTimer.current);
+    hoverCardTimer.current = window.setTimeout(() => {
+      hoverCardTimer.current = null;
+      if (!element.isConnected) return;
+      const generation = hoverCardFetchGen.current + 1;
+      hoverCardFetchGen.current = generation;
+      setHoverCard({ tabId: tab.id, anchor: element, extra: null });
+      if (!onFetchTabHoverInfo) return;
+      void onFetchTabHoverInfo(tab).then((extra) => {
+        if (hoverCardFetchGen.current !== generation) return;
+        setHoverCard((current) => (current && current.tabId === tab.id ? { ...current, extra: extra ?? null } : current));
+      }).catch(() => {
+        // resolver 失败 = 补充数据缺席；卡片保持直读区块，不弹错误。
+      });
+    }, HOVER_CARD_DELAY_MS);
+  }, [onFetchTabHoverInfo]);
+
+  // 被悬停的 tab 关闭/不可见后卡片必须跟着消失（标签条重排、批量关闭）。
+  const hoverCardTabId = hoverCard?.tabId;
+  useEffect(() => {
+    if (!hoverCardTabId) return;
+    if (tabs.some((tab) => tab.id === hoverCardTabId)) return;
+    cancelTabHoverCard();
+  }, [cancelTabHoverCard, hoverCardTabId, tabs]);
+
+  useEffect(() => () => {
+    if (hoverCardTimer.current !== null) window.clearTimeout(hoverCardTimer.current);
+  }, []);
+
 
   const handleClose = (tabId: string) => {
     onTabClose(tabId);
@@ -271,6 +328,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   };
 
   const handleDragStart = (event: DragEvent<HTMLButtonElement>, tabId: string) => {
+    cancelTabHoverCard();
     setDraggingTabId(tabId);
     setDropTarget(null);
     event.dataTransfer.effectAllowed = "move";
@@ -348,6 +406,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const openTabMenu = (event: ReactMouseEvent<HTMLButtonElement> | ReactKeyboardEvent<HTMLButtonElement>, tabId: string) => {
     event.preventDefault();
     event.stopPropagation();
+    cancelTabHoverCard();
     setMenuTabId(tabId);
     setMenuPoint(contextMenuPointFromEvent(event));
   };
@@ -526,6 +585,22 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
     ];
   }, [lastWorkspace, onNewTabInWorkspace, t]);
 
+  // ── tl1797：悬停卡片数据面 ─────────────────────────────────────────────
+  // useTick 驱动运行中的已耗时/相对时间每秒重算（workStatus.ts 既有件，
+  // 隐藏 webview 节流时 visibilitychange 立即补一帧）；卡片随 tab props
+  // 更新自动重渲染（running/turnStatus 变化零额外订阅）。
+  const hoverCardTab = hoverCard ? orderedTabs.find((tab) => tab.id === hoverCard.tabId) : undefined;
+  const hoverNow = useTick(Boolean(hoverCardTab?.running));
+  const hoverSections: TabHoverCardSections | null = hoverCard && hoverCardTab
+    ? tabHoverCardModel(hoverCardTab, hoverCard.extra, t, hoverNow)
+    : null;
+  const hoverAnchorRect = hoverCard?.anchor.isConnected ? hoverCard.anchor.getBoundingClientRect() : null;
+  // 水平钳位：卡片最宽 360px + 8px 边距；窗口过窄退到左缘 8px。
+  const hoverLeft = hoverAnchorRect
+    ? Math.min(Math.max(hoverAnchorRect.left, 8), Math.max(8, window.innerWidth - 368))
+    : 8;
+  const hoverTop = hoverAnchorRect ? hoverAnchorRect.bottom + 8 : 8;
+
   return (
     <div
       ref={barRef}
@@ -601,14 +676,20 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
                 draggingTabId === tab.id ? "tabbar__tab--dragging" : "",
                 dropTarget?.id === tab.id ? `tabbar__tab--drop-${dropTarget.side}` : "",
               ].filter(Boolean).join(" ")}
-              title={annotatedTitle}
+              title={hoverCard?.tabId === tab.id ? undefined : annotatedTitle}
               aria-label={annotatedTitle}
               data-mode-tint={modeTint ?? undefined}
               style={projectAccentStyle(tab.projectColor)}
               onClick={() => handleTabClick(tab.id)}
               onAuxClick={(event) => handleTabAuxClick(event, tab.id)}
-              onMouseEnter={() => scheduleHoverPrefetch(tab)}
-              onMouseLeave={cancelHoverPrefetch}
+              onMouseEnter={(event) => {
+                scheduleHoverPrefetch(tab);
+                scheduleTabHoverCard(event.currentTarget, tab);
+              }}
+              onMouseLeave={() => {
+                cancelHoverPrefetch();
+                cancelTabHoverCard();
+              }}
               onMouseDown={(event) => {
                 // Prevent the browser/webview middle-click auto-scroll before auxclick fires.
                 if (event.button === 1) event.preventDefault();
@@ -723,6 +804,60 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
         ariaLabel={t("tabBar.newSessionMore")}
         onClose={closeNewMenu}
       />
+      {hoverCard && hoverSections && createPortal(
+        /* tl1797 悬停卡片：body portal + position:fixed（tl1769 同款层——
+           复用既有 hover-card 弹出层机制，不新建弹窗体系）；pointer-events:none
+           不抢悬停；悬停期间该签原生 title 置空防双 tooltip（ProjectTree
+           classic 行同款手法）。定位：tab 正下方 8px，水平钳位不出窗。 */
+        <div
+          className="tabbar__hover-card"
+          data-tab-hover-card=""
+          style={{ left: hoverLeft, top: hoverTop }}
+          aria-hidden="true"
+        >
+          <div className="tabbar__hover-card-title">{hoverSections.identityTitle}</div>
+          <div className="tabbar__hover-card-section" data-section="identity">
+            {hoverSections.identityRows.map((row) => (
+              <div key={row.key} className="tabbar__hover-card-row">
+                <span className="tabbar__hover-card-row-label">{row.label}</span>
+                <span className="tabbar__hover-card-row-value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+          <div className="tabbar__hover-card-section" data-section="runtime">
+            {hoverSections.runtimeRows.map((row) => (
+              <div
+                key={row.key}
+                className={[
+                  "tabbar__hover-card-row",
+                  row.tone === "running" ? "tabbar__hover-card-row--running" : "",
+                  row.tone === "attention" ? "tabbar__hover-card-row--attention" : "",
+                ].filter(Boolean).join(" ")}
+              >
+                <span className="tabbar__hover-card-row-label">{row.label}</span>
+                <span className="tabbar__hover-card-row-value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+          {hoverSections.consumptionRows.length > 0 && (
+            <div className="tabbar__hover-card-section" data-section="consumption">
+              {hoverSections.consumptionRows.map((row) => (
+                <div
+                  key={row.key}
+                  className={[
+                    "tabbar__hover-card-row",
+                    row.tone === "attention" ? "tabbar__hover-card-row--attention" : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <span className="tabbar__hover-card-row-label">{row.label}</span>
+                  <span className="tabbar__hover-card-row-value">{row.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }
