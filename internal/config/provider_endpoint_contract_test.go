@@ -24,6 +24,25 @@ func TestDeepSeekEndpointContract(t *testing.T) {
 	}
 }
 
+// tl1774 pin: the contract layer keeps auto-completing a bare base into the
+// protocol's request URL — the save-time editor warning (frontend) leans on
+// this behaviour and must never regress into requesting the bare base as-is.
+func TestProviderRequestURLBareBaseAutoCompletion(t *testing.T) {
+	want := map[string]string{
+		"openai":    "http://192.168.1.50:8080/chat/completions",
+		"responses": "http://192.168.1.50:8080/responses",
+		"anthropic": "http://192.168.1.50:8080/v1/messages",
+	}
+	for kind, requestURL := range want {
+		if got := ProviderRequestURL(kind, "http://192.168.1.50:8080"); got != requestURL {
+			t.Fatalf("bare base %s request URL = %q, want %q", kind, got, requestURL)
+		}
+	}
+	if got := ProviderRequestURL("anthropic", "http://192.168.1.50:8080/v1"); got != "http://192.168.1.50:8080/v1/messages" {
+		t.Fatalf("anthropic /v1 base request URL = %q", got)
+	}
+}
+
 func TestProviderEndpointMismatchIsConservative(t *testing.T) {
 	cases := []struct {
 		name     string

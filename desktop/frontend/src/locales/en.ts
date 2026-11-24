@@ -43,6 +43,8 @@ export const en = {
   "navigation.viewDiagnostics": "View diagnostics",
   "navigation.forceExitOverlay": "Force exit overlay",
   "settings.providerProtocolMismatch": "The endpoint does not match the selected API format.",
+  "settings.providerProtocolPathMissing": "The address does not end with {suffix}; it will be requested unchanged, which usually 404s on provider base addresses. Keep the custom path by saving, or apply the protocol path.",
+  "settings.providerProtocolPathApply": "Append {suffix}",
   "settings.imageInputLabel": "Image input",
   "settings.imageInputModeAria": "Image input mode for {model}",
   "settings.imageInputAuto": "Auto",

@@ -42,6 +42,8 @@ export const zh: Record<DictKey, string> = {
   "navigation.viewDiagnostics": "查看诊断",
   "navigation.forceExitOverlay": "强制退出遮罩",
   "settings.providerProtocolMismatch": "API 地址与所选协议不一致。",
+  "settings.providerProtocolPathMissing": "地址未以 {suffix} 结尾：系统将原样请求此地址，多数服务商 base 地址会 404。确认服务就在此路径可直接保存，或点击补全。",
+  "settings.providerProtocolPathApply": "补全 {suffix}",
   "settings.imageInputLabel": "图片输入",
   "settings.imageInputModeAria": "{model} 的图片输入模式",
   "settings.imageInputAuto": "自动",

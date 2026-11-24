@@ -3,6 +3,7 @@ import {
   providerRequestURLForFormatChange,
   providerBaseURLFromRequestURL,
   providerEndpointMismatchDetail,
+  providerPathShapeDetail,
   providerRequestURLForCatalogFormatChange,
   providerRequestURLFromConfig,
 } from "../lib/providerEndpoint";
@@ -18,6 +19,9 @@ function eq(actual: unknown, expected: unknown, label: string) {
 console.log("\nprovider endpoint");
 
 eq(providerRequestURLFromConfig("openai", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/chat/completions", "legacy OpenAI base URLs expose their effective request URL");
+eq(providerRequestURLFromConfig("openai", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/chat/completions", "tl1774 bare base still auto-completes the chat path");
+eq(providerRequestURLFromConfig("anthropic", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/v1/messages", "tl1774 bare anthropic base auto-completes the messages path");
+eq(providerRequestURLFromConfig("responses", "http://192.168.1.50:8080", ""), "http://192.168.1.50:8080/responses", "tl1774 bare responses base auto-completes the responses path");
 eq(providerRequestURLFromConfig("anthropic", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/messages", "legacy Anthropic base URLs expose their effective request URL");
 eq(providerRequestURLFromConfig("responses", "https://proxy.example.com/v1", ""), "https://proxy.example.com/v1/responses", "legacy Responses base URLs expose their effective request URL");
 eq(providerRequestURLFromConfig("openai", "https://proxy.example.com/v1", "", "https://legacy.example.com/chat/completions/"), "https://legacy.example.com/chat/completions", "legacy OpenAI chat URLs preserve historical trailing-slash normalization");
@@ -63,5 +67,35 @@ eq(providerEndpointMismatchDetail("openai", "https://api.deepseek.com/chat/compl
 eq(providerEndpointMismatchDetail("openai", "https://api.xiaomimimo.com/v1/chat/completions", mimoCatalog).mismatch, false, "shared Chat and Responses base remains valid");
 eq(providerEndpointMismatchDetail("openai", "https://gateway.example/anthropic/v1/chat/completions", deepSeekCatalog).mismatch, false, "custom host is not catalog-rewritten");
 eq(providerEndpointMismatchDetail("openai", "https://api.deepseek.com/anthropic/custom/chat/completions", deepSeekCatalog).mismatch, false, "unknown custom path on the official host stays user-owned");
+
+console.log("\nprovider path shape (tl1774)");
+const shape = (kind: string, url: string) => providerPathShapeDetail(kind, url);
+eq(shape("openai", "http://192.168.1.50:8080").missingProtocolPath, true, "bare LocalAI-style host warns before the 404 does");
+eq(shape("openai", "http://192.168.1.50:8080").suggestedUrl, "http://192.168.1.50:8080/chat/completions", "bare host suggestion appends the chat path");
+eq(shape("openai", "http://host:8080/v1").missingProtocolPath, true, "base+/v1 still lacks the chat path");
+eq(shape("openai", "http://host:8080/v1").suggestedUrl, "http://host:8080/v1/chat/completions", "v1 base suggestion appends /chat/completions");
+eq(shape("openai", "https://api.openai.com/v1/chat/completions").missingProtocolPath, false, "correct openai suffix stays silent");
+eq(shape("openai", "https://gw.example/chat/completions").missingProtocolPath, false, "root chat suffix stays silent");
+eq(shape("openai", "http://host:8080/").missingProtocolPath, true, "trailing-slash bare host warns");
+eq(shape("anthropic", "https://gw.example").missingProtocolPath, true, "bare anthropic base warns");
+eq(shape("anthropic", "https://gw.example").suggestedUrl, "https://gw.example/v1/messages", "bare anthropic suggestion builds the v1 messages path");
+eq(shape("anthropic", "https://gw.example/v1").suggestedUrl, "https://gw.example/v1/messages", "v1 anthropic base reuses the existing version segment");
+eq(shape("anthropic", "https://gw.example/v1/messages").missingProtocolPath, false, "correct anthropic suffix stays silent");
+eq(shape("anthropic", "https://gw.example/messages").missingProtocolPath, false, "short anthropic suffix stays silent");
+eq(shape("responses", "https://gw.example").missingProtocolPath, true, "bare responses base warns");
+eq(shape("responses", "https://gw.example").suggestedUrl, "https://gw.example/responses", "bare responses suggestion appends /responses");
+eq(shape("responses", "https://gw.example/v1/responses").missingProtocolPath, false, "correct responses suffix stays silent");
+eq(shape("dashscope-responses", "https://gw.example").suggestedUrl, "https://gw.example/responses", "dashscope alias normalizes to the responses shape");
+eq(shape("openai", "https://gw.example/api?token=1").missingProtocolPath, false, "query-bearing addresses stay user-owned and silent");
+eq(shape("openai", "https://user:pass@gw.example/api").missingProtocolPath, false, "userinfo addresses stay user-owned and silent");
+eq(shape("openai", "https://gw.example/api%2Fpath").missingProtocolPath, false, "percent-encoded custom paths stay silent");
+eq(shape("openai", "not a url").missingProtocolPath, false, "unparseable drafts stay silent");
+eq(shape("openai", "").missingProtocolPath, false, "empty drafts stay silent");
+eq(shape("unknown-kind", "http://gw.example").missingProtocolPath, false, "unregistered protocols stay silent");
+eq(shape("openai", "https://tokenrhythm.studio/v1").missingProtocolPath, false, "Token Rhythm official base is runtime-rewritten and stays silent");
+eq(shape("openai", "https://api.stepfun.com/step_plan").missingProtocolPath, false, "StepFun documented step_plan base stays silent");
+eq(shape("openai", "https://tokenrhythm.studio/v1/models").missingProtocolPath, false, "Token Rhythm models-path base is runtime-rewritten and stays silent");
+eq(shape("openai", "https://gw.example/api/v2/ask").missingProtocolPath, true, "custom gateway paths warn while confirm-to-save stays available");
+eq(shape("openai", "https://api.deepseek.com/anthropic/v1/chat/completions").missingProtocolPath, false, "cross-protocol suffixes defer to the mismatch banner");
 
 if (failed > 0) process.exit(1);

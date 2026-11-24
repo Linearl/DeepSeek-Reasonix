@@ -402,6 +402,26 @@ func (e *APIError) Error() string {
 	return base
 }
 
+// endpointNotFoundHint names the request-side exit for a 404 on the chat route
+// (tl1774, issue #105): a base address saved as the exact request URL is
+// requested unchanged, most providers answer 404, while the setup probe (the
+// model catalog on GET /models) still succeeds — the exact "test connection
+// passes, every chat fails" signature the settings editor now warns about at
+// save time. The hint names the protocol's chat path so the fix is one
+// settings edit away; unknown adapter ids get the generic three-path form.
+func endpointNotFoundHint(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "openai":
+		return "HTTP 404 on the chat endpoint usually means the configured request URL has no chat route. Check the provider's base_url/request_url in settings: OpenAI-compatible endpoints normally end with /chat/completions (often .../v1/chat/completions)."
+	case "anthropic":
+		return "HTTP 404 on the messages endpoint usually means the configured request URL has no messages route. Check the provider's base_url/request_url in settings: Anthropic Messages endpoints normally end with /v1/messages."
+	case "responses":
+		return "HTTP 404 on the responses endpoint usually means the configured request URL has no responses route. Check the provider's base_url/request_url in settings: Responses API endpoints normally end with /responses."
+	default:
+		return "HTTP 404 on the chat endpoint usually means the configured request URL has no chat route. Check the provider's base_url/request_url in settings: the address normally ends with the protocol's chat path (/chat/completions, /v1/messages or /responses)."
+	}
+}
+
 // RetryableStatus reports whether a backoff can plausibly recover from status s:
 // 408 (request timeout), 429 (rate limit) and 5xx (incl. Anthropic's 529). Other
 // 4xx (400/401/402/422, …) are caller/config problems retrying can't fix.
@@ -717,6 +737,12 @@ func SendWithRetry(ctx context.Context, httpClient *http.Client, opts SendOption
 			Body:                strings.TrimSpace(string(msg)),
 			TraceID:             responseTraceID(resp.Header),
 			RequestPath:         responseRequestPath(resp),
+		}
+		// tl1774: a 404 on the chat POST is the bare-base signature (see
+		// endpointNotFoundHint). Other statuses keep their bodies as the only
+		// diagnostic — the hint stays 404-scoped so it never noise-attaches.
+		if resp.StatusCode == http.StatusNotFound {
+			apiErr.Hint = endpointNotFoundHint(opts.Protocol)
 		}
 		if !RetryableStatus(resp.StatusCode) {
 			if limitErr := ParseOutputLimitError(apiErr); limitErr != nil {
