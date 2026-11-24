@@ -61,6 +61,20 @@
   /* Operational overlays are opaque unless a background theme pack opts into
      the existing pane-opacity contract. */
   --overlay-surface-bg: var(--bg-elev);
+  /* Theme-invariant color constants (tl1800): same value in every theme, each
+     pinned to one semantic role. --highlight-color mirrors --shadow-color for
+     the white side of shadows/tints; --scrim-color dims full-area overlays;
+     --shade-color is the darken component of color-mix; brand colors are IM
+     platform identities that never follow the theme. */
+  --text-on-color: #fff;
+  --surface-white: #fff;
+  --highlight-color: #fff;
+  --scrim-color: #000;
+  --shade-color: #000;
+  --brand-feishu: #2f80ff;
+  --brand-qq: #ff5a3d;
+  --brand-lark: #4f7dff;
+  --brand-weixin: #22b35f;
   --global-font-scale: 1;
   --font-scale: var(--global-font-scale);
   --text-2xs: calc(10px * var(--font-scale));
@@ -2254,21 +2268,21 @@ a[href] {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
-  color: #fff;
+  color: var(--text-on-color);
   font-size: var(--text-xs);
   font-weight: 750;
 }
 .sidebar-im-row__platform--feishu {
-  background: #2f80ff;
+  background: var(--brand-feishu);
 }
 .sidebar-im-row__platform--qq {
-  background: #ff5a3d;
+  background: var(--brand-qq);
 }
 .sidebar-im-row__platform--lark {
-  background: #4f7dff;
+  background: var(--brand-lark);
 }
 .sidebar-im-row__platform--weixin {
-  background: #22b35f;
+  background: var(--brand-weixin);
 }
 .sidebar-im-row__main {
   min-width: 0;
@@ -2833,21 +2847,21 @@ a[href] {
   width: 42px;
   height: 42px;
   border-radius: var(--radius-md);
-  color: #fff;
+  color: var(--text-on-color);
   font-size: 16px;
   font-weight: 800;
 }
 .bot-detail__avatar--feishu {
-  background: #2f80ff;
+  background: var(--brand-feishu);
 }
 .bot-detail__avatar--qq {
-  background: #ff5a3d;
+  background: var(--brand-qq);
 }
 .bot-detail__avatar--lark {
-  background: #4f7dff;
+  background: var(--brand-lark);
 }
 .bot-detail__avatar--weixin {
-  background: #22b35f;
+  background: var(--brand-weixin);
 }
 .bot-detail__summary-main {
   display: grid;
@@ -3845,7 +3859,7 @@ a[href] {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 60px color-mix(in srgb, var(--shadow-color) 45%, transparent);
   overflow: hidden;
 }
 .fork-features-dialog__bar {
@@ -4052,7 +4066,7 @@ a[href] {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 18px 60px color-mix(in srgb, var(--shadow-color) 45%, transparent);
   overflow: hidden;
 }
 .lab-pick-dialog__bar {
@@ -5196,7 +5210,7 @@ a[href] {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 18%, transparent);
   color: var(--fg);
   font-size: var(--text-sm);
   line-height: 1.45;
@@ -5635,7 +5649,7 @@ a[href] {
   border-radius: var(--radius-sm);
   color: var(--fg-dim);
   padding: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--shadow-color) 12%, transparent);
   transition: background 120ms ease, border-color 120ms ease;
 }
 .rewind__btn:hover,
@@ -5660,7 +5674,7 @@ a[href] {
   background: var(--bg-soft);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 28%, transparent);
 }
 .rewind__menu-hint {
   padding: 5px 9px;
@@ -7278,7 +7292,7 @@ button.reasoning-summary:focus-visible {
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow-color) 15%, transparent);
   max-width: calc(100% - 16px);
   font-family: var(--font-sans);
   font-size: var(--text-sm);
@@ -7541,7 +7555,7 @@ button.reasoning-summary:focus-visible {
   height: clamp(220px, 46vh, 560px);
   min-width: 0;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--surface-white);
   cursor: grab;
   user-select: none;
 }
@@ -7824,7 +7838,7 @@ body > .mermaid-diagram--fullscreen {
   max-height: 80vh;
   object-fit: contain;
   border-radius: var(--radius-sm);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 24px color-mix(in srgb, var(--shadow-color) 18%, transparent);
 }
 .image-viewer__name {
   color: var(--fg-dim);
@@ -8833,7 +8847,7 @@ body > .mermaid-diagram--fullscreen {
   border-radius: 12px; /* 833-radius-wl:large */
   background: var(--bg-elev);
   overflow: visible;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow-color) 8%, transparent);
   transition: border-color 0.12s;
 }
 .composer-card--resized {
@@ -9059,7 +9073,7 @@ body > .mermaid-diagram--fullscreen {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 5px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 40%, transparent);
   z-index: var(--z-inline-sticky);
 }
 .slashmenu__sizer {
@@ -9494,7 +9508,7 @@ body > .mermaid-diagram--fullscreen {
   background: color-mix(in srgb, var(--warning, #b45309) 12%, transparent);
 }
 .composer__btn--send:not(:disabled):hover {
-  background: color-mix(in srgb, var(--control-primary-bg) 88%, #000);
+  background: color-mix(in srgb, var(--control-primary-bg) 88%, var(--shade-color));
   transform: translateY(-1px);
 }
 .composer__btn--send:not(:disabled):focus-visible {
@@ -9935,8 +9949,8 @@ body > .mermaid-diagram--fullscreen {
   border-radius: var(--radius-pill);
   background: var(--composer-modebar-active-bg);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent),
-    0 1px 3px color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--highlight-color) 18%, transparent),
+    0 1px 3px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   transform: translateX(calc(var(--composer-modebar-index) * 100%));
   transition: transform 0.16s var(--ease-out), border-color 0.16s, background 0.16s, box-shadow 0.16s;
   pointer-events: none;
@@ -10460,7 +10474,7 @@ body > .mermaid-diagram--fullscreen {
   padding: 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--shadow-color) 28%, transparent);
 }
 
 .composer-content-menu {
@@ -11699,7 +11713,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 5px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 45%, transparent);
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
 }
@@ -11831,7 +11845,7 @@ button.statusbar__mcp:focus-visible {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, var(--scrim-color) 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -11844,7 +11858,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
   padding: 18px;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 16px 48px color-mix(in srgb, var(--shadow-color) 45%, transparent);
 }
 .modal__title {
   font-weight: 600;
@@ -12382,7 +12396,7 @@ button.statusbar__mcp:focus-visible {
 .prompt-action--danger.prompt-action--selected .prompt-action__key {
   border-color: var(--err);
   background: var(--err);
-  color: #fff;
+  color: var(--text-on-color);
 }
 .prompt-shelf__footer {
   border-top: 1px solid var(--border-soft);
@@ -13094,7 +13108,7 @@ button.statusbar__mcp:focus-visible {
   padding: 8px 10px;
   border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
   border-radius: var(--radius-md);
-  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--shadow-color) 6%, transparent);
 }
 .prompt-shelf--compact .prompt-shelf__header {
   align-items: center;
@@ -13723,7 +13737,7 @@ button.statusbar__mcp:focus-visible {
   padding: 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--shadow-color) 28%, transparent);
 }
 .workspace-recent-menu__title {
   padding: 3px 6px 7px;
@@ -14112,7 +14126,7 @@ button.statusbar__mcp:focus-visible {
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   transform-origin: top left;
   animation: menu-pop-in var(--dur-base) var(--ease-out) both;
 }
@@ -14160,7 +14174,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: var(--bg-elev);
   color: var(--fg);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   font-size: var(--text-sm);
   line-height: 1.35;
   overflow-wrap: anywhere;
@@ -14459,7 +14473,7 @@ button.statusbar__mcp:focus-visible {
 .workspace-files__tab--active {
   background: var(--bg-elev);
   color: var(--fg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-color) 16%, transparent);
 }
 .workspace-files__mode-label {
   flex: 1 1 auto;
@@ -15105,7 +15119,7 @@ button.statusbar__mcp:focus-visible {
 .drawer-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: color-mix(in srgb, var(--scrim-color) 40%, transparent);
   display: flex;
   justify-content: flex-end;
   z-index: var(--z-drawer-backdrop);
@@ -15128,7 +15142,7 @@ button.statusbar__mcp:focus-visible {
   animation: backdrop-out var(--dur-base) var(--ease-out) both;
 }
 .drawer-backdrop--subtle {
-  background: rgba(0, 0, 0, 0.16);
+  background: color-mix(in srgb, var(--scrim-color) 16%, transparent);
 }
 
 /* ── command palette (⌘K) — centered modal over a dimmed backdrop ─────────── */
@@ -15137,7 +15151,7 @@ button.statusbar__mcp:focus-visible {
      用户用快捷键」，所以呼出后不再贴着按钮弹出）。 */
   justify-content: center;
   align-items: center;
-  background: rgba(0, 0, 0, 0.42);
+  background: color-mix(in srgb, var(--scrim-color) 42%, transparent);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
@@ -15149,7 +15163,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   border: 1px solid var(--border-2, var(--border));
   border-radius: 14px; /* 833-radius-wl:large */
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--shadow-color) 50%, transparent);
   overflow: hidden;
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
@@ -15425,7 +15439,7 @@ button.statusbar__mcp:focus-visible {
   justify-content: center;
   align-items: flex-start;
   padding-top: 8vh;
-  background: rgba(0, 0, 0, 0.42);
+  background: color-mix(in srgb, var(--scrim-color) 42%, transparent);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
@@ -15438,7 +15452,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   border: 1px solid var(--border-2, var(--border));
   border-radius: 14px; /* 833-radius-wl:large */
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 24px 70px color-mix(in srgb, var(--shadow-color) 50%, transparent);
   overflow: hidden;
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
@@ -16646,7 +16660,7 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   background: var(--bg-elev);
   border-left: 1px solid var(--border);
-  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.46);
+  box-shadow: -18px 0 48px color-mix(in srgb, var(--shadow-color) 46%, transparent);
   display: flex;
   flex-direction: column;
   animation: drawer-in var(--dur-slow) var(--ease-out) both;
@@ -16854,7 +16868,7 @@ button.statusbar__mcp:focus-visible {
   transform: translate(-50%, 0);
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--shadow-color) 24%, transparent);
 }
 
 :where(button, a, input, textarea, select):focus-visible {
@@ -16934,7 +16948,7 @@ button.statusbar__mcp:focus-visible {
   max-width: min(90vw, 320px);
   border-radius: var(--radius-md);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 24%, transparent);
   padding: 4px;
 }
 .mem-ws-select__list {
@@ -17224,7 +17238,7 @@ button.statusbar__mcp:focus-visible {
 .mem-doc:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
 }
 .mem-doc::before {
   content: "";
@@ -17412,7 +17426,7 @@ button.statusbar__mcp:focus-visible {
 .mem-fact:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
 }
 .mem-fact--archived {
   --mem-type-color: var(--fg-faint);
@@ -17942,7 +17956,7 @@ button.statusbar__mcp:focus-visible {
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 10px 30px color-mix(in srgb, var(--shadow-color) 35%, transparent);
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -19062,7 +19076,7 @@ button.statusbar__mcp:focus-visible {
 .cap-tab--active {
   background: var(--bg-elev);
   color: var(--fg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
 .cap-search {
   margin-bottom: 8px;
@@ -20340,7 +20354,7 @@ button.statusbar__mcp:focus-visible {
   position: fixed;
   inset: 0;
   z-index: var(--z-modal);
-  background: rgba(0, 0, 0, 0.48);
+  background: color-mix(in srgb, var(--scrim-color) 48%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20384,7 +20398,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-soft);
   border: 1px solid var(--border);
   border-radius: 14px; /* 833-radius-wl:large */
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 16px 48px color-mix(in srgb, var(--shadow-color) 32%, transparent);
   overflow: hidden;
   transform-origin: 50% 48%;
   /* No will-change / fill-mode: anything that keeps a transform applied after
@@ -20937,7 +20951,7 @@ button.statusbar__mcp:focus-visible {
 .settings-center__navitem--active {
   background: var(--bg-elev-2);
   color: var(--fg);
-  box-shadow: inset 0 0 0 1px var(--border), 0 8px 18px rgba(0, 0, 0, 0.14);
+  box-shadow: inset 0 0 0 1px var(--border), 0 8px 18px color-mix(in srgb, var(--shadow-color) 14%, transparent);
 }
 
 .settings-center__navitem--active::before {
@@ -21022,7 +21036,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev-2) 76%, var(--bg-elev));
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
 
 .settings-section__head,
@@ -22392,7 +22406,7 @@ button.statusbar__mcp:focus-visible {
   padding: 9px 10px;
   margin-bottom: 8px;
   background: var(--bg-elev-2);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--shadow-color) 8%, transparent);
 }
 .prov-card__head {
   display: flex;
@@ -23895,7 +23909,7 @@ button.statusbar__mcp:focus-visible {
   height: 16px;
   pointer-events: none;
   z-index: var(--z-local-raised);
-  background: #fff;
+  background: var(--surface-white);
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   box-sizing: border-box;
@@ -24058,7 +24072,7 @@ button.statusbar__mcp:focus-visible {
   height: auto;
   border: 8px solid var(--bg-elev);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--surface-white);
 }
 .bot-mobile-remote__settings {
   display: grid;
@@ -25041,7 +25055,7 @@ button.statusbar__mcp:focus-visible {
   width: 196px;
   height: 196px;
   border-radius: var(--radius-sm);
-  background: #fff;
+  background: var(--surface-white);
   padding: 8px;
 }
 .bot-connect-panel__state {
@@ -27355,7 +27369,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev) 78%, transparent);
   color: var(--fg-dim);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--highlight-color) 5%, transparent);
 }
 
 /* tl 1128: select mode adds the row checkbox on top of the every-control
@@ -27446,7 +27460,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: var(--bg-elev);
   color: var(--fg);
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   font-size: var(--text-md);
   line-height: 1.45;
   white-space: pre-wrap;
@@ -27745,13 +27759,13 @@ button.statusbar__mcp:focus-visible {
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: color-mix(in srgb, #000 78%, transparent);
-  color: #fff;
+  background: color-mix(in srgb, var(--scrim-color) 78%, transparent);
+  color: var(--text-on-color);
 }
 .composer-context__remove:hover,
 .composer-context__item > .tooltip-trigger:last-child button:hover {
-  color: #fff;
-  background: color-mix(in srgb, #000 88%, transparent);
+  color: var(--text-on-color);
+  background: color-mix(in srgb, var(--scrim-color) 88%, transparent);
 }
 .composer-context__item--session {
   border-color: color-mix(in srgb, var(--accent) 24%, var(--border));
@@ -28353,7 +28367,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(217, 119, 87, 0.04);
+  box-shadow: 0 24px 60px color-mix(in srgb, var(--shadow-color) 55%, transparent), 0 0 0 1px rgba(217, 119, 87, 0.04);
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -28831,7 +28845,7 @@ button.statusbar__mcp:focus-visible {
 
 .windows-window-control--close:hover,
 .windows-window-control--close:focus-visible {
-  color: #fff;
+  color: var(--text-on-color);
   background: #c42b1c;
 }
 
@@ -29274,7 +29288,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--shadow-color) 34%, transparent);
 }
 
 .topicbar__export-menu button {
@@ -29414,7 +29428,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   --wails-draggable: no-drag;
 }
 
@@ -29529,8 +29543,8 @@ button.statusbar__mcp:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  color: #fff;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, #fff 18%, transparent), 0 1px 2px color-mix(in srgb, #000 18%, transparent);
+  color: var(--text-on-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--highlight-color) 18%, transparent), 0 1px 2px color-mix(in srgb, var(--shadow-color) 18%, transparent);
 }
 
 .external-opener__app-icon:has(img:not([hidden])) .external-opener__fallback-icon {
@@ -29560,7 +29574,7 @@ button.statusbar__mcp:focus-visible {
   overflow-y: auto;
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
-  box-shadow: 0 18px 42px color-mix(in srgb, #000 32%, transparent);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--shadow-color) 32%, transparent);
   --wails-draggable: no-drag;
 }
 
@@ -29809,7 +29823,7 @@ button.statusbar__mcp:focus-visible {
   border: none;
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--shadow-color) 18%, transparent);
 }
 
 .project-tree__time-filter-opt {
@@ -29941,7 +29955,7 @@ button.statusbar__mcp:focus-visible {
   padding: 10px 12px;
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 22%, transparent);
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -30808,7 +30822,7 @@ button.statusbar__mcp:focus-visible {
   padding: 5px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--shadow-color) 36%, transparent);
   transform-origin: top left;
   animation: menu-pop-in var(--dur-base) var(--ease-out) both;
 }
@@ -30962,7 +30976,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   backdrop-filter: blur(12px);
   animation: menu-pop-in var(--dur-base) var(--ease-out) both;
 }
@@ -31031,7 +31045,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   backdrop-filter: blur(12px);
   animation: menu-pop-in var(--dur-base) var(--ease-out) both;
 }
@@ -31360,7 +31374,7 @@ button.statusbar__mcp:focus-visible {
 .workbench-dock__tab--active {
   background: var(--bg-elev);
   color: var(--fg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.16);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow-color) 16%, transparent);
 }
 
 @container (max-width: 520px) {
@@ -32799,7 +32813,7 @@ button.statusbar__mcp:focus-visible {
 
 .context-panel__capacity-pin--used {
   border-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  background: color-mix(in srgb, var(--accent) 92%, #fff);
+  background: color-mix(in srgb, var(--accent) 92%, var(--highlight-color));
   color: white;
 }
 
@@ -32953,7 +32967,7 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   min-width: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, var(--highlight-color)), var(--accent));
 }
 
 .context-panel__session-section,
@@ -33854,7 +33868,7 @@ button.statusbar__mcp:focus-visible {
   background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 6px 20px color-mix(in srgb, var(--shadow-color) 20%, transparent);
   overflow: hidden;
 }
 
@@ -35361,7 +35375,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-style] .composer__btn--send:not(:disabled):hover {
-  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 94%, #ffffff), var(--accent-strong));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 94%, var(--highlight-color)), var(--accent-strong));
   transform: translateY(-1px) scale(1.03);
 }
 
@@ -35439,8 +35453,8 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-pill);
   background: var(--composer-modebar-active-bg);
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent),
-    0 1px 3px color-mix(in srgb, #000 28%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--highlight-color) 18%, transparent),
+    0 1px 3px color-mix(in srgb, var(--shadow-color) 28%, transparent);
 }
 
 :root[data-theme-style] .composer-modebar__item {
@@ -37234,7 +37248,7 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   min-width: 0;
   border-radius: inherit;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, #fff), var(--accent));
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 72%, var(--highlight-color)), var(--accent));
   transition: width 0.3s var(--ease-out);
 }
 /* 进度条标记线 */
@@ -39288,7 +39302,7 @@ button.statusbar__mcp:focus-visible {
   position: absolute; right: 0; top: calc(100% + 4px); z-index: var(--z-local-popover);
   min-width: 160px; padding: 6px;
   border: 1px solid var(--border); border-radius: var(--r, 8px);
-  box-shadow: 0 8px 24px color-mix(in srgb, #000 28%, transparent);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   display: flex; flex-direction: column; gap: 2px;
 }
 .theme-gallery__menu button {
@@ -39301,7 +39315,7 @@ button.statusbar__mcp:focus-visible {
 .theme-gallery__menu-danger { color: var(--err, #e55) !important; }
 .theme-gallery__editor-overlay {
   position: fixed; inset: 0; z-index: var(--z-modal);
-  background: color-mix(in srgb, #000 58%, transparent);
+  background: color-mix(in srgb, var(--scrim-color) 58%, transparent);
   display: grid; place-items: center; padding: 20px;
   overflow: hidden;
   -webkit-app-region: no-drag;
@@ -39315,7 +39329,7 @@ button.statusbar__mcp:focus-visible {
   overflow: hidden;
   border-radius: var(--r-l, 12px);
   padding: 0; border: 1px solid var(--border);
-  box-shadow: 0 24px 72px color-mix(in srgb, #000 42%, transparent);
+  box-shadow: 0 24px 72px color-mix(in srgb, var(--shadow-color) 42%, transparent);
   container: theme-editor / inline-size;
 }
 
@@ -39671,7 +39685,7 @@ button.statusbar__mcp:focus-visible {
   margin: -7px 0 0 -7px;
   border-radius: 50%;
   border: 2px solid #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--shadow-color) 55%, transparent);
   pointer-events: none;
 }
 
@@ -40295,7 +40309,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, var(--scrim-color) 50%, transparent);
   z-index: var(--z-modal);
 }
 .remote-hostkey-dialog {
@@ -40424,7 +40438,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: 12px; /* 833-radius-wl:large */
   background: var(--bg-elev);
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.48);
+  box-shadow: 0 16px 44px color-mix(in srgb, var(--shadow-color) 48%, transparent);
   color: var(--fg);
   font-family: var(--font-ui);
 }
@@ -40626,14 +40640,14 @@ button.statusbar__mcp:focus-visible {
 }
 
 /* Task Monitor panel. The Codex-style popover keeps the chat composer clear. */
-.taskmonitor-popover { position:absolute; top:calc(100% + 8px); right:0; width:min(440px, calc(100vw - 32px)); max-height:min(72vh, 680px); z-index:var(--z-dock); border:1px solid var(--border,#333); border-radius:10px; background:var(--overlay-surface-bg, var(--bg,#111)); box-shadow:0 14px 36px rgba(0,0,0,.42); overflow:hidden; }
+.taskmonitor-popover { position:absolute; top:calc(100% + 8px); right:0; width:min(440px, calc(100vw - 32px)); max-height:min(72vh, 680px); z-index:var(--z-dock); border:1px solid var(--border,#333); border-radius:10px; background:var(--overlay-surface-bg, var(--bg,#111)); box-shadow:0 14px 36px color-mix(in srgb, var(--shadow-color) 42%, transparent); overflow:hidden; }
 .taskmonitor { background:var(--bg,#111); }
 .taskmonitor--popover { max-height:inherit; background:transparent; }
 .taskmonitor__head { display:flex; align-items:center; gap:6px; width:100%; padding:8px 12px; font-size: var(--text-md); }
 .taskmonitor__toggle,.taskmonitor__refresh,.taskmonitor__close { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; padding:0; border:0; border-radius:6px; background:none; color:inherit; cursor:pointer; }
 .taskmonitor__toggle:hover,.taskmonitor__refresh:hover,.taskmonitor__close:hover,.taskmonitor__toggle:focus-visible,.taskmonitor__refresh:focus-visible,.taskmonitor__close:focus-visible { background:var(--bg-elev-2); outline:none; }
 .taskmonitor__title { flex:1; text-align:left; font-weight:600; }
-.taskmonitor__count { background:var(--muted,#555); color:#fff; border-radius:10px; padding:0 6px; font-size: var(--text-xs); line-height:18px; }
+.taskmonitor__count { background:var(--muted,#555); color:var(--text-on-color); border-radius:10px; padding:0 6px; font-size: var(--text-xs); line-height:18px; }
 .taskmonitor__body { max-height:360px; overflow-y:auto; }
 .taskmonitor--popover .taskmonitor__body { max-height:calc(min(72vh, 680px) - 44px); }
 .taskmonitor__category-title { padding:10px 16px 4px; color:var(--fg-dim,#aaa); font-size: var(--text-xs); font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
@@ -40662,7 +40676,7 @@ button.statusbar__mcp:focus-visible {
 .taskmonitor__confirm { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-top:10px; padding:10px 12px; border:1px solid color-mix(in srgb,var(--danger,#ef4444) 30%,var(--border)); border-radius:8px; background:color-mix(in srgb,var(--danger,#ef4444) 7%,var(--surface,#222)); }
 .taskmonitor__confirm-copy { flex:1 1 150px; font-weight:600; line-height:1.4; }
 .taskmonitor__confirm-actions { display:flex; gap:8px; }
-.taskmonitor__confirm .taskmonitor__confirm-stop { border-color:var(--danger,#ef4444); background:var(--danger,#ef4444); color:#fff; font-weight:650; }
+.taskmonitor__confirm .taskmonitor__confirm-stop { border-color:var(--danger,#ef4444); background:var(--danger,#ef4444); color:var(--text-on-color); font-weight:650; }
 .taskmonitor__confirm .taskmonitor__confirm-stop:hover:not(:disabled),.taskmonitor__confirm .taskmonitor__confirm-stop:focus-visible { border-color:var(--danger,#ef4444); outline-color:color-mix(in srgb,var(--danger,#ef4444) 42%,transparent); }
 .taskmonitor__error { color:#ef4444; margin-top:6px; }
 .taskmonitor__message { color:#4ade80; margin-top:6px; }
@@ -41196,7 +41210,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 22%, transparent);
   color: var(--fg);
 }
 
@@ -41251,7 +41265,7 @@ button.statusbar__mcp:focus-visible {
   display: block;
   width: 100%;
   border: 0;
-  background: #fff;
+  background: var(--surface-white);
   transition: height 120ms ease;
 }
 
@@ -41294,7 +41308,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 22%, transparent);
   color: var(--fg);
 }
 .question-search__header {
@@ -41408,7 +41422,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elev);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 22%, transparent);
   color: var(--fg);
 }
 .transcript-find__icon {
@@ -41642,7 +41656,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--composer-menu-radius);
   background: var(--bg-elev);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   color: var(--fg);
   font-size: calc(14px * var(--font-scale));
   line-height: 22px;
@@ -42661,7 +42675,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--shadow-color) 32%, transparent);
   font-size: var(--text-sm);
   line-height: 1.45;
 }
@@ -42757,7 +42771,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated, var(--bg));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   overflow: auto;
 }
 .feedback-panel__head {
@@ -42834,7 +42848,7 @@ button.statusbar__mcp:focus-visible {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated, var(--bg));
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow-color) 28%, transparent);
   overflow: auto;
 }
 .collab-inbox-panel__head {
@@ -45550,7 +45564,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"][data-theme-scene="home"] .app:not(.app--creation) .composer__btn--send:hover {
-  background: color-mix(in srgb, var(--control-primary-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--control-primary-bg) 88%, var(--shade-color)) !important;
 }
 
 
@@ -45564,7 +45578,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"][data-theme-scene="home"] .app:not(.app--creation) .composer-modebar__item--active:hover {
-  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, var(--shade-color)) !important;
 }
 
 
@@ -45683,7 +45697,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"][data-theme-scene="task"] .app:not(.app--creation) .composer__btn--send:hover {
-  background: color-mix(in srgb, var(--control-primary-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--control-primary-bg) 88%, var(--shade-color)) !important;
 }
 
 
@@ -45697,7 +45711,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"][data-theme-scene="task"] .app:not(.app--creation) .composer-modebar__item--active:hover {
-  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, var(--shade-color)) !important;
 }
 
 
@@ -45834,7 +45848,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer__btn--send:hover {
-  background: color-mix(in srgb, var(--control-primary-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--control-primary-bg) 88%, var(--shade-color)) !important;
 }
 
 
@@ -45848,7 +45862,7 @@ button.statusbar__mcp:focus-visible {
 }
 
 :root[data-theme-pack][data-theme-has-bg="true"] .app:not(.app--creation) .composer-modebar__item--active:hover {
-  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, #000) !important;
+  background: color-mix(in srgb, var(--composer-modebar-active-bg) 88%, var(--shade-color)) !important;
 }
 
 

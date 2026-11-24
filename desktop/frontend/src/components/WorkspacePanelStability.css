@@ -34,7 +34,7 @@
   border: 1px solid var(--border-soft);
   border-right: 0;
   border-radius: var(--radius-md) 0 0 var(--radius-md);
-  box-shadow: -12px 0 36px rgba(0, 0, 0, 0.24);
+  box-shadow: -12px 0 36px color-mix(in srgb, var(--shadow-color) 24%, transparent);
 }
 
 /* Preserve an opened sidebar beside a 400px chat surface at the native
