@@ -98,8 +98,8 @@ console.log("\n任务 895 sentinel 穿透封堵开关（UI 面）");
     ok(!memberIds.includes("sentinelPenetrationGuard"), "switch is NOT a layout member (no rail badge added)");
     ok(!(card.onKeys ?? []).some((k) => k.toLowerCase().includes("penetration")),
       "switch does NOT join the card light keys");
-    ok(JSON.stringify(memberIds) === JSON.stringify(["compactModel", "messageMerge", "heartbeatRotation"]),
-      "card member list unchanged (722 structure preserved)");
+    ok(JSON.stringify(memberIds) === JSON.stringify(["compactModel", "messageMerge", "heartbeatRotation", "memoryIndexSlim", "decisionPatternsLayered"]),
+      "card member list = 722 base + tl1772 memoryIndexSlim re-home + tl1772r2 decisionPatternsLayered move (structure preserved, tl1791 轮姊妹断言补同步)");
   }
 }
 

@@ -76,8 +76,8 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // tl1718：composerToolsFold（composer 工具组默认折叠，推荐档）入表——
   // 推荐 50→51、总数 89→90（562 同步）。tl1772：decisionPatternsLayered
   // （决策模式注入分层伴生开关，可选档）入表——可选 26→27、总数 90→91。
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 27 && LAB_TIER_COUNTS.unstable === 4 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51 推荐/27 可选/4 未稳定/0 退役 (tl1772 decisionPatternsLayered 入可选档)");
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 27 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51 推荐/27 可选/7 未稳定/0 退役 (tl1772 入可选档 + tl1787 ranges×2+prepairAutosplice 入未稳定档，tl1791 轮姊妹断言补同步)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");
