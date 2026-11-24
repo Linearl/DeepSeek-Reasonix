@@ -20,6 +20,12 @@ type turnRuntime struct {
 	usedAnyTool        bool
 	graceRound         bool
 	recoveryGraceRound bool
+	// rejectionCapture is the pending tl1742 side-channel case: armed at the
+	// first known provider rejection, extended at the second, closed by the
+	// first non-rejection final or the exhausted error (see
+	// provider_rejection_capture.go). Zeroed with the turn — a pending case
+	// does not survive into the next Run.
+	rejectionCapture *rejectionCaseCapture
 	// toolCallsThisTurn counts every dispatch admission this turn (task 243
 	// A1): the flood cap compares a batch against the turn-cumulative total so
 	// "the 17th call cancels the batch" reads one counter, not per-batch math.

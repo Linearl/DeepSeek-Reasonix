@@ -595,6 +595,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 	// same-content replay loop stalling 1.5h against a fixed provider filter.
 	if isKnownProviderRejection(text) {
 		state.terminal.rejectedTemplateBlocks++
+		// tl1742 side-channel capture: arm/extend the pending case file for
+		// this rejection (A context digest + B rejected reply + C instruction
+		// + metadata). Strictly passive — failures never reach this ladder.
+		a.captureProviderRejection(state, text, usage)
 		providerName := ""
 		if dest := a.providerForRequest(); dest != nil {
 			providerName = dest.Name()
@@ -607,6 +611,10 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 			Detail: providerRejectionDetail(providerName, strings.TrimSpace(text)),
 		})
 		if state.terminal.rejectedTemplateBlocks > maxRejectedRecoveryRounds {
+			// tl1742: flush the pending case (outcome=exhausted) before the
+			// terminal error — a capped-out ladder is exactly the case worth
+			// analyzing later.
+			a.closeRejectionCaptureExhausted(state)
 			return false, fmt.Errorf("provider rejected the request with a fixed safety sentence %d times; the rewrite replay and the file-dump fallback replay were both rejected too, so the answer was not delivered. Next: send a new request with the sensitive wording removed or the task split into smaller pieces", state.terminal.rejectedTemplateBlocks)
 		}
 		stage := state.terminal.rejectedTemplateBlocks
@@ -629,6 +637,11 @@ func (a *Agent) handleFinalResponse(ctx context.Context, state *turnRuntime, tex
 		a.contextManager().ObserveUsage(usage)
 		return true, nil
 	}
+	// tl1742: a final that is NOT a rejection closes a pending rejection case
+	// with its D segment (the rewritten reply that got through). Placed before
+	// the malformed-markup branch so even a shape-broken recovery final still
+	// lands its content in the case file.
+	a.closeRejectionCaptureOnRecoveredFinal(state, text)
 	// tl1707 (external issue #103): bare tool-call markup in the visible text
 	// of a ZERO-tool-call round — the model believed it had called tools, but
 	// nothing arrived through the structured channel and nothing was executed.
