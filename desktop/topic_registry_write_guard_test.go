@@ -52,7 +52,17 @@ var topicRegistryWriteAllowlist = map[string][]string{
 	// 成员集合守卫：迁移 mutator 内先验成员快照一致（不一致整体回滚），
 	// session_group_migrate_test.go 钉落盘形态。
 	"session_group_migrate.go": {
-		"func (a *App) MigrateSessionGroupToProject(",
+		// tl1789: 274343dc46 (tl1560 返修) generalized the entry point to
+		// bidirectional MigrateSessionGroup — the allowlist prefix stayed on
+		// the pre-rename name and the guard fired on the same transaction
+		// body. Same write funnel, updated name.
+		"func (a *App) MigrateSessionGroup(",
+	},
+	// tl1789 补登记：tl1711 (c938bfd267) 落地单会话跨分区移动时未同步本清单。
+	// 同 session_group_migrate 的跨 scope 原子搬家形态（文件+注册+分组名册
+	// 三处同步，整体回滚），收点族独立事务表达不了。
+	"session_topic_migrate.go": {
+		"func (a *App) MoveSessionTopic(",
 	},
 	// 视图/投影结构体与注册列表同名字段（.Topics）的构建函数：赋值目标是
 	// 视图类型（ManageSessionsGroupView / ProjectTreeRuntime 投影），不是

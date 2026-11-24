@@ -549,7 +549,12 @@ func TestRebindWithTakeoverMirrorDoesNotReenterAppLock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
+		// tl1789: the watchdog exists to catch a re-entrant app-lock deadlock,
+		// which never returns — the budget only has to tolerate slow IO, not
+		// bound normal latency. 3s false-fired under an IO storm while the
+		// rebind itself completed at 3.78s; a real deadlock is caught just as
+		// dead at 30s.
 		t.Fatal("rebind deadlocked while reconnecting takeover mirror")
 	}
 }

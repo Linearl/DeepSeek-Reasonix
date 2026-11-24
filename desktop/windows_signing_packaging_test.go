@@ -244,6 +244,7 @@ func TestWindowsPackagerRejectsMissingOrPartialRequiredPayloadManifest(t *testin
 		{name: "signature only", signature: true, want: "must be provided together"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			skipIfWSLBash(t) // tl1789: Windows 夹具路径喂给 WSL bash 会被反斜杠吞噬（同 guard_packaging 门控）
 			payload := t.TempDir()
 			for _, name := range []string{
 				"reasonix-desktop.exe",

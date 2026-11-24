@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -304,7 +305,23 @@ func (r *wedgedTurnRunner) Run(ctx context.Context, _ string) error {
 }
 
 func TestInterruptTurnForTabDrivesStopEscalationLevels(t *testing.T) {
-	dir := t.TempDir()
+	// tl1789: t.TempDir's RemoveAll raced the turn-settle session write on
+	// Windows ("directory is not empty" fails the whole test). Manage the dir
+	// manually with a retrying removal registered FIRST (runs LAST — after
+	// ctrl.Close and the release), outlasting any lagging writer; the
+	// settle-wait at the end of the test shrinks the retry window to near zero.
+	dir, err := os.MkdirTemp("", "tl1789-escalation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for i := 0; i < 40; i++ {
+			if rmErr := os.RemoveAll(dir); rmErr == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
 	runner := &wedgedTurnRunner{started: make(chan struct{}, 1), release: make(chan struct{})}
 	sink := &tabEventSink{tabID: "tab", ctx: context.Background()}
 	sink.SetBotSink(event.FuncSink(func(event.Event) {}))
@@ -367,5 +384,19 @@ func TestInterruptTurnForTabDrivesStopEscalationLevels(t *testing.T) {
 	case <-agent.StopForceDone(runner.bodyCtx):
 	default:
 		t.Fatal("L3 must fire the executor force signal")
+	}
+
+	// tl1789: closing release (cleanup, LIFO-first) lets the wedged runner
+	// return and the turn settle asynchronously — the settle path writes
+	// session state into the TempDir while t.TempDir's RemoveAll (registered
+	// first, runs last) is deleting it. Windows unlink semantics turn that
+	// race into "directory is not empty" and fail the whole test. Join the
+	// settle before returning so cleanup always sees a quiescent dir.
+	settleDeadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(settleDeadline) {
+		if !ctrl.RuntimeStateSnapshot().Running {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }

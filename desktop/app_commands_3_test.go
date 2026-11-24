@@ -232,8 +232,11 @@ func TestDesktopSessionAPIsUseControllerSessionDir(t *testing.T) {
 	defer app.activeCtrl().Close()
 	installSessionCatalogForTest(t, app, dirA, "global", "")
 	sessions := app.ListSessions()
-	if len(sessions) != 1 || sessions[0].Path != pathA || sessions[0].TurnsState != "unknown" ||
-		!strings.Contains(sessions[0].Preview, "being indexed") {
+	// tl1547 (C4) moved the "History is being indexed" wording to the FE
+	// placeholder (historyIndexedTitle) — the Go side only pins the unknown
+	// turns state (the FE renders the localized indexing label from it), so
+	// assert the contract that still lives here.
+	if len(sessions) != 1 || sessions[0].Path != pathA || sessions[0].TurnsState != "unknown" {
 		t.Fatalf("ListSessions should read the active controller session dir only, got %+v", sessions)
 	}
 	if err := app.RenameSession(pathA, "A title"); err != nil {

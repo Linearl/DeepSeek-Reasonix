@@ -81,6 +81,21 @@ func waitForTopicDirMarker(t *testing.T, dir, marker string) {
 	}
 }
 
+// projectNodesFromTree selects the project-kind nodes from a project tree.
+// tl1655 includes the Global folder node unconditionally (first-run sidebar
+// fix), so position-based access to project entries drifted — every tree
+// assertion below filters through this selector instead of assuming
+// nodes[0] is the project (tl1789 基线红治理, 同机制全量整改).
+func projectNodesFromTree(nodes []ProjectNode) []ProjectNode {
+	out := make([]ProjectNode, 0, len(nodes))
+	for _, n := range nodes {
+		if n.Kind == "project" {
+			out = append(out, n)
+		}
+	}
+	return out
+}
+
 func waitForCatalogTopic(t *testing.T, app *App, scope, workspaceRoot, topicID string) []ProjectNode {
 	t.Helper()
 	app.startSessionCatalog()
@@ -288,7 +303,19 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 	}
 	app := NewApp()
 	nodes := app.ListProjectTree()
-	if got := []string{nodes[0].Children[0].TopicID, nodes[0].Children[1].TopicID}; got[0] != "topic_a" || got[1] != "topic_b" {
+	// tl1655 tree composition includes the Global folder node; select the
+	// project node by kind instead of assuming nodes[0] (tl1789: an unguarded
+	// nodes[0].Children[0] panicked on the Global node's empty children).
+	projectNode := func() ProjectNode {
+		for _, n := range nodes {
+			if n.Kind == "project" {
+				return n
+			}
+		}
+		t.Fatalf("project tree = %#v, want one project node", nodes)
+		return ProjectNode{}
+	}
+	if got := []string{projectNode().Children[0].TopicID, projectNode().Children[1].TopicID}; got[0] != "topic_a" || got[1] != "topic_b" {
 		t.Fatalf("initial topic order = %v, want [topic_a topic_b]", got)
 	}
 
@@ -296,10 +323,10 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 		t.Fatalf("pin topic: %v", err)
 	}
 	nodes = app.ListProjectTree()
-	if got := []string{nodes[0].Children[0].TopicID, nodes[0].Children[1].TopicID}; got[0] != "topic_b" || got[1] != "topic_a" {
+	if got := []string{projectNode().Children[0].TopicID, projectNode().Children[1].TopicID}; got[0] != "topic_b" || got[1] != "topic_a" {
 		t.Fatalf("pinned topic order = %v, want [topic_b topic_a]", got)
 	}
-	if !nodes[0].Children[0].Pinned {
+	if !projectNode().Children[0].Pinned {
 		t.Fatalf("pinned topic should expose pinned=true")
 	}
 
@@ -307,8 +334,8 @@ func TestSetTopicPinnedOrdersProjectTopics(t *testing.T) {
 		t.Fatalf("unpin topic: %v", err)
 	}
 	nodes = app.ListProjectTree()
-	if nodes[0].Children[0].Pinned || nodes[0].Children[1].Pinned {
-		t.Fatalf("unpin should clear pinned flags: %#v", nodes[0].Children)
+	if projectNode().Children[0].Pinned || projectNode().Children[1].Pinned {
+		t.Fatalf("unpin should clear pinned flags: %#v", projectNode().Children)
 	}
 }
 
@@ -335,7 +362,7 @@ func TestSetProjectPinnedOrdersProjectFolders(t *testing.T) {
 	if err := app.SetProjectPinned(second, true); err != nil {
 		t.Fatalf("pin project: %v", err)
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if got := []string{nodes[0].Root, nodes[1].Root, nodes[2].Root}; got[0] != second || got[1] != third || got[2] != first {
 		t.Fatalf("pinned project order = %v, want %v", got, []string{second, third, first})
 	}
@@ -346,7 +373,7 @@ func TestSetProjectPinnedOrdersProjectFolders(t *testing.T) {
 	if err := app.SetProjectPinned(second, false); err != nil {
 		t.Fatalf("unpin project: %v", err)
 	}
-	nodes = app.ListProjectTree()
+	nodes = projectNodesFromTree(app.ListProjectTree())
 	if got := []string{nodes[0].Root, nodes[1].Root, nodes[2].Root}; got[0] != third || got[1] != first || got[2] != second {
 		t.Fatalf("unpinned project order = %v, want %v", got, []string{third, first, second})
 	}
@@ -667,7 +694,7 @@ func TestRenameProjectUpdatesSidebarTitle(t *testing.T) {
 		t.Fatalf("rename project: %v", err)
 	}
 
-	nodes := NewApp().ListProjectTree()
+	nodes := projectNodesFromTree(NewApp().ListProjectTree())
 	if len(nodes) != 1 {
 		t.Fatalf("project tree len = %d, want 1", len(nodes))
 	}
@@ -678,7 +705,7 @@ func TestRenameProjectUpdatesSidebarTitle(t *testing.T) {
 	if err := NewApp().RenameProject(projectRoot, ""); err != nil {
 		t.Fatalf("clear project title: %v", err)
 	}
-	nodes = NewApp().ListProjectTree()
+	nodes = projectNodesFromTree(NewApp().ListProjectTree())
 	if got, want := nodes[0].Label, filepath.Base(projectRoot); got != want {
 		t.Fatalf("cleared project label = %q, want %q", got, want)
 	}
@@ -1951,7 +1978,7 @@ func TestReorderProjectsPersistsSidebarAndWorkspaceOrder(t *testing.T) {
 		t.Fatalf("ReorderProjects: %v", err)
 	}
 
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 3 {
 		t.Fatalf("project tree len = %d, want 3: %+v", len(nodes), nodes)
 	}
@@ -2028,7 +2055,7 @@ func TestReorderProjectsRejectsInvalidOrder(t *testing.T) {
 		})
 	}
 
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if got := []string{nodes[0].Root, nodes[1].Root}; got[0] != first || got[1] != second {
 		t.Fatalf("project tree order changed after invalid reorder: %v", got)
 	}
@@ -2083,7 +2110,7 @@ func TestRestoredProjectTabUsesStoredTopicTitle(t *testing.T) {
 	if got := tabs[0].TopicTitle; got != "你是谁" {
 		t.Fatalf("tab title = %q, want 你是谁", got)
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 {
 		t.Fatalf("project tree = %#v, want one project with one topic", nodes)
 	}
@@ -2117,7 +2144,7 @@ func TestUntitledProjectTopicUsesSameFallbackEverywhere(t *testing.T) {
 	if got := tabs[0].TopicTitle; got != defaultTopicTitle {
 		t.Fatalf("tab title = %q, want %q", got, defaultTopicTitle)
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 {
 		t.Fatalf("project tree = %#v, want one project with one topic", nodes)
 	}
@@ -2148,7 +2175,7 @@ func TestCreateTopicDefaultsToAutoNewSessionTitle(t *testing.T) {
 	if got := loadTopicCreatedAt(projectRoot, topic.ID); got < before || got > after {
 		t.Fatalf("createdAt = %d, want between %d and %d", got, before, after)
 	}
-	nodes := NewApp().ListProjectTree()
+	nodes := projectNodesFromTree(NewApp().ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 {
 		t.Fatalf("project tree = %#v, want one project with one topic", nodes)
 	}
@@ -2192,7 +2219,7 @@ func TestCreateTopicAppearsFirstInProjectTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create second topic: %v", err)
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 2 {
 		t.Fatalf("project tree = %#v, want one project with two topics", nodes)
 	}
@@ -2252,7 +2279,7 @@ func TestSwitchWorkspaceRegistersDefaultTopicInProjectTree(t *testing.T) {
 		t.Fatalf("SwitchWorkspace root = %q, want %q", got, projectRoot)
 	}
 
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 {
 		t.Fatalf("project tree len = %d, want 1: %+v", len(nodes), nodes)
 	}
@@ -2352,7 +2379,7 @@ func TestRenameTopicRecreatesDeletedProjectTitleIndexFromOpenTab(t *testing.T) {
 	if got := loadTopicTitle(projectRoot, topic.ID); got != "恢复标题" {
 		t.Fatalf("restored topic title = %q, want 恢复标题", got)
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topic.ID {
 		t.Fatalf("project tree should still contain topic, got %#v", nodes)
 	}
@@ -2387,7 +2414,7 @@ func TestRenameTopicRecreatesDeletedProjectTitleIndexFromSessionMeta(t *testing.
 	if got := loadTopicTitle(projectRoot, topicID); got != "恢复标题" {
 		t.Fatalf("restored topic title = %q, want 恢复标题", got)
 	}
-	nodes := NewApp().ListProjectTree()
+	nodes := projectNodesFromTree(NewApp().ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topicID {
 		t.Fatalf("project tree should contain restored topic, got %#v", nodes)
 	}
@@ -2878,8 +2905,8 @@ func TestRestoreProjectTopicSessionReindexesProjectTree(t *testing.T) {
 	if err := app.RestoreSession(trashPath); err != nil {
 		t.Fatalf("restore project session: %v", err)
 	}
-	nodes := waitForCatalogTopic(t, app, "project", projectRoot, topicID)
-	if len(nodes) != 1 || nodes[0].Kind != "project" || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topicID {
+	nodes := projectNodesFromTree(waitForCatalogTopic(t, app, "project", projectRoot, topicID))
+	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topicID {
 		t.Fatalf("restored project session should reappear in project tree, got %#v", nodes)
 	}
 	if got := loadTopicTitle(projectRoot, topicID); got != "Project restore" {
@@ -2906,8 +2933,8 @@ func TestOpenProjectTabResolvesProjectSessionFromLegacyDir(t *testing.T) {
 	sessionPath := writeTopicSessionWithPrompt(t, dir, "legacy-project.jsonl", topicID, topicTitle, projectRoot, "legacy project prompt", time.Now())
 	app := NewApp()
 
-	nodes := waitForCatalogTopic(t, app, "project", projectRoot, topicID)
-	if len(nodes) != 1 || nodes[0].Kind != "project" || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topicID {
+	nodes := projectNodesFromTree(waitForCatalogTopic(t, app, "project", projectRoot, topicID))
+	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != topicID {
 		t.Fatalf("legacy project session should appear in project tree, got %#v", nodes)
 	}
 	meta, err := app.OpenProjectTab(projectRoot, topicID)
@@ -3353,7 +3380,7 @@ func TestTrashTopicFallbackCreatesUnindexedBlank(t *testing.T) {
 			t.Fatalf("deleted topic %q should be removed without indexing a replacement: %#v", topicID, f.Projects)
 		}
 	}
-	nodes := app.ListProjectTree()
+	nodes := projectNodesFromTree(app.ListProjectTree())
 	if len(nodes) != 1 || len(nodes[0].Children) != 0 {
 		t.Fatalf("transient fallback blank should stay out of project tree: %+v", nodes)
 	}
@@ -3768,8 +3795,8 @@ func TestProjectTreeMigratesCLISessionFromProjectDir(t *testing.T) {
 	wantTopicID := legacySessionTopicID(sessionPath)
 
 	app := NewApp()
-	nodes := waitForCatalogTopic(t, app, "project", projectRoot, wantTopicID)
-	if len(nodes) != 1 || nodes[0].Kind != "project" || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != wantTopicID {
+	nodes := projectNodesFromTree(waitForCatalogTopic(t, app, "project", projectRoot, wantTopicID))
+	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != wantTopicID {
 		t.Fatalf("project CLI session should appear in project tree, got %#v; want topic %q", nodes, wantTopicID)
 	}
 }
@@ -3789,8 +3816,8 @@ func TestProjectTreeMigratesNewCLISessionAfterProjectDirMarker(t *testing.T) {
 	firstTopicID := legacySessionTopicID(first)
 
 	app := NewApp()
-	nodes := waitForCatalogTopic(t, app, "project", projectRoot, firstTopicID)
-	if len(nodes) != 1 || nodes[0].Kind != "project" || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != firstTopicID {
+	nodes := projectNodesFromTree(waitForCatalogTopic(t, app, "project", projectRoot, firstTopicID))
+	if len(nodes) != 1 || len(nodes[0].Children) != 1 || nodes[0].Children[0].TopicID != firstTopicID {
 		t.Fatalf("first project CLI session should appear in project tree, got %#v; want topic %q", nodes, firstTopicID)
 	}
 	waitForTopicDirMarker(t, dir, topicMigrationMarker)
@@ -3801,11 +3828,13 @@ func TestProjectTreeMigratesNewCLISessionAfterProjectDirMarker(t *testing.T) {
 
 	app.requestSessionCatalogReconcile(dir)
 	nodes = waitForCatalogTreeCondition(t, app, "a reconciled newest project CLI session", func(nodes []ProjectNode) bool {
-		return len(nodes) == 1 && nodes[0].Kind == "project" && len(nodes[0].Children) == 2 &&
-			nodes[0].Children[0].TopicID == secondTopicID && nodes[0].Children[0].LastActivityAt > 0 &&
-			nodes[0].Children[1].TopicID == firstTopicID
+		projects := projectNodesFromTree(nodes)
+		return len(projects) == 1 && len(projects[0].Children) == 2 &&
+			projects[0].Children[0].TopicID == secondTopicID && projects[0].Children[0].LastActivityAt > 0 &&
+			projects[0].Children[1].TopicID == firstTopicID
 	})
-	if len(nodes) != 1 || nodes[0].Kind != "project" || len(nodes[0].Children) != 2 {
+	nodes = projectNodesFromTree(nodes)
+	if len(nodes) != 1 || len(nodes[0].Children) != 2 {
 		t.Fatalf("second project CLI session should trigger re-scan, got %#v", nodes)
 	}
 	if nodes[0].Children[0].TopicID != secondTopicID || nodes[0].Children[1].TopicID != firstTopicID {
@@ -4035,7 +4064,7 @@ func TestEnsureTopicIndexedConcurrentRunsHaveNoLostProjectUpdates(t *testing.T) 
 	close(start)
 	wg.Wait()
 
-	nodes := NewApp().ListProjectTree()
+	nodes := projectNodesFromTree(NewApp().ListProjectTree())
 	if len(nodes) != 1 {
 		t.Fatalf("project tree len = %d, want 1: %#v", len(nodes), nodes)
 	}

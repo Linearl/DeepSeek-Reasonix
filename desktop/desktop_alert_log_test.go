@@ -358,13 +358,28 @@ func TestMaybePruneAlertLogRunsZeroConfigLoads(t *testing.T) {
 	loads := 0
 	origLoad := alertLogLoadConfig
 	origDir := alertLogDir
-	origState := desktopAlertLog
+	// tl1789: alertLogState carries a sync.Mutex — whole-struct save/restore
+	// copies the lock (go vet lock-copy). Save/restore the state fields
+	// individually under the mutex instead.
+	origW := desktopAlertLog.w
+	origPruneAt := desktopAlertLog.lastPruneAt
+	origInterval := desktopAlertLog.pruneInterval
+	origRetentionDays := desktopAlertLog.cachedRetentionDays
+	origMaxTotalBytes := desktopAlertLog.cachedMaxTotalBytes
+	origSettingsCached := desktopAlertLog.settingsCached
 	alertLogLoadConfig = func() (*config.Config, error) { loads += 1; return config.Default(), nil }
 	alertLogDir = func() string { return dir }
 	t.Cleanup(func() {
 		alertLogLoadConfig = origLoad
 		alertLogDir = origDir
-		desktopAlertLog = origState
+		desktopAlertLog.mu.Lock()
+		desktopAlertLog.w = origW
+		desktopAlertLog.lastPruneAt = origPruneAt
+		desktopAlertLog.pruneInterval = origInterval
+		desktopAlertLog.cachedRetentionDays = origRetentionDays
+		desktopAlertLog.cachedMaxTotalBytes = origMaxTotalBytes
+		desktopAlertLog.settingsCached = origSettingsCached
+		desktopAlertLog.mu.Unlock()
 	})
 
 	// ① install/设置变更路径：读一次 config 并写透缓存（默认档 7 天 / 100MB）。
