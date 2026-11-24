@@ -1199,6 +1199,24 @@ export function Composer({
   // 早退之前持久化），经 lib/composerSizing.composerReservedHeight 喂给卡片
   // 高度写手（effectiveComposerHeight）——与输入测量共用单一预留源。
   const [composerMetaExtraHeight, setComposerMetaExtraHeight] = useState(0);
+  // tl1777：卡外附件区（.composer-context，与卡片同级、位于卡上方）实测占高
+  // （0=条不在场/jsdom 未实测）。图片输入的 previewUrl 异步回填会切换 chip
+  // 变体（196×64 → 64×64 / image-only 76×76）并重排（previewUrl 项前置），
+  // 侧栏展开收窄也改变条内换行数——条高变化此前不在任何重测触发面，也不入
+  // 任何高度预算：wrap（条+卡）总高失控时 footer（flex:0 0 auto 不可收缩，
+  // tl1578 形态②同一溢出通道）溢出中栏网格行，卡底内容叠印状态栏/下拉。
+  // 与 meta 增量同构：measureTextareaAutoHeight 内、scrollHeight 早退之前
+  // 持久化，从纵向预算（composerVerticalBudgetMax）里扣除，条高变化经
+  // ResizeObserver 走共用重测路径（下方 observer 群）。
+  const [composerContextExtraHeight, setComposerContextExtraHeight] = useState(0);
+  // tl1777：composer 纵向预算上限——窗口预算（composerMaxHeight，360 钉值
+  // 本体不动）扣掉卡外附件区实测占高后的卡片可用逻辑高；下限钳在
+  // COMPOSER_MIN_HEIGHT 防极端小窗（预算 104+208 时出现倒挂）。函数形态：
+  // 窗口侧每次调用现读（resize 后不过期，与旧 maxLogicalHeight 同新鲜度），
+  // 状态侧随 composerContextExtraHeight 依赖保持新鲜。条不在场（实测 0）
+  // 时与 composerMaxHeight() 逐字节同值，既有读数不变。
+  const composerBudgetedMaxHeight = () =>
+    Math.max(COMPOSER_MIN_HEIGHT, composerMaxHeight() - composerContextExtraHeight);
   // tl1508 修②：「⋯ 工具」二级菜单开合（窄折叠的展开层）。tl1508b 修①：状态行
   // 折叠/展开改持久化偏好（useComposerRunStripExpanded，localStorage 单键惰性
   // 水合），刷新/重开保持用户选择；组件不再持有本地 useState。
@@ -4491,6 +4509,11 @@ export function Composer({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
+  // tl1777：附件区（.composer-context）在场判定——与下方条件渲染同一表达式
+  // （单一事实源），同时作共用重测 effect 的重挂键与测量的重跑键：条挂载/
+  // 卸载本身不经任何 RO/resize/text 触发面，必须靠键变化强制重测清零/建档。
+  const hasContextArea = attachments.length > 0 || workspaceRefs.length > 0 || sessionRefs.length > 0 || selectedTextRefs.length > 0;
+  const composerContextRef = useRef<HTMLDivElement | null>(null);
   const measureTextareaAutoHeight = useCallback(() => {
     // tl1578 修③：meta 实测增量先于 scrollHeight 早退持久化——卡片高度写手
     // （effectiveComposerHeight，render 侧）经 composerReservedHeight 与本测量
@@ -4498,6 +4521,25 @@ export function Composer({
     const metaHeight = composerMetaRef.current?.offsetHeight ?? 0;
     const metaExtraHeight = metaHeight > 0 ? Math.max(0, metaHeight - COMPOSER_META_NOMINAL_HEIGHT) : 0;
     setComposerMetaExtraHeight((current) => (current === metaExtraHeight ? current : metaExtraHeight));
+    // tl1777：卡外附件区占高实测（offsetHeight + marginBottom——条自带
+    // margin-bottom 8px，offsetHeight 不含外边距；jsdom computedStyle 为空
+    // → 0，读数确定性）。同 meta 增量：先于早退持久化，卸载（ref 空）即归零。
+    const contextArea = composerContextRef.current;
+    let contextExtraHeight = 0;
+    if (contextArea) {
+      const marginFallback = (value: string) => {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      let marginBottom = 0;
+      try {
+        marginBottom = marginFallback(window.getComputedStyle(contextArea).marginBottom);
+      } catch {
+        marginBottom = 0;
+      }
+      contextExtraHeight = contextArea.offsetHeight + marginBottom;
+    }
+    setComposerContextExtraHeight((current) => (current === contextExtraHeight ? current : contextExtraHeight));
     const richHeight = invocationsRef.current.length > 0 ? richInputRef.current?.scrollHeight() : 0;
     const scrollHeight = richHeight || measureTaRef.current?.scrollHeight || 0;
     if (!scrollHeight) return;
@@ -4510,12 +4552,15 @@ export function Composer({
     const sizing = resolveComposerContentSizing({
       contentHeight: scrollHeight,
       manualLogicalHeight: composerHeight,
-      maxLogicalHeight: composerMaxHeight(),
+      // tl1777：上限用纵向预算（窗口预算 − 卡外附件区实测占高）——条占的
+      // 高度不再被输入无限挤占，wrap 总高回归窗口预算（条在场时输入提前
+      // 翻内滚；不在场时与 composerMaxHeight() 同值）。
+      maxLogicalHeight: composerBudgetedMaxHeight(),
       reservedHeight,
     });
     setTextareaAutoHeight((current) => (current === sizing.inputHeight ? current : sizing.inputHeight));
     setTextareaAutoOverflow((current) => (current === sizing.overflow ? current : sizing.overflow));
-  }, [composerHeight, invocations.length]);
+  }, [composerHeight, invocations.length, hasContextArea, composerContextExtraHeight]);
 
   // tl1508 修①：折行判定（实测 offsetHeight 形态，661px 教训——不设宽度阈值）。
   const measureComposerMetaWrap = useCallback(() => {
@@ -4590,14 +4635,27 @@ export function Composer({
         })
       : null;
     if (metaObserver && meta) metaObserver.observe(meta);
+    // tl1777：附件区（卡外条）高度观察者——图片 previewUrl 异步回填切换 chip
+    // 变体/重排、侧栏收窄改变条内换行数，条高变化不经窗口 resize/卡宽/meta
+    // 任何既有触发面；条不在场时观察者缺席（条件渲染，effect 以 hasContextArea
+    // 为键重挂）。测量写路径收敛（输入高度与 contextExtra 均「同值不写」），
+    // 自身引发的回调二次进入不再产生新写入，无回环（meta 观察者同判例）。
+    const contextArea = composerContextRef.current;
+    const contextObserver = typeof ResizeObserver === "function" && contextArea
+      ? new ResizeObserver(() => {
+          update();
+        })
+      : null;
+    if (contextObserver && contextArea) contextObserver.observe(contextArea);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       window.removeEventListener("resize", update);
       observer.disconnect();
       metaObserver?.disconnect();
+      contextObserver?.disconnect();
       sizeObserver?.disconnect();
     };
-  }, [composerHeight, measureTextareaAutoHeight, measureComposerMetaWrap, measureRunStripInline]);
+  }, [composerHeight, measureTextareaAutoHeight, measureComposerMetaWrap, measureRunStripInline, hasContextArea]);
 
   const saveComposerHeight = (height: number) => {
     saveLayoutSize("composerHeight", height, clampComposerHeight);
@@ -5305,7 +5363,10 @@ export function Composer({
     : resolveComposerContentSizing({
         contentHeight: textareaAutoHeight ?? 0,
         manualLogicalHeight: composerHeight,
-        maxLogicalHeight: composerMaxHeight(),
+        // tl1777：与输入测量共用纵向预算（窗口预算 − 卡外附件区实测占高）。
+        // 条在场时卡随预算让位（条+卡总高回归窗口预算），不再把 footer 顶出
+        // 中栏网格行（tl1578 形态②同一溢出通道的条高面）。
+        maxLogicalHeight: composerBudgetedMaxHeight(),
         // tl1578 修③：与输入测量共用 meta 感知预留（此前裸 58，meta 折行时
         // 卡高比内容矮、卡底内容下溢盖状态栏）。
         reservedHeight: composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, composerMetaExtraHeight),
@@ -5329,6 +5390,27 @@ export function Composer({
   // state so long drafts expose their scrollability (#8494/#8742/#9019).
   const composerAutoOverflow = composerHeight === null && textareaAutoOverflow;
   const composerResizeValue = effectiveComposerHeight ?? clampComposerHeight((textareaAutoHeight ?? 0) + composerReservedHeight(COMPOSER_AUTO_RESERVED_HEIGHT, composerMetaExtraHeight));
+  // tl1777r2：卡高写手落定对齐——pointer 拖动手势经 lib/resizeDrag 的
+  // createRafResizeUpdater 绕过 React 直写卡片 --composer-height（拖动帧性能
+  // 通道）；松手 setComposerHeight 触发的 render 若算出与上一帧 prop 相同的值
+  // （长草稿在场时 logicalHeight 不随手动目标变——floor-not-cap 语义
+  // logicalHeight=max(手动, 内容+预留)，手动从 360 改到 160 时内容需要
+  // 302+58 仍把 logicalHeight 顶回 360），React style diff 判定「无变化」跳过
+  // DOM 写入，var 停在手势直写残值（160px）——卡定高残值与 textarea inline
+  // 高（302px，内容需要）分裂，overflow:visible + 透明背景输入框把文字伸出
+  // 卡底（真浏览器 Edge 探针实测 taBottom 1011 > cardBottom 860，用户复现=
+  // 「主动调小高度后长文本输入溢出卡外」）。本 effect 在手势结束与写手值变化
+  // 时绕过 diff 强制对齐 DOM var：值异即权威终写、值同则同值幂等；手势中
+  // 早退保 liveResize 独占拖动帧写权（layout effect 在 commit 后同步跑，
+  // 落定帧无闪烁）。渲染期 style prop 保留（首帧与 SSR 一致性），DOM 终态以
+  // 本写手为准；写 DOM 不触发 render，无回环。键盘 resize/双击复位不直写
+  // DOM（纯 setState→render diff），本写手对它们只是同值幂等补写。
+  useLayoutEffect(() => {
+    if (composerResizing) return;
+    const card = composerCardRef.current;
+    if (!card || effectiveComposerHeight === null) return;
+    card.style.setProperty("--composer-height", `${effectiveComposerHeight}px`);
+  }, [composerResizing, effectiveComposerHeight]);
   void onSetMode;
   const chooseApprovalMode = (nextMode: ToolApprovalMode) => {
     onSetToolApprovalMode(nextMode);
@@ -6053,8 +6135,8 @@ export function Composer({
         </Suspense>
       )}
       <ComposerPinnedFilesShelf tabId={tabId || ""} pinnedFiles={pinnedFiles} />
-      {(attachments.length > 0 || workspaceRefs.length > 0 || sessionRefs.length > 0 || selectedTextRefs.length > 0) && (
-        <div className="composer-context" aria-label={t("composer.contextItems")}>
+      {hasContextArea && (
+        <div className="composer-context" aria-label={t("composer.contextItems")} ref={composerContextRef}>
           {sortComposerAttachments(attachments).map((a) => {
             const imageOnly = Boolean(a.previewUrl) && attachments.every((item) => item.previewUrl) && workspaceRefs.length === 0 && sessionRefs.length === 0;
             return (
