@@ -5560,6 +5560,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.modelCandidatesSelected": "已選擇 {n} 個",
   "settings.visionModel": "圖片輸入",
   "settings.visionModelAria": "{model} 支援圖片輸入",
+  "settings.videoModel": "影片輸入",
+  "settings.audioModel": "音訊輸入",
   "settings.modelCapabilitiesAria": "{model} 的輸入能力",
   "settings.textInput": "文字",
   "settings.imageInputUnknown": "圖片能力未知",

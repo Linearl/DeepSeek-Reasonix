@@ -3949,6 +3949,8 @@ export const zh: Record<DictKey, string> = {
   "settings.modelCandidatesSelected": "已选择 {n} 个",
   "settings.visionModel": "图片输入",
   "settings.visionModelAria": "{model} 支持图片输入",
+  "settings.videoModel": "视频输入",
+  "settings.audioModel": "音频输入",
   "settings.modelCapabilitiesAria": "{model} 的输入能力",
   "settings.textInput": "文本",
   "settings.imageInputUnknown": "图片能力未识别",

@@ -4,7 +4,11 @@ import { settingsOptionValues } from "./settingsSelectTestUtils";
 import { JSDOM } from "jsdom";
 
 import { act } from "react";
-import type { ProviderView } from "../lib/types";
+import type { ProviderModelCapabilityView, ProviderModelOverrideView, ProviderView } from "../lib/types";
+// tl1794：数据源一致性钉的直接读数侧——badge DOM 必须与这些助手同值。
+import { audioInputModeForModel, audioInputModes, audioInputState } from "../lib/providerAudioInput";
+import { modelCapabilityForModel } from "../lib/providerImageInput";
+import { videoInputModeForModel, videoInputModes, videoInputState } from "../lib/providerVideoInput";
 
 let passed = 0;
 let failed = 0;
@@ -59,6 +63,7 @@ function renderPicker(
     visionModelsConfigured?: boolean;
     visionCapability?: "configurable" | "unsupported";
     modelCapabilities?: ProviderModelCapabilityView[];
+    modelOverrides?: ProviderModelOverrideView[];
   } = {},
 ) {
   const {
@@ -66,6 +71,7 @@ function renderPicker(
     visionModelsConfigured = false,
     visionCapability = "configurable",
     modelCapabilities = [],
+    modelOverrides = [],
   } = options;
   return (
     <LocaleProvider>
@@ -74,7 +80,8 @@ function renderPicker(
         selectedModels={[]}
         visionModels={visionModels}
         visionModelsConfigured={visionCapability === "unsupported"}
-        modelCapabilities={candidates.map(model => ({ model, state: visionModels.includes(model) ? "supported" : "unsupported" }))}
+        modelCapabilities={modelCapabilities.length > 0 ? modelCapabilities : candidates.map(model => ({ model, state: visionModels.includes(model) ? "supported" : "unsupported" }))}
+        modelOverrides={modelOverrides}
         contextWindows={{}}
         disabled={false}
         onToggleModel={() => undefined}
@@ -455,6 +462,136 @@ await act(async () => editDisplayName());
 await act(async () => { failedSaveButton?.click(); await flushPromises(); });
 ok(rootEl.textContent?.includes("storage unavailable") === true, "save errors remain visible in the provider form");
 ok(rootEl.querySelector<HTMLInputElement>(".provider-url-input")?.value === "https://legacy.example.com/chat/completions" && rootEl.querySelector(".provider-model-draft__option") !== null, "failed save retains connection and model drafts");
+
+// ---- tl1794：视频/音频输入行 badge（与附件链门控同源）----
+// 数据源钉：badge 读数 = videoInputState/audioInputState(override 模式, 探测
+// 能力视图) —— 与模型弹窗勾选、后端 resolver(mergeModalityOverride +
+// stripModality → Video/AudioInputEnabled) 同一判定链，不另起能力字段。
+const overrideBase = { reasoningProtocol: "", supportedEfforts: [], defaultEffort: "" } as const;
+const badgeTexts = () =>
+  Array.from(rootEl.querySelectorAll(".provider-model-draft__capabilities span")).map((span) => span.textContent?.trim());
+
+// 探测能力含 video（auto 档跟随探测）→ badge 出现；音频未声明 → 不出现。
+await act(async () => {
+  root.render(renderPicker(["m-detect"], {
+    modelCapabilities: [{ model: "m-detect", inputModalities: ["text", "video"], state: "supported", source: "adapter" }],
+  }));
+  await flushPromises();
+});
+ok(badgeTexts().includes("Video input"), "detected video modality renders the video-input row badge");
+ok(!badgeTexts().includes("Audio input"), "absent audio modality renders no audio-input badge");
+
+// 勾选语义（override video=true，探测无 video）→ badge 出现：用户覆写优先。
+await act(async () => {
+  root.render(renderPicker(["m-ovr"], {
+    modelCapabilities: [{ model: "m-ovr", inputModalities: ["text"], state: "unsupported", source: "adapter" }],
+    modelOverrides: [{ ...overrideBase, model: "m-ovr", video: true }],
+  }));
+  await flushPromises();
+});
+ok(badgeTexts().includes("Video input"), "video=true override renders the video-input badge (dialog check-in flows to the row)");
+
+// 取消语义（override video=false，探测仍声明 video）→ badge 消失。
+await act(async () => {
+  root.render(renderPicker(["m-off"], {
+    modelCapabilities: [{ model: "m-off", inputModalities: ["text", "video"], state: "supported", source: "adapter" }],
+    modelOverrides: [{ ...overrideBase, model: "m-off", video: false }],
+  }));
+  await flushPromises();
+});
+ok(!badgeTexts().includes("Video input"), "video=false override removes the video-input badge (dialog uncheck flows to the row)");
+
+// 协议硬门（Anthropic 黑名单 videoInputEnableAllowed=false）压过 override
+// ——与后端 resolver stripModality 同一裁决：覆写不得越过协议门。
+await act(async () => {
+  root.render(renderPicker(["m-blocked"], {
+    modelCapabilities: [{ model: "m-blocked", inputModalities: ["text", "video"], state: "supported", source: "adapter", videoInputEnableAllowed: false }],
+    modelOverrides: [{ ...overrideBase, model: "m-blocked", video: true }],
+  }));
+  await flushPromises();
+});
+ok(!badgeTexts().includes("Video input"), "protocol blacklist suppresses the video badge even with a video=true override");
+
+// 音频对称：勾选出现、取消消失。
+await act(async () => {
+  root.render(renderPicker(["m-audio"], {
+    modelCapabilities: [{ model: "m-audio", inputModalities: ["text"], state: "unsupported", source: "adapter" }],
+    modelOverrides: [{ ...overrideBase, model: "m-audio", audio: true }],
+  }));
+  await flushPromises();
+});
+ok(badgeTexts().includes("Audio input"), "audio=true override renders the audio-input badge (task 1008 surface)");
+await act(async () => {
+  root.render(renderPicker(["m-audio"], {
+    modelCapabilities: [{ model: "m-audio", inputModalities: ["text", "audio"], state: "supported", source: "adapter" }],
+    modelOverrides: [{ ...overrideBase, model: "m-audio", audio: false }],
+  }));
+  await flushPromises();
+});
+ok(!badgeTexts().includes("Audio input"), "audio=false override removes the audio-input badge");
+
+// 图片零回退 + 多模态并存：同一行 image/video/audio 三 badge 同列。
+await act(async () => {
+  root.render(renderPicker(["m-all"], {
+    modelCapabilities: [{ model: "m-all", inputModalities: ["text", "image", "video", "audio"], state: "supported", source: "adapter" }],
+  }));
+  await flushPromises();
+});
+const allBadges = badgeTexts();
+ok(allBadges.includes("Image input"), "image-input badge keeps rendering alongside the new modalities");
+ok(allBadges.includes("Video input") && allBadges.includes("Audio input"), "image, video and audio badges render together on one row");
+
+// 数据源一致性钉：行 badge 的出现与否 ⇔ 同一 fixture 上
+// videoInputState/audioInputState === "supported"（badge 不另起读数）。
+const consistencyCases: Array<{
+  model: string;
+  capabilities: ProviderModelCapabilityView[];
+  overrides: ProviderModelOverrideView[];
+}> = [
+  {
+    model: "m-detect",
+    capabilities: [{ model: "m-detect", inputModalities: ["text", "video"], state: "supported", source: "adapter" }],
+    overrides: [],
+  },
+  {
+    model: "m-ovr",
+    capabilities: [{ model: "m-ovr", inputModalities: ["text"], state: "unsupported", source: "adapter" }],
+    overrides: [{ ...overrideBase, model: "m-ovr", video: true }],
+  },
+  {
+    model: "m-off",
+    capabilities: [{ model: "m-off", inputModalities: ["text", "video"], state: "supported", source: "adapter" }],
+    overrides: [{ ...overrideBase, model: "m-off", video: false }],
+  },
+  {
+    model: "m-blocked",
+    capabilities: [{ model: "m-blocked", inputModalities: ["text", "video"], state: "supported", source: "adapter", videoInputEnableAllowed: false }],
+    overrides: [{ ...overrideBase, model: "m-blocked", video: true }],
+  },
+  {
+    model: "m-audio",
+    capabilities: [{ model: "m-audio", inputModalities: ["text"], state: "unsupported", source: "adapter" }],
+    overrides: [{ ...overrideBase, model: "m-audio", audio: true }],
+  },
+];
+for (const testCase of consistencyCases) {
+  await act(async () => {
+    root.render(renderPicker([testCase.model], {
+      modelCapabilities: testCase.capabilities,
+      modelOverrides: testCase.overrides,
+    }));
+    await flushPromises();
+  });
+  const meta = modelCapabilityForModel(testCase.capabilities, testCase.model);
+  const resolvedVideo = videoInputState(videoInputModeForModel(videoInputModes(testCase.overrides), testCase.model), meta);
+  const resolvedAudio = audioInputState(audioInputModeForModel(audioInputModes(testCase.overrides), testCase.model), meta);
+  const domVideo = badgeTexts().includes("Video input");
+  const domAudio = badgeTexts().includes("Audio input");
+  ok(
+    domVideo === (resolvedVideo === "supported") && domAudio === (resolvedAudio === "supported"),
+    `badge DOM matches the shared resolved-state helpers for ${testCase.model}`,
+  );
+}
 
 await act(async () => {
   root.unmount();
