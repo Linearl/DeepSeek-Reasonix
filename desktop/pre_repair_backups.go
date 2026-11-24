@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/config"
 	"reasonix/internal/store"
 )
@@ -46,6 +47,10 @@ type PreRepairBackupView struct {
 	// 宿主与备份一起搬进桶的形态）：ownerPath 非空但那是归档工件而非活会话。
 	// 行内标注「原对话已归档」，删除放行（健康闸跳过归档态，活宿主保护不变）。
 	OwnerArchived bool `json:"ownerArchived,omitempty"`
+	// Spliced（tl1787 续作）表示该备份已登记进宿主的拼接档案袋
+	// （<stem>.splices.json，后台自愈或手动合并的元信息拼接记录）——行内
+	// 标注「已登记拼接」，长链可经档案袋查询重建。
+	Spliced bool `json:"spliced,omitempty"`
 	// Label 是展示名：备份内 meta sidecar 的会话标题优先，回退 stem。
 	Label string `json:"label"`
 	// Stamp 是目录名携带的 UTC 紧凑时间戳（20060102T150405）。
@@ -116,6 +121,9 @@ func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 			if info, err := os.Stat(owner); err == nil && !info.IsDir() {
 				view.OwnerPath = owner
 				view.OwnerArchived = preRepairOwnerArchived(owner)
+				// tl1787 续作：拼接档案袋登记读数（后台自愈/手动合并的元信息
+				// 拼接是否已覆盖这条备份）。
+				view.Spliced = agent.HasPreRepairSplice(owner, path)
 			}
 			// 展示名：优先备份内 meta 的会话标题（备份时刻的标题），回退 stem。
 			// meta 在备份内读（备份自含 sidecar）；宿主 meta 属现行状态，不读。

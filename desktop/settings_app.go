@@ -504,7 +504,9 @@ type SettingsView struct {
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
 	// tl1787 件⑤/A: tl1397/tl1419 ranges 主动局部压缩族的设置面读数（此前只有
 	// config 键与 Go 渲染表登记，无 desktop 快照字段=设置页无处读值）。
-	ExperimentalRangesCompact      bool `json:"experimentalRangesCompact"`
+	ExperimentalRangesCompact bool `json:"experimentalRangesCompact"`
+	// tl1787 续作: pre-repair 分叉后台元信息拼接开关读数（实验档默认关）。
+	ExperimentalPrepairAutosplice  bool `json:"experimentalPrepairAutosplice"`
 	ExperimentalModelRangesCompact bool `json:"experimentalModelRangesCompact"`
 	ModelRangesFoldWindowMinutes   int  `json:"modelRangesFoldWindowMinutes"`
 	ModelRangesFoldWindowMax       int  `json:"modelRangesFoldWindowMax"`
@@ -902,7 +904,9 @@ type DesktopStartupSettingsView struct {
 	ExperimentalCompletionSummary  bool `json:"experimentalCompletionSummary"`
 	ExperimentalQuickCommands      bool `json:"experimentalQuickCommands"`
 	// tl1787 件⑤/A: ranges 主动局部压缩族读数（与上一个 struct 同字段集）。
-	ExperimentalRangesCompact      bool `json:"experimentalRangesCompact"`
+	ExperimentalRangesCompact bool `json:"experimentalRangesCompact"`
+	// tl1787 续作: pre-repair 分叉后台元信息拼接开关读数（实验档默认关）。
+	ExperimentalPrepairAutosplice  bool `json:"experimentalPrepairAutosplice"`
 	ExperimentalModelRangesCompact bool `json:"experimentalModelRangesCompact"`
 	ModelRangesFoldWindowMinutes   int  `json:"modelRangesFoldWindowMinutes"`
 	ModelRangesFoldWindowMax       int  `json:"modelRangesFoldWindowMax"`
@@ -1775,6 +1779,7 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		// tl1787 件⑤/A: ranges 主动局部压缩族读数（tl1397 迭代一开关 +
 		// tl1419 模型驱动开关 + 滑动窗口两家族子键；0=内置默认）。
 		view.ExperimentalRangesCompact = cfg.Agent.ExperimentalRangesCompact
+		view.ExperimentalPrepairAutosplice = cfg.Agent.ExperimentalPrepairAutosplice
 		view.ExperimentalModelRangesCompact = cfg.Agent.ExperimentalModelRangesCompact
 		view.ModelRangesFoldWindowMinutes = cfg.Agent.ModelRangesFoldWindowMinutes
 		view.ModelRangesFoldWindowMax = cfg.Agent.ModelRangesFoldWindowMax
@@ -2073,6 +2078,7 @@ func (a *App) Settings() SettingsView {
 		ExperimentalQuickCommands:      cfg.Desktop.ExperimentalQuickCommands,
 		// tl1787 件⑤/A: ranges 主动局部压缩族读数（与 view 装配点同字段集）。
 		ExperimentalRangesCompact:      cfg.Agent.ExperimentalRangesCompact,
+		ExperimentalPrepairAutosplice:  cfg.Agent.ExperimentalPrepairAutosplice,
 		ExperimentalModelRangesCompact: cfg.Agent.ExperimentalModelRangesCompact,
 		ModelRangesFoldWindowMinutes:   cfg.Agent.ModelRangesFoldWindowMinutes,
 		ModelRangesFoldWindowMax:       cfg.Agent.ModelRangesFoldWindowMax,

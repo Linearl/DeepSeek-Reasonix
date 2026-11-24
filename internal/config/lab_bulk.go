@@ -111,9 +111,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"traceAsState":       func(c *Config, on bool) error { return c.SetExperimentalTraceAsState(on) },
 	"compactModel":       func(c *Config, on bool) error { return c.SetExperimentalCompactModel(on) },
 	// tl1397: ranges 小段增量压缩（未稳定档，默认关）。
-	"rangesCompact":         func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
+	"rangesCompact": func(c *Config, on bool) error { return c.SetExperimentalRangesCompact(on) },
 	// tl1691: 零摘要折叠道（未稳定档，默认关）。
-	"zeroSummaryCompact":    func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
+	"zeroSummaryCompact": func(c *Config, on bool) error { return c.SetExperimentalZeroSummaryCompact(on) },
 	// tl1691: recall 回读工具注册（boot 门控，默认关）。
 	"recallTool":            func(c *Config, on bool) error { return c.SetExperimentalRecallTool(on) },
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
@@ -191,6 +191,10 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// 开始压冷会话——无损可逆（解压即逐字节还原）且 sweep 每 pass 限流，随
 	// 批量面无护栏冲突。
 	"jsonlZstd": func(c *Config, on bool) error { return c.SetExperimentalJsonlZstd(on) },
+	// tl1787 续作：pre-repair 分叉的后台元信息拼接（未稳定档，默认关）。
+	// 批量开=events idle sweep 开始登记拼接档案袋——纯元信息写（投影零改
+	// 动）且每 pass 限流+幂等闸，随批量面无护栏冲突。
+	"prepairAutosplice": func(c *Config, on bool) error { return c.SetExperimentalPrepairAutosplice(on) },
 	// ── tool-opt ──
 	"toolOptimizations":   func(c *Config, on bool) error { return c.SetExperimentalToolOptimizations(on) },
 	"editEvidenceRelaxed": func(c *Config, on bool) error { return c.SetExperimentalEditEvidenceRelaxed(on) },

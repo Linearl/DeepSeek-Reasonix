@@ -239,6 +239,10 @@ var labFeatureTiers = []labFeatureTier{
 	// 确定性裁剪头尾+标记），档位可选，默认关=超限且 fold 不回本的会话维持
 	// 现状（left in place + WARN），铁律 2。
 	{"eventsRotation", LabTierOptional, []string{"events_auto_rotation", "experimental_events_slim_oversize"}},
+	// tl1787 续作：pre-repair 分叉的后台元信息拼接（未稳定档，铁律 2 默认
+	// 关=登记面与引入前逐字节一致）。挂在 events idle sweep tick 上的独立
+	// pass（Task 945 后台机制族），故与 eventsRotation 同域相邻登记。
+	{"prepairAutosplice", LabTierUnstable, []string{"experimental_prepair_autosplice"}},
 	// tl1338（用户 2026-11-01 拍板）：未稳定→稳定。fork 已锁定 v3（916），卡内
 	// 余项（v4/v5 迁移、扫描清理）皆迁移工具非实验能力。
 	// tl1741：sessionStorage 档位条目随「稳定档不再提供开关」撤出实验室 UI
@@ -1163,6 +1167,11 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_model_ranges_compact = %v   # tl1419: let the model drive ranges folds via the compress_ranges tool (experimental, off by default; flood-gated by a per-fold savings floor + sliding frequency window; requires experimental_ranges_compact at run time; restart to add/remove the tool)\n", c.Agent.ExperimentalModelRangesCompact)
 	fmt.Fprintf(&b, "model_ranges_fold_window_minutes = %d   # tl1419: sliding window length in minutes for model-driven ranges folds (0 = built-in 5)\n", c.Agent.ModelRangesFoldWindowMinutes)
 	fmt.Fprintf(&b, "model_ranges_fold_window_max = %d   # tl1419: max model-driven ranges folds inside the sliding window (0 = built-in 2)\n", c.Agent.ModelRangesFoldWindowMax)
+	// tl1787 续作: idle-time pre-repair fork metadata splice (tl1674 phase-2
+	// verdict; experimental, off by default). On, the events idle sweep tick
+	// runs an extra pass that registers splice points/segment bounds/checksums
+	// into the session's splice ledger — projection content is never touched.
+	fmt.Fprintf(&b, "experimental_prepair_autosplice = %v   # tl1787: register pre-repair fork splices into the session's metadata ledger during the events idle sweep (pure metadata; the transcript and event log stay byte-for-byte unchanged; off by default)\n", c.Agent.ExperimentalPrepairAutosplice)
 	fmt.Fprintf(&b, "experimental_cold_cache_compact = %v   # task 297: compact a long conversation once before it goes cold (off by default)\n", c.Agent.ExperimentalColdCacheCompact)
 	fmt.Fprintf(&b, "cold_cache_compact_min_bytes = %d   # task 297: visible-context size floor in bytes (0 = built-in 614400 = 600 KiB)\n", c.Agent.ColdCacheCompactMinBytes)
 	fmt.Fprintf(&b, "cold_cache_compact_idle_minutes = %d   # task 297: idle minutes before the cold-cache pass fires (0 = built-in 300 = 5h)\n", c.Agent.ColdCacheCompactIdleMinutes)

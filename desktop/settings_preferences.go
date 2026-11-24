@@ -634,6 +634,14 @@ func (a *App) SetExperimentalRangesCompact(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRangesCompact(enabled) })
 }
 
+// SetExperimentalPrepairAutosplice toggles tl1787 续作's idle-time pre-repair
+// fork metadata splice (iron rule 2: default off — off keeps the sweep without
+// the splice pass). Live read per sweep tick; the lab card communicates the
+// unstable tier.
+func (a *App) SetExperimentalPrepairAutosplice(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPrepairAutosplice(enabled) })
+}
+
 // SetExperimentalModelRangesCompact toggles tl1419's model-driven ranges
 // folds (iron rule 2: default off — off keeps compress_ranges out of the
 // registry entirely, boot-gated injection). Run-time folding additionally

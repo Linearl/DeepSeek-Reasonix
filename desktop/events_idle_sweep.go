@@ -502,6 +502,9 @@ func (l *eventsIdleSweepLoop) run() {
 // pass. Busy marks combine this process's live tabs with any lease record,
 // mirroring the storage panel's Busy field.
 func (l *eventsIdleSweepLoop) tick(now time.Time) {
+	// tl1787 续作：pre-repair 分叉的元信息拼接 pass（独立开关，先于 events
+	// 旋钮门——两机制正交；失败不阻塞本函数后续的既有 sweep）。
+	l.runPreRepairAutoSpliceTick(now)
 	knobs := loadEventsIdleSweepConfig()
 	if !knobs.enabled {
 		return
