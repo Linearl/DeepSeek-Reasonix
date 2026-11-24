@@ -703,7 +703,7 @@
   font-size: var(--text-md);
   white-space: nowrap;
   transition: background var(--dur-fast) var(--ease-out);
-  animation: tab-in var(--dur-base) var(--ease-out) both;
+  animation: tab-in var(--dur-normal) var(--ease-out) both;
 }
 
 .tabbar__tab:not(.tabbar__tab--active):hover {

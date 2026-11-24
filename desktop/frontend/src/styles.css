@@ -274,15 +274,24 @@
   --hl-builtin: #56b6c2;
   --hl-meta: #7f848e;
 
-  /* motion — shared timing + easing tokens. Durations mirror the values
-   * already used across the app (0.12 / 0.18 / 0.34 / 0.42s); easings reuse the
-   * existing curves. The global prefers-reduced-motion block at EOF collapses
+  /* motion — shared timing + easing tokens（tl1798 动效三档，20261124 拍板：
+   * hover 时长收拢 120/200/300 三档，数值只定义在本层，组件只引用档位名）。
+   * 归并映射：80/100/120/130/140/150/160ms→fast；180/200ms→normal；280/300ms→slow。
+   * --dur-slower=420ms 为大覆盖层淡出专档（非 hover 档，保留）。
+   * 主题可覆盖档值（见 graphite 段），档位名全局唯一。
+   * The global prefers-reduced-motion block at EOF collapses
    * every animation to ~0ms and removes transitions, so these tokens are safe
    * to reuse freely without per-rule reduce overrides. */
-  --dur-fast: 120ms; /* color/border hovers, tooltips */
-  --dur-base: 180ms; /* popovers, menus, small enters */
-  --dur-slow: 340ms; /* drawers, modals, panel slides */
-  --dur-slower: 420ms; /* large overlay fades */
+  --dur-fast: 120ms; /* hover 反馈快档：color/border hovers, tooltips, 小钮位移 */
+  --dur-normal: 200ms; /* hover 中档 + popovers, menus, small enters */
+  --dur-slow: 300ms; /* hover 慢档 + drawers, modals, panel slides */
+  --dur-slower: 420ms; /* large overlay fades（非 hover 档） */
+  /* hover 增强 token（主交互 hover 用，禁新写字面量）：--hover-dim 当前无等价
+   * 引用属预期（背景加深 8% 供后续 hover 增强任务引用）；--hover-lift/-shadow
+   * 已接既有等价处（translateY(-2px)、mem-doc/-fact 投影）。 */
+  --hover-lift: 2px;
+  --hover-shadow: 0 4px 14px -8px color-mix(in srgb, var(--shadow-color) 50%, transparent);
+  --hover-dim: 8%;
   --ease-out: cubic-bezier(0.2, 0.72, 0.2, 1); /* fast-out / decelerate */
   --ease-decelerate: cubic-bezier(0.2, 0.7, 0.1, 1); /* soft landing (splash) */
   --ease-standard: cubic-bezier(0.25, 0.1, 0.25, 1); /* symmetric */
@@ -2371,7 +2380,7 @@ a[href] {
    300ms 防误触窗口与 15s 折回计时仍完全由 useSidebarHoverBehavior 的
    状态/定时器判定（task826 钉死，本任务零改动），本块只让「已决定的
    折叠/展开」在视觉上平滑落地——动画时长不参与任何判定。选型
-   180ms（--dur-base；任务书 150-250ms 区间中段，且比 layout 列宽过渡
+   180ms（--dur-normal；任务书 150-250ms 区间中段，且比 layout 列宽过渡
    0.16s 略长，内容渐隐覆盖列宽收拢全程不脱节）+ --ease-out（仓库标准
    减速曲线，darwin 侧栏同款）。全部规则挂在 .app--ui-settled 首屏门
    下：门由 App 首帧绘制完成后置位，首屏渲染与状态恢复零动画。
@@ -2385,9 +2394,9 @@ a[href] {
    解耦约束），由 layout 列宽 0.16s 收拢过渡兜底。 */
 .app--ui-settled:not(.app--darwin) .sidebar {
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out),
-    display var(--dur-base) allow-discrete;
+    opacity var(--dur-normal) var(--ease-out),
+    transform var(--dur-normal) var(--ease-out),
+    display var(--dur-normal) allow-discrete;
 }
 .app--ui-settled:not(.app--darwin) .sidebar--collapsed {
   opacity: 0;
@@ -2395,8 +2404,8 @@ a[href] {
 }
 .app--ui-settled .workbench-dock {
   transition:
-    opacity var(--dur-base) var(--ease-out),
-    transform var(--dur-base) var(--ease-out);
+    opacity var(--dur-normal) var(--ease-out),
+    transform var(--dur-normal) var(--ease-out);
 }
 @starting-style {
   .app--ui-settled:not(.app--darwin) .sidebar:not(.sidebar--collapsed) {
@@ -6705,7 +6714,7 @@ button.reasoning-summary:focus-visible {
   display: grid;
   grid-template-rows: 0fr;
   visibility: hidden;
-  transition: grid-template-rows var(--dur-base) var(--ease-out);
+  transition: grid-template-rows var(--dur-normal) var(--ease-out);
 }
 .process-card[data-open="true"] .process-card__wrap {
   grid-template-rows: 1fr;
@@ -6719,7 +6728,7 @@ button.reasoning-summary:focus-visible {
   box-sizing: border-box;
   border-top: 1px solid var(--border-soft);
   background: var(--bg-soft);
-  animation: card-body-in var(--dur-base) var(--ease-out) both;
+  animation: card-body-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes card-body-in {
   from {
@@ -9708,7 +9717,7 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .composer-content-trigger svg {
-  transition: transform var(--dur-base) var(--ease-out);
+  transition: transform var(--dur-normal) var(--ease-out);
 }
 
 .composer-content-trigger:hover:not(:disabled),
@@ -10433,7 +10442,7 @@ body > .mermaid-diagram--fullscreen {
 }
 
 .anchored-popover[data-ready="true"][data-state="open"] {
-  animation: popover-in var(--dur-base) var(--ease-out) both;
+  animation: popover-in var(--dur-normal) var(--ease-out) both;
 }
 
 .anchored-popover[data-state="closing"] {
@@ -14114,7 +14123,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.36);
   transform-origin: top left;
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 .floating-menu button {
   display: flex;
@@ -15109,7 +15118,7 @@ button.statusbar__mcp:focus-visible {
   display: flex;
   justify-content: flex-end;
   z-index: var(--z-drawer-backdrop);
-  animation: backdrop-in var(--dur-base) var(--ease-out) both;
+  animation: backdrop-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes backdrop-in {
   from {
@@ -15125,7 +15134,7 @@ button.statusbar__mcp:focus-visible {
 /* Overlays that opt into exit animation via useMountTransition flip
  * data-state="closing" before unmount; reverse the backdrop fade. */
 .drawer-backdrop[data-state="closing"] {
-  animation: backdrop-out var(--dur-base) var(--ease-out) both;
+  animation: backdrop-out var(--dur-normal) var(--ease-out) both;
 }
 .drawer-backdrop--subtle {
   background: rgba(0, 0, 0, 0.16);
@@ -15154,7 +15163,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .palette[data-state="closing"] {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 @keyframes palette-in {
   from {
@@ -15443,7 +15452,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .session-wall[data-state="closing"] {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 .session-wall__head {
   display: flex;
@@ -15773,7 +15782,7 @@ button.statusbar__mcp:focus-visible {
   animation: palette-in 0.16s cubic-bezier(0.34, 1.4, 0.5, 1);
 }
 .wf-panel-backdrop[data-state="closing"] .wf-panel {
-  animation: palette-out var(--dur-base) var(--ease-out) both;
+  animation: palette-out var(--dur-normal) var(--ease-out) both;
 }
 .wf-panel__toolbar {
   display: flex;
@@ -16531,7 +16540,7 @@ button.statusbar__mcp:focus-visible {
   height: 100%;
   border-radius: 999px;
   background: var(--accent);
-  transition: width var(--dur-base) var(--ease-out);
+  transition: width var(--dur-normal) var(--ease-out);
 }
 .res-panel__section .settings-field__hint-line {
   margin: 8px 0 0;
@@ -20346,7 +20355,7 @@ button.statusbar__mcp:focus-visible {
   justify-content: center;
   padding: 24px;
   overflow: hidden;
-  animation: backdrop-in var(--dur-base) var(--ease-out) both;
+  animation: backdrop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .topicbar__worktree-btn {
@@ -20555,11 +20564,11 @@ button.statusbar__mcp:focus-visible {
 /* Exit animations for modals/backdrops driven by useDeferredClose. */
 .management-modal[data-state="closing"],
 .settings-modal[data-state="closing"] {
-  animation: modal-out var(--dur-base) var(--ease-out) both;
+  animation: modal-out var(--dur-normal) var(--ease-out) both;
 }
 .management-modal-backdrop[data-state="closing"],
 .settings-modal-backdrop[data-state="closing"] {
-  animation: backdrop-out var(--dur-base) var(--ease-out) both;
+  animation: backdrop-out var(--dur-normal) var(--ease-out) both;
 }
 
 /* ── history manager: searchable list with preview and actions ─────────────── */
@@ -26764,7 +26773,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   background: var(--bg-soft);
   overflow: hidden;
-  animation: todobar-in var(--dur-base) var(--ease-out) both;
+  animation: todobar-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes todobar-in {
   from {
@@ -26780,7 +26789,7 @@ button.statusbar__mcp:focus-visible {
   gap: 6px;
   max-height: 220px;
   overflow-y: auto;
-  animation: todo-list-in var(--dur-base) var(--ease-out) both;
+  animation: todo-list-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes todo-list-in {
   from {
@@ -27764,7 +27773,7 @@ button.statusbar__mcp:focus-visible {
   width: min(240px, 100%);
   border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--panel));
-  animation: composer-selection-in var(--dur-base) var(--ease-out) both;
+  animation: composer-selection-in var(--dur-normal) var(--ease-out) both;
 }
 .composer-context__item--selection .composer-context__fileicon {
   color: var(--accent);
@@ -28730,7 +28739,7 @@ button.statusbar__mcp:focus-visible {
   pointer-events: auto;
   user-select: none;
   --wails-draggable: no-drag;
-  transition: opacity var(--dur-base) ease;
+  transition: opacity var(--dur-normal) ease;
 }
 
 /* tl1744: 问号帮助菜单按钮——常驻窗口控件左侧的标题栏入口。尺寸/层级/拖拽豁免
@@ -30810,7 +30819,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: 0 16px 36px rgba(0, 0, 0, 0.36);
   transform-origin: top left;
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 @keyframes menu-pop-in {
   from {
@@ -30964,7 +30973,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(12px);
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .transcript-selection-action button {
@@ -31033,7 +31042,7 @@ button.statusbar__mcp:focus-visible {
   background: color-mix(in srgb, var(--bg-elev) 94%, transparent);
   box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(12px);
-  animation: menu-pop-in var(--dur-base) var(--ease-out) both;
+  animation: menu-pop-in var(--dur-normal) var(--ease-out) both;
 }
 
 .transcript-selection-result-card__head {
@@ -34490,7 +34499,7 @@ button.statusbar__mcp:focus-visible {
   --r-l: 11px;
   --radius: 8px;
   --dur-fast: 130ms;
-  --dur-base: 220ms;
+  --dur-normal: 220ms;
   --dur-slow: 320ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -35323,7 +35332,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 11px; /* 833-radius-wl:theme-variant */
   background: var(--bg-elev);
   box-shadow: var(--app-graphite-shadow);
-  transition: border-color var(--dur-base) var(--ease-out), box-shadow var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  transition: border-color var(--dur-normal) var(--ease-out), box-shadow var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
 }
 
 :root[data-theme-style] .composer-card:focus-within {
@@ -36246,7 +36255,7 @@ button.statusbar__mcp:focus-visible {
   border-radius: 11px; /* 833-radius-wl:theme-variant */
   background: var(--bg-elev);
   box-shadow: var(--app-graphite-shadow-float);
-  animation: graphite-palette-in var(--dur-base) var(--ease-out) both;
+  animation: graphite-palette-in var(--dur-normal) var(--ease-out) both;
 }
 
 :root[data-theme-style] .palette__inputrow,

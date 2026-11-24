@@ -51,9 +51,9 @@ console.log("\ntask 848 sidebar hover expand/collapse transition (visual layer o
   ok(block.includes(".app--ui-settled:not(.app--darwin) .sidebar {"),
     "① left: transition rule exists, scoped to the settle gate and excluding darwin");
   const rule = block.slice(block.indexOf(".app--ui-settled:not(.app--darwin) .sidebar {"), block.indexOf("}", block.indexOf(".app--ui-settled:not(.app--darwin) .sidebar {")));
-  ok(rule.includes("opacity var(--dur-base) var(--ease-out)") && rule.includes("transform var(--dur-base) var(--ease-out)"),
+  ok(rule.includes("opacity var(--dur-normal) var(--ease-out)") && rule.includes("transform var(--dur-normal) var(--ease-out)"),
     "① left: opacity/transform ride the shared 180ms token + standard ease-out");
-  ok(rule.includes("display var(--dur-base) allow-discrete"),
+  ok(rule.includes("display var(--dur-normal) allow-discrete"),
     "① left: display participates via allow-discrete (fold-back fades out before display drops; old WebView degrades to the instant cut)");
   const collapsedRule = block.slice(block.indexOf(".app--ui-settled:not(.app--darwin) .sidebar--collapsed {"), block.indexOf("}", block.indexOf(".app--ui-settled:not(.app--darwin) .sidebar--collapsed {")));
   ok(collapsedRule.includes("opacity: 0;") && collapsedRule.includes("translateX(-18px)"),
@@ -65,14 +65,14 @@ console.log("\ntask 848 sidebar hover expand/collapse transition (visual layer o
     "① left/right: @starting-style entry origins exist for both the sidebar and the dock");
 }
 
-// ── ② 时长选型：--dur-base = 180ms，落在 150-250ms 任务书区间 ──────
+// ── ② 时长选型：--dur-normal = 180ms，落在 150-250ms 任务书区间 ──────
 {
-  const tokenIdx = styles.indexOf("--dur-base:");
+  const tokenIdx = styles.indexOf("--dur-normal:");
   const tokenLine = tokenIdx >= 0 ? styles.slice(tokenIdx, styles.indexOf(";", tokenIdx)) : "";
-  const match = tokenLine.match(/--dur-base:\s*(\d+)ms/);
+  const match = tokenLine.match(/--dur-normal:\s*(\d+)ms/);
   const ms = match ? Number(match[1]) : 0;
-  ok(ms >= 150 && ms <= 250, `② timing: --dur-base = ${ms}ms is inside the mandated 150-250ms band`);
-  ok(block.includes("var(--dur-base)") && !/transition:[^;]*0\.\d+s/.test(block),
+  ok(ms >= 150 && ms <= 250, `② timing: --dur-normal = ${ms}ms is inside the mandated 150-250ms band`);
+  ok(block.includes("var(--dur-normal)") && !/transition:[^;]*0\.\d+s/.test(block),
     "② timing: transitions reference the token, never a hard-coded duration (single source of truth)");
 }
 
