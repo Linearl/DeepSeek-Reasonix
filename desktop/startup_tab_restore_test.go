@@ -95,8 +95,30 @@ func TestSetActiveTabKicksLazyTabBuild(t *testing.T) {
 // TestSetActiveTabDoesNotRekickFailedLazyTab：带 StartupErr 的骨架 tab 保留
 // 显式重试面，点击不静默重建。
 func TestSetActiveTabDoesNotRekickFailedLazyTab(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "p619-failed.jsonl")
-	a, _ := appWithTab(t, path)
+	// tl-prered: t.TempDir 的 RemoveAll 与 appWithTab controller 的异步收尾写
+	// （session 状态/manifest）在 Windows 上竞速（"directory is not empty"/
+	// "Access denied" 判整测红）。手动管目录：重试式清理先注册（LIFO 最后跑，
+	// 40x50ms 预算耗尽任何滞后写者），测试尾 Close controller 缩重试窗口——
+	// 与 tl1789 停止升级钉同款修法（ecf31d689f）。
+	dir, err := os.MkdirTemp("", "tl-prered-lazytab")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for i := 0; i < 40; i++ {
+			if rmErr := os.RemoveAll(dir); rmErr == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+	path := filepath.Join(dir, "p619-failed.jsonl")
+	a, seededTab := appWithTab(t, path)
+	t.Cleanup(func() {
+		if seededTab.Ctrl != nil {
+			seededTab.Ctrl.Close()
+		}
+	})
 	a.mu.Lock()
 	a.tabs["failed_tab"] = &WorkspaceTab{
 		ID:          "failed_tab",
