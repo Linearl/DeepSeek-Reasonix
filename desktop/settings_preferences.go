@@ -244,6 +244,14 @@ func (a *App) SetExperimentalCapabilityGroups(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCapabilityGroups(enabled) })
 }
 
+// SetExperimentalAutopilotComposer toggles whether the composer mode bar
+// offers the autopilot tier (tl1796 opt-in repair of the tl1741 retirement
+// gap). Pure frontend gate — the mode-bar options re-derive on the next
+// settings load/save replay, no restart.
+func (a *App) SetExperimentalAutopilotComposer(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutopilotComposer(enabled) })
+}
+
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions
 // that asked for the update, all additionally resumes every mid-turn session.

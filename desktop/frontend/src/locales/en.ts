@@ -3557,6 +3557,7 @@ export const en = {
   "settings.autopilotHint": "Sessions support an unattended mode: the run is bounded by a wall clock, and the approval model answers prompts nobody replies to. Requests that look destructive, outward-facing, or credential-touching are refused rather than approved.",
   "settings.autopilot.on": "On",
   "settings.autopilot.off": "Off",
+  "settings.autopilotOfferHint": "On = the approval bar gains an autopilot tier (unattended: bounded by a wall clock, the approval model answers prompts nobody replies to); off (default) = the three-tier ask/auto/yolo bar, layout unchanged. Controls dropdown visibility only — never the default session posture.",
   "settings.autopilotMaxRuntime": "Autopilot time limit",
   "settings.autopilotMaxRuntimeHint": "How long an unattended session may run, e.g. 8h. Required - without it autopilot stays off.",
   "settings.autopilotApprovalGrace": "Approval wait",

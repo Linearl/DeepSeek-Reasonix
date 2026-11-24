@@ -1670,7 +1670,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalAutopilotComposer?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1790,7 +1790,14 @@ export default function App() {
       // Task 262: with the quick-commands gate off the composer menu hides by
       // serving an empty list — the stored snippets themselves are untouched.
       setQuickCommands(settings.experimentalQuickCommands === true ? settings.quickCommands ?? [] : []);
-      setAutopilotEnabled(settings.autopilot === true);
+      // tl1796: the offer gate reads the opt-in config key. The previous read
+      // (settings.autopilot === true) went permanently dead when tl1741
+      // retired the [desktop] autopilot mirror field — undefined !== true made
+      // the composer drop the autopilot option for good. The fresh key is
+      // written by the autopilot lab card's row-level switch and replayed on
+      // every settings load/save, so the offer survives restarts and never
+      // depends on the per-tab profile that mode switches mutate.
+      setAutopilotEnabled(settings.experimentalAutopilotComposer === true);
       setStatusBarItems(settings.statusBarItems);
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
     },

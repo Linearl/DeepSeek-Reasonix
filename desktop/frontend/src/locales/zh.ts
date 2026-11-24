@@ -3536,6 +3536,7 @@ export const zh: Record<DictKey, string> = {
   "settings.autopilotHint": "会话支持无人值守模式：由墙钟时间设上限，审批由「审批模型」代为判断无人应答的请求。看起来是破坏性、对外发布或涉及凭据的请求会被拒绝，而不是被批准。",
   "settings.autopilot.on": "开启",
   "settings.autopilot.off": "关闭",
+  "settings.autopilotOfferHint": "开=审批条追加 autopilot 档（无人值守：墙钟设上限，审批模型代答无人应答的请求）；关（默认）=仅 ask/auto/yolo 三档，审批条布局不变。只管下拉显隐，不改变会话默认姿态。",
   "settings.autopilotMaxRuntime": "autopilot 时限",
   "settings.autopilotMaxRuntimeHint": "无人值守会话最长运行多久，例如 8h。必填——不填则不启用 autopilot。",
   "settings.autopilotApprovalGrace": "审批等待时长",

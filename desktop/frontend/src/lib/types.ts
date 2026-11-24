@@ -2833,6 +2833,8 @@ export interface DesktopStartupSettingsView {
   experimentalSidebarHoverRight?: boolean;
   /** Composer 权限选择器形态二选一（任务 940）：off（默认）=现分段按钮组，on=zcode 同款下拉框（省空间）；纯前端门，保存即生效。 */
   experimentalApprovalSelect?: boolean;
+  /** composer 模式条 autopilot 档显隐 opt-in 门（tl1796）：off（默认）=三档 ask/auto/yolo 布局不变，on = 追加 autopilot 档（tl1741 撤镜像键后死读的返修写点）；纯前端门，保存即回放。 */
+  experimentalAutopilotComposer?: boolean;
   /** 对话 markdown 表格按栏宽自动换行（任务 959 ①）：off（默认）= 宽表横滚布局不变，on = 单元格随当前栏宽换行（分栏拖窄后随新宽度重排）；纯前端门，保存即生效。 */
   experimentalTableWrap?: boolean;
   /** composer 发送目标选择器形态二选一（任务 959 ②）：off（默认）= 三按钮组（左栏/右栏/同时发送）不变，on = 下拉框（复用 940 形态机制）；纯前端门，保存即生效。 */

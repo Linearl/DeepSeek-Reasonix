@@ -2892,16 +2892,31 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               ) : null}
             </>
           )}
-          {/* tl1741 返修：autopilot 卡回归（无主开关卡——新会话恒默认
-              unattended，主键 autopilot 已退役）。卡内子项原样保留：Task 477
+          {/* tl1741 返修：autopilot 卡回归——主键 autopilot 已退役（新会话
+              姿态与 max_runtime/approval_grace 护栏行不回归，SetDesktop
+              Autopilot 三键 setter 随主键退役，两键保留 config 手写，原拍板
+              口径不变）。tl1796：卡内补 composer 模式条 autopilot 档显隐
+              opt-in 行级开关——tl1741 撤镜像键后前端读 settings.autopilot 死
+              读恒 false，下拉选项永久消失；本行即新写点，默认关=模式条三档
+              ask/auto/yolo 逐字节不变（铁律 2）。卡内子项原样保留：Task 477
               ask 超时族 + Task 544 ask 续跑 + 任务 1084 高风险授权五项（Task
-              1124 聚合卡形态）+ ask 轮次上限 + Task 364/527 管控路径预批子块。
-              non-goals：max_runtime/approval_grace 护栏行不回归——SetDesktop
-              Autopilot 三键 setter 随主键退役，两键保留 config 手写（原拍板
-              口径不变）。 */}
+              1124 聚合卡形态）+ ask 轮次上限 + Task 364/527 管控路径预批子块。 */}
           {selected === "autopilot" && (
             <>
-              <SettingsField testId="lab-toggle-autopilot" label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-autopilot" label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotOfferHint")} icon={<ShieldCheck size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalAutopilotComposer) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalAutopilotComposer(on))}
+                    >
+                      {t(on ? "settings.autopilot.on" : "settings.autopilot.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               {/* Task 477: the experimental ask-timeout sub-option. Off (the
                   default) keeps the terminal stop after the built-in 10-minute
                   wait; on answers a timed-out high-risk ask with a refusal
