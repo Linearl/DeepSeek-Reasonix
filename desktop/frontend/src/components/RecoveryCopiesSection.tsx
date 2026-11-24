@@ -3236,6 +3236,9 @@ export function RecoveryCopiesSection() {
                                   {view.ownerArchived
                                     ? ` · ${t("settings.recoveryCopiesPreRepairArchived")}`
                                     : null}
+                                  {view.spliced
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
+                                    : null}
                                   {view.transcript ? (
                                     <button
                                       className="btn btn--small"

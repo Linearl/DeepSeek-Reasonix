@@ -241,7 +241,10 @@ export type TierFeatureId =
   | "rangesCompact"
   // tl1419 模型驱动 ranges 折叠（同上口径转两侧共享；窗口两键为家族子键，
   // 不另计条目）。
-  | "modelRangesCompact";
+  | "modelRangesCompact"
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（Go 渲染表新条目两侧共享，
+  // 未稳定档）。
+  | "prepairAutosplice";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -286,6 +289,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   rangesCompact: "unstable",
   // tl1419：模型驱动 ranges 折叠（未稳定档，同上）。
   modelRangesCompact: "unstable",
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（未稳定档，镜像 Go 渲染表）。
+  prepairAutosplice: "unstable",
   // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
   // 用户 20261107 八组清单「冷缓存压缩→可选」）。
   coldCacheCompact: "optional",
@@ -606,12 +611,14 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。
  * tl1787 件⑤/A：rangesCompact + modelRangesCompact（tl1397/tl1419 ranges 主动
  * 局部压缩两开关，未稳定档）入表——未稳定 4→6、总数 90→92（两侧共享，
- * Go-only 豁免同步收回两条）。 */
+ * Go-only 豁免同步收回两条）。
+ * tl1787 续作：prepairAutosplice（pre-repair 分叉后台元信息拼接，未稳定档）
+ * 入表——未稳定 6→7、总数 92→93（两侧共享）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
   optional: 26,
-  unstable: 6,
+  unstable: 7,
   retired: 0,
 };
 

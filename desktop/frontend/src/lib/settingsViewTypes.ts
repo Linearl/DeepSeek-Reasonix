@@ -133,6 +133,8 @@ export interface SettingsView {
   experimentalModelRangesCompact?: boolean;
   modelRangesFoldWindowMinutes?: number;
   modelRangesFoldWindowMax?: number;
+  // tl1787 续作: pre-repair 分叉后台元信息拼接开关读数（默认关）。
+  experimentalPrepairAutosplice?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
   // tl1741：experimentalCDPDebugPort 随撤开关退役——CDP endpoint 无条件起。

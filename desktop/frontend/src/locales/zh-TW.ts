@@ -3785,6 +3785,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairMergeDone": "已接回 {n} 條歷史到主線",
   "settings.recoveryCopiesPreRepairMergeNothing": "主線已包含這份備份的全部歷史，無需合併",
   "settings.recoveryCopiesPreRepairMergeFailed": "合併失敗",
+  // tl1787 續作：拼接檔案袋登記標註（後台自癒/手動合併共用一份台賬）。
+  "settings.recoveryCopiesPreRepairSpliced": "已登記拼接",
   "settings.recoveryCopiesPreRepairCleanSelected": "清理所選（{n}）",
   "settings.recoveryCopiesPreRepairCleanAll": "清理全組",
   "settings.recoveryCopiesPreRepairCleanTitle": "清理改寫前備份",
@@ -5248,6 +5250,12 @@ export const zhTW: Record<DictKey, string> = {
   "settings.modelRangesCompact.on": "開",
   "settings.modelRangesCompact.off": "關",
   "settings.modelRangesCompact.windowMax": "視窗內摺疊次數上限",
+  // tl1787 續作：pre-repair 分叉後設元資訊拼接（events idle sweep 獨立 pass；
+  // 拼接判據/檔案袋登記/校驗值重算全在元資訊層，投影零改動零額度）。
+  "settings.prepairAutosplice": "備份分叉自癒拼接（後設元資訊）",
+  "settings.prepairAutospliceHint": "空閒期自動偵測 pre-repair 分叉：判據通過（lineage/改寫點時間戳/內容連續性）即把拼接點/段邊界/校驗值登記進會話拼接檔案袋——歷史可查的元資訊拼接，投影內容一個位元組不動、零模型呼叫；失敗只記日誌不阻塞既有 sweep。未穩定檔。",
+  "settings.prepairAutosplice.on": "開",
+  "settings.prepairAutosplice.off": "關",
   "settings.modelRangesCompact.windowMaxHint": "滑動視窗內允許的模型驅動摺疊次數；0 = 內建預設 2 次。",
 "settings.preapproveManagedPaths": "受管路徑預授權",
 "settings.preapproveManagedPathsHint": "開啟後，僅在 autopilot（無人值守）模式下，下方勾選的敏感寫入類別略過人工審批彈窗。各類別預設不勾：關閉=完全保留現有彈窗行為。",

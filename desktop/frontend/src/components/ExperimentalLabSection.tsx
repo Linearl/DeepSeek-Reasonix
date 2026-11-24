@@ -1446,6 +1446,23 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl1787 续作成员行：pre-repair 分叉后台元信息拼接（events idle
+                  sweep 独立 pass；纯元信息写，投影内容一个字节不动；未稳定档，
+                  默认关=sweep 不跑该 pass）。 */}
+              <SettingsField label={labLabel("prepairAutosplice", t("settings.prepairAutosplice"))} hint={t("settings.prepairAutospliceHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalPrepairAutosplice) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalPrepairAutosplice(on))}
+                    >
+                      {t(on ? "settings.prepairAutosplice.on" : "settings.prepairAutosplice.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
             </>
           )}
           {/* Task 561 M7 会话存储族: storage-version + event-rotation fold into ONE

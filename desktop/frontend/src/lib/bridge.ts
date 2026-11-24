@@ -509,6 +509,10 @@ export interface PreRepairBackupView {
    *  not a live session. The row is labeled and the delete gate lets it
    *  through; merging is refused until the conversation is restored. */
   ownerArchived?: boolean;
+  /** tl1787 续作: the backup is registered in the owner's splice ledger
+   *  (background autosplice or the manual merge) — the long chain is
+   *  queryable from the ledger. */
+  spliced?: boolean;
   label: string;
   stamp: string;
   bytes: number;
@@ -2291,6 +2295,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalModelRangesCompact(enabled: boolean): Promise<void>;
   SetModelRangesFoldWindowMinutes(minutes: number): Promise<void>;
   SetModelRangesFoldWindowMax(maxFolds: number): Promise<void>;
+  // tl1787 续作: pre-repair 分叉后台元信息拼接开关（events idle sweep 独立
+  // pass；默认关）。
+  SetExperimentalPrepairAutosplice(enabled: boolean): Promise<void>;
   SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
   /** Task 369: selection quick-actions floating card switch. */
   SetExperimentalSelectionActions(enabled: boolean): Promise<void>;
@@ -7540,6 +7547,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalModelRangesCompact() {},
     async SetModelRangesFoldWindowMinutes() {},
     async SetModelRangesFoldWindowMax() {},
+    async SetExperimentalPrepairAutosplice() {},
     async RunSelectionSideQuery() { return ""; },
     async SetExperimentalSelectionActions() {},
     async SetExperimentalComposerDraft() {},

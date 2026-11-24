@@ -3640,6 +3640,12 @@ export const en = {
   "settings.modelRangesCompact.on": "On",
   "settings.modelRangesCompact.off": "Off",
   "settings.modelRangesCompact.windowMax": "Folds per window",
+  // tl1787 continuation: pre-repair fork background metadata splice (an
+  // events-idle-sweep pass; projection content stays byte-for-byte untouched).
+  "settings.prepairAutosplice": "Backup fork self-heal splice (background metadata)",
+  "settings.prepairAutospliceHint": "During idle sweeps, pre-repair forks that pass the splice criteria (lineage / rewrite-point timestamp / content continuity) get their splice point, segment bounds and checksums registered into the session's splice ledger — a queryable metadata splice with the projection untouched and zero model calls; failures only log and never block the sweep. Unstable tier.",
+  "settings.prepairAutosplice.on": "On",
+  "settings.prepairAutosplice.off": "Off",
   "settings.modelRangesCompact.windowMaxHint": "How many model-driven folds the sliding window allows; 0 = built-in default of 2.",
 "settings.preapproveManagedPaths": "Managed-path pre-approval",
 "settings.preapproveManagedPathsHint": "When on, and only under autopilot (unattended runs), the checked sensitive write classes below skip their human approval prompt. Every category ships unchecked: off keeps today's prompts exactly as they are.",
@@ -5352,6 +5358,9 @@ export const en = {
   "settings.recoveryCopiesPreRepairMergeDone": "Grafted {n} messages back into the main line",
   "settings.recoveryCopiesPreRepairMergeNothing": "The main already contains everything in this backup — nothing to merge",
   "settings.recoveryCopiesPreRepairMergeFailed": "Merge failed",
+  // tl1787 continuation: the splice-ledger registration marker (shared by the
+  // background autosplice and the manual merge).
+  "settings.recoveryCopiesPreRepairSpliced": "splice registered",
   "settings.recoveryCopiesPreRepairCleanSelected": "Clean selected ({n})",
   "settings.recoveryCopiesPreRepairCleanAll": "Clean all",
   "settings.recoveryCopiesPreRepairCleanTitle": "Clean pre-repair backups",

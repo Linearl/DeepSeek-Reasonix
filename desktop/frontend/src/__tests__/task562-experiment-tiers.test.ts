@@ -169,13 +169,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 推荐 50→51、总数 89→90。tl1787 件⑤/A：rangesCompact + modelRangesCompact
   // （tl1397/tl1419 ranges 主动局部压缩，未稳定档）入表——未稳定 4→6、
   // 总数 90→92（两侧共享，Go-only 豁免同步收回两条）。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 6 && counts.retired === 0,
-    `register counts are 9 稳定/51/26/6/0 (got ${JSON.stringify(counts)})`);
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 26 && counts.unstable === 7 && counts.retired === 0,
+    `register counts are 9 稳定/51/26/7/0 (got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
-  // tl1787 件⑤/A：ranges 两开关入表 → 90→92。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 92, `register holds exactly 92 features (tl1787 rangesCompact + modelRangesCompact added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 6 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/26/6/0 (tl1787 ranges 两开关入未稳定档)");
+  // tl1787 件⑤/A：ranges 两开关入表 → 90→92。tl1787 续作：prepairAutosplice
+  // 入表 → 92→93。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 93, `register holds exactly 93 features (tl1787 ranges + prepairAutosplice added; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 26 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/26/7/0 (tl1787 ranges 两开关 + prepairAutosplice 入未稳定档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -264,7 +265,8 @@ console.log("\ntask 562 lab three-tier badges");
   // memoryIndexSlim（记忆注入瘦身，提效组，可选档）两侧共享入表——75→76。
   // tl1741 撤七条(autopilot/sessionCollab/collabHub/workflowPanel/cdpDebugPort/sessionStorage/runtimeReuse) + tl1746 加 tasklistPanel：76-7+1=70。
   // tl1718：composerToolsFold 两侧共享入表——70→71。
-  ok(Object.keys(goTiers).length === 71, `Go registry parses to 71 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold; got ${Object.keys(goTiers).length})`);
+  // tl1787 续作：prepairAutosplice 两侧共享入表——Go registry 71→72。
+  ok(Object.keys(goTiers).length === 72, `Go registry parses to 72 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold, tl1787 added prepairAutosplice; got ${Object.keys(goTiers).length})`);
 
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
@@ -344,7 +346,8 @@ console.log("\ntask 562 lab three-tier badges");
   // cards 成员数以合并态实测为准（ok 值首猜 63，跑批校正）。
   // tl1787 件⑤/A：contextGovernance 卡补 rangesCompact + modelRangesCompact
   // 两成员行——63→65。
-  ok(members.length === 65, `merged cards carry 65 member features (tl1787 ranges two rows added; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1787 续作：runtimeObservability 卡补 prepairAutosplice 成员行——65→66。
+  ok(members.length === 66, `merged cards carry 66 member features (tl1787 ranges two rows + prepairAutosplice added; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -370,7 +373,7 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1746：tasklistPanel rail 入口计入 → 88→89。
   // tl1718：composerToolsFold 入表计入 → 89→90。
   // tl1787 件⑤/A：ranges 两开关入表计入 → 90→92。
-  ok(covered.size === 92, "rail entries cover all 92 features (tl1787 rangesCompact + modelRangesCompact added)");
+  ok(covered.size === 93, "rail entries cover all 93 features (tl1787 ranges + prepairAutosplice added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -419,8 +422,10 @@ console.log("\ntask 562 lab three-tier badges");
     `sessionStore: sessionStorage member restored by tl1741r2 ⇒ single stable badge (got ${JSON.stringify(railTiersForDefault("sessionStore"))} → ${String(agg("sessionStore"))})`);
   // tl1309 卡②：运行可观测卡聚合输入 [推荐(监控), 可选(events 瘦身/轨迹观测)]
   // → 卡头单枚 推荐。
-  ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional"]) && agg("runtimeObservability") === "recommended",
-    `runtimeObservability: input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
+  // tl1787 续作：prepairAutosplice（未稳定档）入卡——聚合输入 [推荐,可选,
+  // 未稳定]，卡头仍单枚推荐。
+  ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional", "unstable"]) && agg("runtimeObservability") === "recommended",
+    `runtimeObservability: input [推荐,可选,未稳定] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
   // tl1741r2：资源治理卡卡体回归（无主开关卡）——六成员回卡：聚合输入
   // [稳定(复用池展示行), 推荐(孤儿/GC/闲置), 可选(本地服务), 未稳定(ACP)]
   // → 卡头单枚 稳定。

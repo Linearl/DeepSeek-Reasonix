@@ -90,6 +90,7 @@ const BACKUPS: PreRepairBackupView[] = [
     dir: "/sessions/live.pre-repair-20261110T010000",
     transcript: "/sessions/live.pre-repair-20261110T010000/live.jsonl",
     ownerPath: "/sessions/live.jsonl",
+    spliced: true,
     label: "dieted conversation",
     stamp: "20261110T010000",
     bytes: 1048576,
@@ -319,6 +320,36 @@ console.log("\ntl1787 conversation version management (archive / archived-owner 
 
   const goPrefs = readFileSync(resolve(testDir, "../../../../desktop/settings_preferences.go"), "utf8");
   ok(goPrefs.includes("func (a *App) SetExperimentalRangesCompact") && goPrefs.includes("func (a *App) SetExperimentalModelRangesCompact"), "④ the Go setter bridges exist (Wails exposure layer)");
+}
+
+// ⑤ tl1787 续作：后台自愈拼接的接线钉（开关面 + 档案袋登记标注）。
+{
+  const spies: Spies = { archiveCalls: [], mergeCalls: [], listCalls: 0 };
+  const root = await openPanel(spies);
+  ok(bodyText().includes("splice registered"), "⑤ the spliced row carries the ledger-registration marker");
+  await act(async () => root.unmount());
+  const pane = readFileSync(resolve(testDir, "../components/ExperimentalLabSection.tsx"), "utf8");
+  ok(pane.includes('labLabel("prepairAutosplice"'), "⑤ the autosplice row label wraps the tier badge (562 pane contract)");
+  ok(pane.includes("app.SetExperimentalPrepairAutosplice"), "⑤ the autosplice switch writes through its setter");
+  const layoutDefault = readFileSync(resolve(testDir, "../lab/labLayoutDefault.ts"), "utf8");
+  const layoutYaml = readFileSync(resolve(testDir, "../lab/lab-layout.yaml"), "utf8");
+  for (const [name, source] of [["default layout", layoutDefault], ["lab-layout.yaml", layoutYaml]] as const) {
+    ok(source.includes("prepairAutosplice"), `⑤ ${name} carries the autosplice member`);
+    ok(source.includes("experimentalPrepairAutosplice"), `⑤ ${name} lights the autosplice key`);
+  }
+  ok(readFileSync(resolve(testDir, "../lab/labLightKeys.ts"), "utf8").includes("experimentalPrepairAutosplice:"), "⑤ the autosplice light predicate is registered");
+  const bridge2 = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
+  ok(bridge2.includes("SetExperimentalPrepairAutosplice(enabled: boolean): Promise<void>"), "⑤ the autosplice setter is declared on AppBindings");
+  ok(bridge2.includes("spliced?: boolean"), "⑤ PreRepairBackupView carries the spliced wire field");
+  const goPrefs = readFileSync(resolve(testDir, "../../../../desktop/settings_preferences.go"), "utf8");
+  ok(goPrefs.includes("func (a *App) SetExperimentalPrepairAutosplice"), "⑤ the Go autosplice setter bridge exists");
+  const goConfig = readFileSync(resolve(testDir, "../../../../internal/config/edit.go"), "utf8");
+  ok(goConfig.includes("func PrepairAutospliceLive()"), "⑤ the Go live read exists (sweep tick reads it)");
+  for (const locale of ["zh", "en", "zh-TW"]) {
+    const dict = readFileSync(resolve(testDir, `../locales/${locale}.ts`), "utf8");
+    const missing = ["settings.prepairAutosplice", "settings.prepairAutospliceHint", "settings.recoveryCopiesPreRepairSpliced"].filter((k) => !dict.includes(`"${k}"`));
+    ok(missing.length === 0, `⑤ ${locale} carries the autosplice keys (missing: ${JSON.stringify(missing)})`);
+  }
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

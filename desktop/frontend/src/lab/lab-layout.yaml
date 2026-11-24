@@ -444,7 +444,7 @@ groups:
       - id: runtimeObservability
         labelKey: settings.runtimeObservability
         tier: recommended
-        onKeys: [experimentalSessionMonitor, experimentalPerfMonitor, eventsRotationNonDefault, experimentalTrajectoryView]
+        onKeys: [experimentalSessionMonitor, experimentalPerfMonitor, eventsRotationNonDefault, experimentalTrajectoryView, experimentalPrepairAutosplice]
         members:
           # 监控（原 observability 独立卡，推荐档，本件并卡；318.5 的
           # 会话+性能双开关保持卡内两行独立）。
@@ -460,6 +460,11 @@ groups:
           - id: trajectoryView
             labelKey: settings.trajectoryView
             tier: optional
+          # tl1787 续作：pre-repair 分叉后台元信息拼接（events idle sweep
+          # 独立 pass；未稳定档，默认关）。
+          - id: prepairAutosplice
+            labelKey: settings.prepairAutosplice
+            tier: unstable
       # 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan 用量
       # （PlanUsageCard 已上线，provider 解析显示，无开关展示行）+ OpenCode Go
       # 用量（自界面组迁入，782④ 同一动作的落卡半程）。

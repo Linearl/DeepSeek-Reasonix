@@ -2856,6 +2856,9 @@ export interface DesktopStartupSettingsView {
   experimentalModelRangesCompact?: boolean;
   modelRangesFoldWindowMinutes?: number;
   modelRangesFoldWindowMax?: number;
+  /** tl1787 续作: pre-repair 分叉后台元信息拼接开关（events idle sweep 独立
+   *  pass；默认关=登记面与引入前逐字节一致）。 */
+  experimentalPrepairAutosplice?: boolean;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
   /** Task 342: WebView2 CDP debug endpoint (loopback-only random port); ships off; restart to apply. */

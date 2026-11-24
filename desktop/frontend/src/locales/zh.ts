@@ -3620,6 +3620,12 @@ export const zh: Record<DictKey, string> = {
   "settings.modelRangesCompact.on": "开",
   "settings.modelRangesCompact.off": "关",
   "settings.modelRangesCompact.windowMax": "窗口内折叠次数上限",
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（events idle sweep 独立 pass；
+  // 拼接判据/档案袋登记/校验值重算全在元信息层，投影零改动零额度）。
+  "settings.prepairAutosplice": "备份分叉自愈拼接（后台元信息）",
+  "settings.prepairAutospliceHint": "空闲期自动检测 pre-repair 分叉：判据通过（lineage/改写点时间戳/内容连续性）即把拼接点/段边界/校验值登记进会话拼接档案袋——历史可查的元信息拼接，投影内容一个字节不动、零模型调用；失败只记日志不阻塞既有 sweep。未稳定档。",
+  "settings.prepairAutosplice.on": "开",
+  "settings.prepairAutosplice.off": "关",
   "settings.modelRangesCompact.windowMaxHint": "滑动窗口内允许的模型驱动折叠次数；0 = 内置默认 2 次。",
 "settings.preapproveManagedPaths": "受管路径预授权",
 "settings.preapproveManagedPathsHint": "开启后，仅在 autopilot（无人值守）模式下，下方勾选的敏感写入类别跳过人工审批弹窗。各类别默认不勾：关闭=完全保留现有弹窗行为。",
@@ -5316,6 +5322,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairMergeDone": "已接回 {n} 条历史到主线",
   "settings.recoveryCopiesPreRepairMergeNothing": "主线已包含这份备份的全部历史，无需合并",
   "settings.recoveryCopiesPreRepairMergeFailed": "合并失败",
+  // tl1787 续作：拼接档案袋登记标注（后台自愈/手动合并共用一份台账）。
+  "settings.recoveryCopiesPreRepairSpliced": "已登记拼接",
   "settings.recoveryCopiesPreRepairCleanSelected": "清理所选（{n}）",
   "settings.recoveryCopiesPreRepairCleanAll": "清理全组",
   "settings.recoveryCopiesPreRepairCleanTitle": "清理改写前备份",

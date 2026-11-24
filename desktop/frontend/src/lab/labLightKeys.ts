@@ -48,6 +48,9 @@ export const LAB_LIGHT_KEYS = {
   // 登记而前端灯键缺位——设置页入口落地补齐）。
   experimentalRangesCompact: (s: SettingsView) => Boolean(s.experimentalRangesCompact),
   experimentalModelRangesCompact: (s: SettingsView) => Boolean(s.experimentalModelRangesCompact),
+  // tl1787 续作：pre-repair 分叉后台元信息拼接灯（events idle sweep 独立
+  // pass；默认关）。
+  experimentalPrepairAutosplice: (s: SettingsView) => Boolean(s.experimentalPrepairAutosplice),
   experimentalColdCacheCompact: (s: SettingsView) => Boolean(s.experimentalColdCacheCompact),
   experimentalCurateContext: (s: SettingsView) => Boolean(s.experimentalCurateContext),
   experimentalReviewHint: (s: SettingsView) => Boolean(s.experimentalReviewHint),
