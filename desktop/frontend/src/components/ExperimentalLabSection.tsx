@@ -114,7 +114,7 @@ function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; 
         );
         if (binding.input === "checkbox") {
           return (
-            <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+            <SettingsField key={field.id} testId={`lab-toggle-${field.id}`} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
               <input
                 type="checkbox"
                 checked={Boolean(binding.read(s))}
@@ -126,7 +126,7 @@ function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; 
         }
         if (binding.input === "segment") {
           return (
-            <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+            <SettingsField key={field.id} testId={`lab-toggle-${field.id}`} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {(binding.options ?? []).map((option) => (
                   <button
@@ -148,7 +148,7 @@ function LabParamFieldsCard({ entry, s, busy, apply }: { entry: LabLayoutEntry; 
         // 这里收口）。
         const current = drafts[field.id] ?? binding.read(s);
         return (
-          <SettingsField key={field.id} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
+          <SettingsField key={field.id} testId={`lab-toggle-${field.id}`} label={label} hint={t(binding.hintKey)} icon={<Sparkles size={18} />}>
             <input
               type={binding.input}
               min={binding.min}
@@ -199,10 +199,10 @@ function LogManagementLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
     : "";
   return (
     <>
-      <SettingsField label={t("settings.logManagement")} icon={<Activity size={18} />} stacked>
+      <SettingsField testId="lab-toggle-logManagement" label={t("settings.logManagement")} icon={<Activity size={18} />} stacked>
         <p className="settings-field__hint">{t("settings.logManagement.hint")}</p>
       </SettingsField>
-      <SettingsField label={t(retentionBinding.labelKey ?? "settings.alertLogRetention.label")} hint={t(retentionBinding.hintKey)} icon={<Activity size={18} />}>
+      <SettingsField testId="lab-toggle-alertLogRetentionDays" label={t(retentionBinding.labelKey ?? "settings.alertLogRetention.label")} hint={t(retentionBinding.hintKey)} icon={<Activity size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {(retentionBinding.options ?? []).map((option) => (
             <button
@@ -217,7 +217,7 @@ function LogManagementLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
           ))}
         </SettingsOptions>
       </SettingsField>
-      <SettingsField label={t(sizeBinding.labelKey ?? "settings.alertLogMaxTotal.label")} hint={t(sizeBinding.hintKey)} icon={<Activity size={18} />}>
+      <SettingsField testId="lab-toggle-alertLogMaxTotalMB" label={t(sizeBinding.labelKey ?? "settings.alertLogMaxTotal.label")} hint={t(sizeBinding.hintKey)} icon={<Activity size={18} />}>
         <SettingsOptions layout="field" className="set-seg">
           {(sizeBinding.options ?? []).map((option) => (
             <button
@@ -277,7 +277,7 @@ function TasklistPanelLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
   const draftPath = pathDraft ?? savedPath;
   return (
     <>
-      <SettingsField label={<>
+      <SettingsField testId="lab-toggle-tasklistPanel" label={<>
         {t("settings.tasklistPanel")}
         <TierBadge tier={EXPERIMENT_FEATURE_TIERS.tasklistPanel} translator={t} />
       </>} hint={t("settings.tasklistPanel.hint")} icon={<Activity size={18} />}>
@@ -294,7 +294,7 @@ function TasklistPanelLabPane({ s, busy, apply }: { s: SettingsView; busy: boole
           ))}
         </SettingsOptions>
       </SettingsField>
-      <SettingsField label={t("settings.tasklistPanel.dbPath")} hint={t("settings.tasklistPanel.dbPathHint")} icon={<Folder size={18} />} stacked>
+      <SettingsField testId="lab-toggle-tasklistDbPath" label={t("settings.tasklistPanel.dbPath")} hint={t("settings.tasklistPanel.dbPathHint")} icon={<Folder size={18} />} stacked>
         <input
           type="text"
           value={draftPath}
@@ -958,16 +958,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               acpListen 状态行随卡。键/setter/档位零变化。 */}
           {selected === "resourceGovernance" && (
             <>
-              <SettingsField label={labLabel("resourceGovernance", t("settings.resourceGovernance"))} hint={t("settings.resourceGovernanceHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-resourceGovernance" label={labLabel("resourceGovernance", t("settings.resourceGovernance"))} hint={t("settings.resourceGovernanceHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
               {/* 成员行 1：运行时复用池（原 infra 独立卡，稳定档）——tl1741
                   返修：无开关展示行（复用池常开，主键退役，deprecated 清单
                   承接手写残留；glmPlanUsage 展示行先例）。 */}
-              <SettingsField label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} icon={<Sparkles size={18} />} stacked>
+              <SettingsField testId="lab-toggle-runtimeReuse" label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} icon={<Sparkles size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.runtimeReuseHint")}</p>
               </SettingsField>
               {/* 成员行 2：孤儿资源回收清理（原 infra 独立卡，推荐档——992
                   随复用池升推荐；与复用池同管运行时装配的生命周期两端）。 */}
-              <SettingsField label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<RefreshCw size={18} />}>
+              <SettingsField testId="lab-toggle-orphanHandling" label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -983,7 +983,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 成员行 3：后台会话闲置释放（原存储组参数卡，775/308-O4）——
                   值读写走 labParamFields 绑定（onBlur 落盘，配置层钳制）。 */}
-              <SettingsField label={labLabel("idleReleaseMinutes", t("settings.detachedIdleRelease"))} hint={t(LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.hintKey)} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-idleReleaseMinutes" label={labLabel("idleReleaseMinutes", t("settings.detachedIdleRelease"))} hint={t(LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.hintKey)} icon={<Sparkles size={18} />}>
                 <input
                   type="number"
                   min={LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.min}
@@ -1000,7 +1000,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 成员行 4：GC 策略旋钮（原存储组参数卡，tl1286）——同上走注册
                   表绑定；0=跟随默认等效 100，设置即热改。 */}
-              <SettingsField label={labLabel("gcPercent", t("settings.gcPercent"))} hint={t(LAB_PARAM_FIELDS.gcPercent.hintKey)} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-gcPercent" label={labLabel("gcPercent", t("settings.gcPercent"))} hint={t(LAB_PARAM_FIELDS.gcPercent.hintKey)} icon={<Sparkles size={18} />}>
                 <input
                   type="number"
                   min={LAB_PARAM_FIELDS.gcPercent.min}
@@ -1017,7 +1017,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 成员行 5：ACP 常驻监听（原 infra 独立卡，790；状态灯语义——
                   监听在桌面 boot 装配，翻转需重启）。 */}
-              <SettingsField
+              <SettingsField testId="lab-toggle-acpListen"
                 label={labLabel("acpListen", t("settings.acpListen"))}
                 hint={
                   acpListenStatus && acpListenStatus.err
@@ -1047,7 +1047,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsOptions>
               </SettingsField>
               {/* 成员行 6：本地服务（原 infra 独立卡）。 */}
-              <SettingsField label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
+              <SettingsField testId="lab-toggle-localServer" label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1081,7 +1081,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               （sessionStore 分支内），不再占实验室 rail。 */}
           {selected === "fullAccess" && (
             <>
-              <SettingsField label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
+              <SettingsField testId="lab-toggle-fullAccess" label={labLabel("fullAccess", t("settings.fullAccess"))} hint={t("settings.fullAccessHint")} icon={<ShieldCheck size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1253,7 +1253,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsSelect>
               </SettingsField>
               <>
-                <SettingsField label={labLabel("feedback", t("settings.feedback"))} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-feedback" label={labLabel("feedback", t("settings.feedback"))} hint={t("settings.feedbackHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -1315,8 +1315,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               的键、写各的 setter（81/123 丢存铁律），配置键零变化。 */}
           {selected === "runtimeObservability" && (
             <>
-              <SettingsField label={labLabel("runtimeObservability", t("settings.runtimeObservability"))} hint={t("settings.runtimeObservabilityHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("monitoring", t("settings.sessionMonitor"))} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-runtimeObservability" label={labLabel("runtimeObservability", t("settings.runtimeObservability"))} hint={t("settings.runtimeObservabilityHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-monitoring" label={labLabel("monitoring", t("settings.sessionMonitor"))} hint={t("settings.sessionMonitorHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1428,7 +1428,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* tl1309 卡②成员行：events 瘦身（事件日志轮转，自存储组
                   sessionStore 卡迁入；SessionEventsPanel 原样随迁，配置键
                   events_auto_rotation/阈值族零变化，行级徽章经 labLabel 保留）。 */}
-              <SettingsField label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+              <SettingsField testId="lab-toggle-eventsRotation" label={labLabel("eventsRotation", t("settings.eventsRotation"))} hint={t("settings.eventsRotationHint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 {/* The backend normalizes the stored mode to off|manual|auto
                     (config helper falls back to manual), so the cast cannot name
                     a value the locales lack. */}
@@ -1436,7 +1436,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* tl1309 卡②成员行：轨迹观测（704 DSH 同款可观测性视图，自界面
                   组 viewLayout 卡迁入；纯前端投影，开关关=仅转录不变）。 */}
-              <SettingsField label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-trajectoryView" label={labLabel("trajectoryView", t("settings.trajectoryView"))} hint={t("settings.trajectoryViewHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1455,7 +1455,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* tl1787 续作成员行：pre-repair 分叉后台元信息拼接（events idle
                   sweep 独立 pass；纯元信息写，投影内容一个字节不动；未稳定档，
                   默认关=sweep 不跑该 pass）。 */}
-              <SettingsField label={labLabel("prepairAutosplice", t("settings.prepairAutosplice"))} hint={t("settings.prepairAutospliceHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-prepairAutosplice" label={labLabel("prepairAutosplice", t("settings.prepairAutosplice"))} hint={t("settings.prepairAutospliceHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1492,7 +1492,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   锁定/阶段/风险三行改为仅非 v3 档（仍停 v4 的用户）按已存档位
                   渲染——v3 档下该三行与简述+推荐徽章同义，不再常驻堆叠；
                   restartPending 状态照旧条件渲染。 */}
-              <SettingsField label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorage.cardDesc")}>
+              <SettingsField testId="lab-toggle-sessionStorage" label={labLabel("sessionStorage", t("settings.sessionStorage"))} hint={t("settings.sessionStorage.cardDesc")}>
                 <div className="lab-subitem__ops">
                   <SettingsOptions layout="field" className="set-seg">
                     {/* tl1287: v4 退役——卡内不再渲染任何 v4 档按钮（用户拍板
@@ -1571,8 +1571,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               最高档（可选）。已存偏好零迁移：两键原样保留。 */}
           {selected === "viewLayout" && (
             <>
-              <SettingsField label={labLabel("viewLayout", t("settings.viewLayout"))} hint={t("settings.viewLayoutHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("splitView", t("settings.splitView"))} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-viewLayout" label={labLabel("viewLayout", t("settings.viewLayout"))} hint={t("settings.viewLayoutHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-splitView" label={labLabel("splitView", t("settings.splitView"))} hint={t("settings.splitViewHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1596,7 +1596,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   两行——各读各键各写各 setter；300ms 防误触 + 离开 15s 延时
                   折叠，只回收 hover 自动展开的，手动展开不回收）。纯前端门：
                   保存即生效，免重启；关=不渲染热区不挂事件（铁律 2）。 */}
-              <SettingsField label={labLabel("sidebarHoverLeft", t("settings.sidebarHoverLeft"))} hint={t("settings.sidebarHoverLeftHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-sidebarHoverLeft" label={labLabel("sidebarHoverLeft", t("settings.sidebarHoverLeft"))} hint={t("settings.sidebarHoverLeftHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1612,7 +1612,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("sidebarHoverRight", t("settings.sidebarHoverRight"))} hint={t("settings.sidebarHoverRightHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-sidebarHoverRight" label={labLabel("sidebarHoverRight", t("settings.sidebarHoverRight"))} hint={t("settings.sidebarHoverRightHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1632,7 +1632,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   826 先例——读自己的键写自己的 setter）。关（默认）=现分段按钮组
                   零变化；开=zcode 同款下拉框省空间，档位语义同链路。纯前端门：
                   保存即生效，免重启（铁律 2）。 */}
-              <SettingsField label={labLabel("approvalSelect", t("settings.approvalSelect"))} hint={t("settings.approvalSelectHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-approvalSelect" label={labLabel("approvalSelect", t("settings.approvalSelect"))} hint={t("settings.approvalSelectHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1652,7 +1652,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   940 先例——读自己的键写自己的 setter）。关（默认）=宽表横滚
                   布局零变化；开=单元格随当前栏宽换行。纯前端门：保存即生效，
                   免重启（铁律 2）。 */}
-              <SettingsField label={labLabel("tableWrap", t("settings.tableWrap"))} hint={t("settings.tableWrapHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-tableWrap" label={labLabel("tableWrap", t("settings.tableWrap"))} hint={t("settings.tableWrapHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1672,7 +1672,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   成员行，940 同族——读自己的键写自己的 setter）。关（默认）=
                   三按钮组零变化；开=下拉框省空间，目标语义同链路。纯前端门：
                   保存即生效，免重启（铁律 2）。 */}
-              <SettingsField label={labLabel("sendTargetSelect", t("settings.sendTargetSelect"))} hint={t("settings.sendTargetSelectHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-sendTargetSelect" label={labLabel("sendTargetSelect", t("settings.sendTargetSelect"))} hint={t("settings.sendTargetSelectHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1693,7 +1693,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   smooth 跟随+未完成目标不发新请求+手势取消+reduced-motion 退化。
                   关（默认）=每次流式尾部写入瞬移定位逐字节不变、不挂任何额外
                   事件；开=原生平滑 scrollTo。纯前端门：保存即生效，免重启。 */}
-              <SettingsField label={labLabel("smoothScrollFollow", t("settings.smoothScrollFollow"))} hint={t("settings.smoothScrollFollowHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-smoothScrollFollow" label={labLabel("smoothScrollFollow", t("settings.smoothScrollFollow"))} hint={t("settings.smoothScrollFollowHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1710,7 +1710,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* 任务 1024：composer 草稿优化（改写按钮）——发送左侧新增改写
                   入口，辅助模型改写草稿回填输入框，不自动发送。默认关=无按钮、
                   布局零变化；保存即换态免重启。 */}
-              <SettingsField label={labLabel("draftRewrite", t("settings.draftRewrite"))} hint={t("settings.draftRewriteHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-draftRewrite" label={labLabel("draftRewrite", t("settings.draftRewrite"))} hint={t("settings.draftRewriteHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1727,7 +1727,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* tl1544：运行中编辑历史消息回溯重发——运行中点历史用户消息进入
                   编辑即原子编排（中止→治理→fork 截断→编辑重发）。默认关=运行中
                   编辑入口维持拒绝现状；回合后 rewind 链零变化。 */}
-              <SettingsField label={labLabel("editResend", t("settings.editResend"))} hint={t("settings.editResendHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-editResend" label={labLabel("editResend", t("settings.editResend"))} hint={t("settings.editResendHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1745,7 +1745,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   工具全集在既有「⋯ 工具」二级菜单查看（复用窄宽折叠形态与
                   入口，菜单本体零改动）。默认关=折叠仍只由宽度驱动（铁律 2）；
                   纯前端门，保存即换态免重启。 */}
-              <SettingsField label={labLabel("composerToolsFold", t("settings.composerToolsFold"))} hint={t("settings.composerToolsFoldHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-composerToolsFold" label={labLabel("composerToolsFold", t("settings.composerToolsFold"))} hint={t("settings.composerToolsFoldHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1765,7 +1765,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               （协作中心入口常显，主键 experimental_collab_hub 已退役；
               glmPlanUsage 无开关展示行先例；856③ 融合入口走侧栏/palette）。 */}
           {selected === "collabHub" && (
-            <SettingsField label={labLabel("collabHub", t("settings.collabHub"))} icon={<Sparkles size={18} />} stacked>
+            <SettingsField testId="lab-toggle-collabHub" label={labLabel("collabHub", t("settings.collabHub"))} icon={<Sparkles size={18} />} stacked>
               <p className="settings-field__hint">{t("settings.collabHubHint")}</p>
             </SettingsField>
           )}
@@ -1777,10 +1777,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               键、写各的 setter（81/123 丢存铁律），配置键零变化。 */}
           {selected === "sessionTaskPanels" && (
             <>
-              <SettingsField label={labLabel("sessionTaskPanels", t("settings.sessionTaskPanels"))} hint={t("settings.sessionTaskPanelsHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-sessionTaskPanels" label={labLabel("sessionTaskPanels", t("settings.sessionTaskPanels"))} hint={t("settings.sessionTaskPanelsHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
               {/* 成员行 1：会话图墙（原 ui 独立卡，推荐档——palette 入口 +
                   会话网格墙；boot 快照，翻转需重启）。 */}
-              <SettingsField label={labLabel("sessionWall", t("settings.sessionWall"))} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-sessionWall" label={labLabel("sessionWall", t("settings.sessionWall"))} hint={t("settings.sessionWallHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1803,16 +1803,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* 成员行 2：工作流可视化面板（原 ui 独立卡，稳定档——palette
                   入口开 DAG 流程图）。tl1741 返修：无开关展示行（面板/模板
                   常显，主键+家族子键已退役；glmPlanUsage 展示行先例）。 */}
-              <SettingsField label={labLabel("workflowPanel", t("settings.workflowPanel"))} icon={<Sparkles size={18} />} stacked>
+              <SettingsField testId="lab-toggle-workflowPanel" label={labLabel("workflowPanel", t("settings.workflowPanel"))} icon={<Sparkles size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.workflowPanelHint")}</p>
               </SettingsField>
               {/* tl1454 附属展示行：用户自定义工作流模板（workflowPanel 家族
                   子键，不挂独立徽章）——模板视图随面板常开（键已退役）。 */}
-              <SettingsField label={labLabel("workflowTemplates", t("settings.workflowTemplates"))} icon={<Sparkles size={18} />} stacked>
+              <SettingsField testId="lab-toggle-workflowTemplates" label={labLabel("workflowTemplates", t("settings.workflowTemplates"))} icon={<Sparkles size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.workflowTemplatesHint")}</p>
               </SettingsField>
               {/* 成员行 3：任务完成摘要（原 ui 独立卡，可选档——每轮结果卡）。 */}
-              <SettingsField label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-completionSummary" label={labLabel("completionSummary", t("settings.completionSummary"))} hint={t("settings.completionSummaryHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1834,7 +1834,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {selected === "subagentSuite" && (
             <>
               <>
-                <SettingsField label={labLabel("subagentPanel", t("settings.subagentPanel"))} hint={t("settings.subagentPanelHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-subagentPanel" label={labLabel("subagentPanel", t("settings.subagentPanel"))} hint={t("settings.subagentPanelHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -1858,7 +1858,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     「侧栏标签显示」墙（与其余侧栏标签同墙配置、同一套置灰联动），
                     此处不再重复渲染——面板开关本身保留在本卡首位。 */}
               </>
-              <SettingsField label={labLabel("subagentDetail", t("settings.subagentDetail"))} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-subagentDetail" label={labLabel("subagentDetail", t("settings.subagentDetail"))} hint={t("settings.subagentDetailHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1876,7 +1876,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("subagentPolicy", t("settings.subagentPolicy"))} hint={t("settings.subagentPolicyHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-subagentPolicy" label={labLabel("subagentPolicy", t("settings.subagentPolicy"))} hint={t("settings.subagentPolicyHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1890,7 +1890,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("subagentTps", t("settings.subagentTps"))} hint={t("settings.subagentTpsHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-subagentTps" label={labLabel("subagentTps", t("settings.subagentTps"))} hint={t("settings.subagentTpsHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1916,8 +1916,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               门，设置保存后的 onChanged 重放快照（applyLabFlags）即换态。 */}
           {selected === "startupLoading" && (
             <>
-              <SettingsField label={labLabel("startupLoading", t("settings.startupLoading"))} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("startupSplash", t("settings.startupSplash"))} hint={t("settings.startupSplashHint")} icon={<Monitor size={18} />}>
+              <SettingsField testId="lab-toggle-startupLoading" label={labLabel("startupLoading", t("settings.startupLoading"))} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-startupSplash" label={labLabel("startupSplash", t("settings.startupSplash"))} hint={t("settings.startupSplashHint")} icon={<Monitor size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1943,10 +1943,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               徽章挂在主标签上。已存偏好零迁移：两键原样保留。 */}
           {selected === "tabManagement" && (
             <>
-              <SettingsField label={labLabel("tabManagement", t("settings.tabManagement"))} hint={t("settings.tabManagementHint")} icon={<Sparkles size={18} />} stacked>
+              <SettingsField testId="lab-toggle-tabManagement" label={labLabel("tabManagement", t("settings.tabManagement"))} hint={t("settings.tabManagementHint")} icon={<Sparkles size={18} />} stacked>
                 <p className="settings-field__hint-line">{t("settings.tabManagement.subHint")}</p>
               </SettingsField>
-              <SettingsField label={labLabel("tabCompress", t("settings.tabCompress"))} hint={t("settings.tabCompressHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-tabCompress" label={labLabel("tabCompress", t("settings.tabCompress"))} hint={t("settings.tabCompressHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -1964,7 +1964,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("tabModeTint", t("settings.tabModeTint"))} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-tabModeTint" label={labLabel("tabModeTint", t("settings.tabModeTint"))} hint={t("settings.tabModeTintHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {(["badge", "off", "background"] as const).map((mode) => (
                     <button
@@ -1987,7 +1987,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   按「标签页管理」先例归卡）——侧栏标签显隐墙与标签栏压缩/权限
                   指示同属标签页管理面。开关行+标签显隐墙原样随迁，配置键
                   experimental_todo_sidebar 与各显隐 checkbox 零变化。 */}
-              <SettingsField label={labLabel("todoSidebar", t("settings.todoSidebar"))} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-todoSidebar" label={labLabel("todoSidebar", t("settings.todoSidebar"))} hint={t("settings.todoSidebarHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2083,7 +2083,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             <>
               {/* tl1741（拍板 20261121 三条款③）：顶部卡右侧空间改子项主题概要
                   ——左=卡名+说明，右=本卡子项各一句话（yaml members 同源）。 */}
-              <SettingsField
+              <SettingsField testId="lab-toggle-smartAutomation"
                 label={labLabel("smartAutomation", t("settings.smartAutomation"))}
                 hint={t("settings.smartAutomationHint")}
                 icon={<Sparkles size={18} />}
@@ -2126,7 +2126,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* 族 2：决策模式——提取开关 + 创建自动任务 + 阈值 + 文件位置 +
                   跳过人工批准（任务书 1.3 红框 2）。 */}
               <LabSectionCard title={t("settings.lab.family.decisionPatterns")} hint={t("settings.lab.family.decisionPatternsHint")}>
-                <SettingsField label={labLabel("decisionPatterns", t("settings.decisionPatterns"))} hint={t("settings.decisionPatternsHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-decisionPatterns" label={labLabel("decisionPatterns", t("settings.decisionPatterns"))} hint={t("settings.decisionPatternsHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -2237,7 +2237,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   Standard 流续跑总闸（1070）：三条均为「后台/续跑」主题，且都不
                   属于用户框定的两族，聚成第三张卡保持全部子项有明确族归属。 */}
               <LabSectionCard title={t("settings.lab.family.backgroundContinuation")}>
-                <SettingsField label={labLabel("heartbeatBackground", t("settings.heartbeatBackground"))} hint={t("settings.heartbeatBackgroundHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-heartbeatBackground" label={labLabel("heartbeatBackground", t("settings.heartbeatBackground"))} hint={t("settings.heartbeatBackgroundHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -2258,7 +2258,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 {/* 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，
                     117 首落地，本件补设置页入口）。Boot snapshot 读闸：保存后
                     需重启生效（决策模式提取/固化同款先例）。 */}
-                <SettingsField label={labLabel("stalledIntentNudge", t("settings.stalledIntentNudge"))} hint={t("settings.stalledIntentNudgeHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-stalledIntentNudge" label={labLabel("stalledIntentNudge", t("settings.stalledIntentNudge"))} hint={t("settings.stalledIntentNudgeHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -2278,7 +2278,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     （todo 续跑/stalled-intent 修复/executor-handoff nudge）。默认
                     关=普通对话永不自动续跑（现状一致）；开启后仍有界上限与各
                     边界排除。保存即换态，下一次 run 生效（免重启）。 */}
-                <SettingsField label={labLabel("standardContinuation", t("settings.standardContinuation"))} hint={t("settings.standardContinuationHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-standardContinuation" label={labLabel("standardContinuation", t("settings.standardContinuation"))} hint={t("settings.standardContinuationHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -2303,8 +2303,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               取成员最高档（推荐）。已存偏好零迁移：三键原样保留。 */}
           {selected === "searchHistory" && (
             <>
-              <SettingsField label={labLabel("searchHistory", t("settings.searchHistory"))} hint={t("settings.searchHistoryHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("promptHistoryPicker", t("settings.promptHistoryPicker"))} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-searchHistory" label={labLabel("searchHistory", t("settings.searchHistory"))} hint={t("settings.searchHistoryHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-promptHistoryPicker" label={labLabel("promptHistoryPicker", t("settings.promptHistoryPicker"))} hint={t("settings.promptHistoryPickerHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2323,7 +2323,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("questionSearch", t("settings.questionSearch"))} hint={t("settings.questionSearchHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-questionSearch" label={labLabel("questionSearch", t("settings.questionSearch"))} hint={t("settings.questionSearchHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2337,7 +2337,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("autoLoadOlder", t("settings.autoLoadOlder"))} hint={t("settings.autoLoadOlderHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-autoLoadOlder" label={labLabel("autoLoadOlder", t("settings.autoLoadOlder"))} hint={t("settings.autoLoadOlderHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2365,7 +2365,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             /* 任务 846: change-data-home wizard. The switch is the lab gate
                (ships off); the wizard body renders only while it is on. */
             <>
-              <SettingsField label={labLabel("homePointer", t("settings.homePointer"))} hint={t("settings.homePointer.hint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
+              <SettingsField testId="lab-toggle-homePointer" label={labLabel("homePointer", t("settings.homePointer"))} hint={t("settings.homePointer.hint")} icon={<Sparkles size={18} />} stacked className="settings-field--wrapped">
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2386,7 +2386,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             /* tl-1174: cold-session transcript zstd archive. Storage
                optimization, optional tier, default off; the idle sweep reads
                the switch per tick so a flip applies without a restart. */
-            <SettingsField label={labLabel("jsonlZstd", t("settings.jsonlZstd"))} hint={t("settings.jsonlZstd.hint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-jsonlZstd" label={labLabel("jsonlZstd", t("settings.jsonlZstd"))} hint={t("settings.jsonlZstd.hint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -2406,7 +2406,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                group, unstable tier, default off; boot resolves the saved
                switch into the memory gate before the first Load, so a flip
                applies on restart. Off = legacy full-body injection unchanged. */
-            <SettingsField label={labLabel("pinnedIndex", t("settings.pinnedIndex"))} hint={t("settings.pinnedIndex.hint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-pinnedIndex" label={labLabel("pinnedIndex", t("settings.pinnedIndex"))} hint={t("settings.pinnedIndex.hint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -2446,7 +2446,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               心跳会话轮换开关桥接 heartbeat-rotation.json 的 enabled。 */}
           {selected === "safetyCostControl" && (
             <>
-              <SettingsField label={labLabel("safetyCostControl", t("settings.safetyCostControl"))} hint={t("settings.safetyCostControlHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-safetyCostControl" label={labLabel("safetyCostControl", t("settings.safetyCostControl"))} hint={t("settings.safetyCostControlHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2516,7 +2516,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 任务 727：心跳会话轮换——直接桥接 heartbeat-rotation.json 的
                   enabled 字段（缺文件=内置默认开；改后随引擎下一个调度周期生效）。 */}
-              <SettingsField label={labLabel("heartbeatRotation", t("settings.heartbeatRotation"))} hint={t("settings.heartbeatRotationHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-heartbeatRotation" label={labLabel("heartbeatRotation", t("settings.heartbeatRotation"))} hint={t("settings.heartbeatRotationHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2539,7 +2539,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 任务 722 点5：指定压缩模型（707 交付项）自上下文治理卡迁入；
                   配置键 experimental_compact_model / compact_model 不变。 */}
-              <SettingsField label={labLabel("compactModel", t("settings.compactModel"))} hint={t("settings.compactModelHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-compactModel" label={labLabel("compactModel", t("settings.compactModel"))} hint={t("settings.compactModelHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2558,7 +2558,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               )}
               {/* 任务 722 点6：消息合并自独立入口并入本卡（键 collab_inbox_merge /
                   collab_guidance_merge 不变）。徽章只在主控开关行（621 口径）。 */}
-              <SettingsField label={labLabel("messageMerge", t("settings.collabInboxMerge"))} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-messageMerge" label={labLabel("messageMerge", t("settings.collabInboxMerge"))} hint={t("settings.collabInboxMergeHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {(["off", "same_sender", "all"] as const).map((mode) => (
                     <button
@@ -2613,7 +2613,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   为成员行（用户拍板「从提效组移到安全/成本控制组」）；键
                   experimental_memory_index_slim 与 setter 零变化，boot 快照
                   消费重启生效。 */}
-              <SettingsField label={labLabel("memoryIndexSlim", t("settings.memoryIndexSlim"))} hint={t("settings.memoryIndexSlim.hint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-memoryIndexSlim" label={labLabel("memoryIndexSlim", t("settings.memoryIndexSlim"))} hint={t("settings.memoryIndexSlim.hint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2632,7 +2632,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   experimental_decision_patterns_layered 与 setter 零变化）。
                   与上行「记忆注入瘦身」是两个不同开关：本行只动 autopilot
                   注入的决策模式段，不动背景记忆索引段；两态语义见 hint。 */}
-              <SettingsField label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))} hint={t("settings.decisionPatternsLayeredHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-decisionPatternsLayered" label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))} hint={t("settings.decisionPatternsLayeredHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2657,7 +2657,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               false 分支随主键退役一并清除（门闸恒可编辑）。 */}
           {selected === "sessionCollab" && (
             <>
-              <SettingsField label={labLabel("sessionCollab", t("settings.sessionCollab"))} hint={t("settings.sessionCollabHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-sessionCollab" label={labLabel("sessionCollab", t("settings.sessionCollab"))} hint={t("settings.sessionCollabHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
               <SettingsField label={t("settings.sessionCollab.hopLimit")} hint={t("settings.sessionCollab.hopLimitHint")} icon={<Sparkles size={18} />}>
                 <input
                   type="number"
@@ -2762,7 +2762,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 任务 722 点3：自动折叠跨会话消息并为跨会话协作子项（配置键
                   experimental_session_collab_auto_fold 不变，纯 UI 归位）。 */}
-              <SettingsField label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-sessionCollabAutoFold" label={labLabel("sessionCollabAutoFold", t("settings.sessionCollabAutoFold"))} hint={t("settings.sessionCollabAutoFoldHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -2897,7 +2897,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               口径不变）。 */}
           {selected === "autopilot" && (
             <>
-              <SettingsField label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-autopilot" label={labLabel("autopilot", t("settings.autopilot"))} hint={t("settings.autopilotHint")} icon={<ShieldCheck size={18} />} stacked>{null}</SettingsField>
               {/* Task 477: the experimental ask-timeout sub-option. Off (the
                   default) keeps the terminal stop after the built-in 10-minute
                   wait; on answers a timed-out high-risk ask with a refusal
@@ -3093,7 +3093,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               retired 只读范式于此收尾，Go 配置键本体不动。 */}
           {selected === "modelStrategy" && (
             <>
-              <SettingsField label={labLabel("highSpeedModel", t("settings.highSpeedModel"))} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-highSpeedModel" label={labLabel("highSpeedModel", t("settings.highSpeedModel"))} hint={t("settings.highSpeedModelLabHint")} icon={<Sparkles size={18} />}>
                 {/* Task 318.1: the lane arms from the next boot (boot-snapshot
                     read in Go); the light above reflects the stored switch. */}
                 <SettingsOptions layout="field" className="set-seg">
@@ -3142,7 +3142,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               merge precedent). */}
           {selected === "contextGovernance" && (
             <>
-              <SettingsField label={labLabel("compactionParallel", t("settings.compactionParallel"))} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-compactionParallel" label={labLabel("compactionParallel", t("settings.compactionParallel"))} hint={t("settings.compactionParallelHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3157,7 +3157,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsOptions>
               </SettingsField>
               <>
-                <SettingsField label={labLabel("budgetControl", t("settings.contextBudget"))} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-budgetControl" label={labLabel("budgetControl", t("settings.contextBudget"))} hint={t("settings.contextBudgetHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3192,7 +3192,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsField>
               </>
               <>
-                <SettingsField label={labLabel("compressOpt", t("settings.proactiveCompact"))} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-compressOpt" label={labLabel("compressOpt", t("settings.proactiveCompact"))} hint={t("settings.proactiveCompactHint")} icon={<Sparkles size={18} />}>
                   {/* Task 318.2: off (default) keeps the hard-coded 10-minute
                       fold cooldown byte-for-byte; on makes the minutes below
                       authoritative (live read on the next fold). */}
@@ -3229,7 +3229,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     主行=tl1397 迭代一小折通道（未稳定档，labLabel 徽章），随行窗
                     口旋钮；模型驱动行=tl1419（需 ranges 通道开才有折叠发生），
                     随行滑动窗口两旋钮（0=内置默认，配置层钳制）。 */}
-                <SettingsField label={labLabel("rangesCompact", t("settings.rangesCompact"))} hint={t("settings.rangesCompactHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-rangesCompact" label={labLabel("rangesCompact", t("settings.rangesCompact"))} hint={t("settings.rangesCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3257,7 +3257,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     }}
                   />
                 </SettingsField>
-                <SettingsField label={labLabel("modelRangesCompact", t("settings.modelRangesCompact"))} hint={t("settings.modelRangesCompactHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-modelRangesCompact" label={labLabel("modelRangesCompact", t("settings.modelRangesCompact"))} hint={t("settings.modelRangesCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3292,7 +3292,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     （tl1487「冷缓存压缩→可选」，621 单徽章口径：徽章只在
                     主控行，两个参数行不重复挂）。 */}
                 <div className="set-coldcache-card">
-                <SettingsField label={labLabel("coldCacheCompact", t("settings.coldCacheCompact"))} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
+                <SettingsField testId="lab-toggle-coldCacheCompact" label={labLabel("coldCacheCompact", t("settings.coldCacheCompact"))} hint={t("settings.coldCacheCompactHint")} icon={<Sparkles size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3370,7 +3370,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 </SettingsField>
               </>
               <>
-                <SettingsField label={labLabel("cacheTuning", t("settings.cacheTuning"))} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
+                <SettingsField testId="lab-toggle-cacheTuning" label={labLabel("cacheTuning", t("settings.cacheTuning"))} hint={t("settings.cacheTuningHint")} icon={<FolderLock size={18} />}>
                   <SettingsOptions layout="field" className="set-seg">
                     {[false, true].map((on) => (
                       <button
@@ -3516,7 +3516,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   铁律）；主行行级徽章经 labLabel 保留，伴生行不挂独立徽章
                   （621 附属行口径）。关联说明：写并发开 → 大写入不再阻塞转录
                   渲染；守护行是同一写入面的安全伴生（依赖/派生关系）。 */}
-              <SettingsField label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-optimisticParallel" label={labLabel("optimisticParallel", t("settings.optimisticParallel"))} hint={t("settings.optimisticParallelHint")} icon={<Sparkles size={18} />}>
                 {/* Task 650: the checkbox became a two-segment capsule control
                     (Off | On) matching the permission-tier switch style; the
                     binding still reads the field upright (On = optimistic). */}
@@ -3583,10 +3583,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               coding plan preset 家族未来按需加成员行（布局 members 即扩展点）。 */}
           {selected === "usageMonitoring" && (
             <>
-              <SettingsField label={labLabel("usageMonitoring", t("settings.usageMonitoring"))} icon={<Activity size={18} />} stacked>
+              <SettingsField testId="lab-toggle-usageMonitoring" label={labLabel("usageMonitoring", t("settings.usageMonitoring"))} icon={<Activity size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.usageMonitoringHint")}</p>
               </SettingsField>
-              <SettingsField label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} icon={<Activity size={18} />} stacked>
+              <SettingsField testId="lab-toggle-glmPlanUsage" label={labLabel("glmPlanUsage", t("settings.glmPlanUsage"))} icon={<Activity size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.glmPlanUsageHint")}</p>
               </SettingsField>
               {/* tl1487 四组：OpenCode Go 用量「不提供开关、始终打开」——开关行
@@ -3602,8 +3602,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               偏好零迁移：两键原样保留。 */}
           {selected === "inputSelection" && (
             <>
-              <SettingsField label={labLabel("inputSelection", t("settings.inputSelection"))} hint={t("settings.inputSelectionHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("draftPersistence", t("settings.draftPersistence"))} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-inputSelection" label={labLabel("inputSelection", t("settings.inputSelection"))} hint={t("settings.inputSelectionHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-draftPersistence" label={labLabel("draftPersistence", t("settings.draftPersistence"))} hint={t("settings.draftPersistenceHint")} icon={<Sparkles size={18} />}>
                 {/* Task 318.3: off (default) = runtime-memory-only drafts
                     (pre-#9580 contract); the settings refresh feeds the live
                     gate in composerDraftPersistence. */}
@@ -3622,7 +3622,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("selectionActions", t("settings.selectionActions"))} hint={t("settings.selectionActionsHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-selectionActions" label={labLabel("selectionActions", t("settings.selectionActions"))} hint={t("settings.selectionActionsHint")} icon={<Sparkles size={18} />}>
                 {/* Task 369: off (default) = the selection menu is exactly the
                     pre-369 surface (fork rule 2). */}
                 <SettingsOptions layout="field" className="set-seg">
@@ -3650,8 +3650,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               （推荐）。已存偏好零迁移：三键原样保留。 */}
           {selected === "interactionPresentation" && (
             <>
-              <SettingsField label={labLabel("interactionPresentation", t("settings.interactionPresentation"))} hint={t("settings.interactionPresentationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField label={labLabel("quickCommands", t("settings.quickCommands"))} hint={t("settings.quickCommandsLabHint")} icon={<Zap size={18} />}>
+              <SettingsField testId="lab-toggle-interactionPresentation" label={labLabel("interactionPresentation", t("settings.interactionPresentation"))} hint={t("settings.interactionPresentationHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
+              <SettingsField testId="lab-toggle-quickCommands" label={labLabel("quickCommands", t("settings.quickCommands"))} hint={t("settings.quickCommandsLabHint")} icon={<Zap size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3668,7 +3668,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {Boolean(s.experimentalQuickCommands) && (
                 <QuickCommandsManager s={s} busy={busy} apply={apply} />
               )}
-              <SettingsField label={labLabel("traceAsState", t("settings.traceAsState"))} hint={t("settings.traceAsStateHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-traceAsState" label={labLabel("traceAsState", t("settings.traceAsState"))} hint={t("settings.traceAsStateHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3682,7 +3682,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              <SettingsField label={labLabel("outputStyle", t("settings.outputStyle"))} hint={t("settings.outputStyleLabHint")} icon={<Sparkles size={18} />}>
+              <SettingsField testId="lab-toggle-outputStyle" label={labLabel("outputStyle", t("settings.outputStyle"))} hint={t("settings.outputStyleLabHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3748,13 +3748,13 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               {/* 成员行 1：CDP 调试端口（原独立行，稳定档）。tl1741 返修：
                   无开关展示行——endpoint 无条件起（主键退役，loopback-only
                   随机端口不变；glmPlanUsage 展示行先例）。 */}
-              <SettingsField label={labLabel("cdpDebugPort", t("settings.cdpDebugPort"))} icon={<Terminal size={18} />} stacked>
+              <SettingsField testId="lab-toggle-cdpDebugPort" label={labLabel("cdpDebugPort", t("settings.cdpDebugPort"))} icon={<Terminal size={18} />} stacked>
                 <p className="settings-field__hint">{t("settings.cdpDebugPortHint")}</p>
               </SettingsField>
               {/* Task 377: crash-report lifecycle noise triage. Startup
                   diagnostics read the gate once per process, so the flip lands on
                   restart — same boot-snapshot rule as the CDP endpoint above. */}
-              <SettingsField label={labLabel("lifecycleNoiseGate", t("settings.lifecycleNoiseGate"))} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
+              <SettingsField testId="lab-toggle-lifecycleNoiseGate" label={labLabel("lifecycleNoiseGate", t("settings.lifecycleNoiseGate"))} hint={t("settings.lifecycleNoiseGateHint")} icon={<Volume2 size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3818,7 +3818,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             <p className="approval-mode-hint">{t("settings.toolOptHub.pending")}</p>
             <p className="approval-mode-hint">{t("settings.toolOptHub.notice")}</p>
             <p className="approval-mode-hint">{t("settings.toolOptHub.scope")}</p>
-            <SettingsField label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
+            <SettingsField testId="lab-toggle-toolOptimizations" label={labLabel("toolOptimizations", t("settings.toolOptimizations"))} hint={t("settings.toolOptimizationsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3839,7 +3839,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             {/* 任务 789 → 815 登记窗口：编辑证据门宽松模式落卡成员行（Go 侧
                 开关 789 先行，前端 yaml/experimentTiers 登记已在；本行补齐
                 设置页入口+labLabel 徽章面，tier 镜像 Go 侧 unstable）。 */}
-            <SettingsField label={labLabel("editEvidenceRelaxed", t("settings.editEvidenceRelaxed"))} hint={t("settings.editEvidenceRelaxedHint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-editEvidenceRelaxed" label={labLabel("editEvidenceRelaxed", t("settings.editEvidenceRelaxed"))} hint={t("settings.editEvidenceRelaxedHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3859,7 +3859,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             {/* 任务 943 multi_edit 直注（971 聚合入页为成员行，独立 pane 退役）。
                 显示走与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
                 默认开）：存量族键开的用户拆分前后显示不跳变。键/setter 零变化。 */}
-            <SettingsField label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
+            <SettingsField testId="lab-toggle-multiEditInjection" label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3879,7 +3879,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
             </SettingsField>
             {/* 任务 971：restart_update 自界面组「更新与反馈」卡迁入（键/setter
                 零变化，仅 UI 落点迁移）。 */}
-            <SettingsField label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+            <SettingsField testId="lab-toggle-restartUpdate" label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3898,7 +3898,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 953（use_capability 组行/组卡/体积闸/call_hint）、954（session_hub
                 L0 聚合件注册+可见面）、969（常驻目录组归属）；boot 快照，重启
                 （或新会话）生效。默认关=零行为（铁律 2），九件协作工具直挂不变。 */}
-            <SettingsField label={labLabel("capabilityGroups", t("settings.capabilityGroups"))} hint={t("settings.capabilityGroupsHint")} icon={<Sparkles size={18} />} stacked>
+            <SettingsField testId="lab-toggle-capabilityGroups" label={labLabel("capabilityGroups", t("settings.capabilityGroups"))} hint={t("settings.capabilityGroupsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3920,7 +3920,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ③跳过失败项模式）——三个独立开关的卡内成员行，与 multi_edit
                 直注成组成员行。boot 快照，重启生效；默认关=与基线逐字节一致
                 （铁律 2）。 */}
-            <SettingsField label={labLabel("multiEditErrorDetail", t("settings.multiEditErrorDetail"))} hint={t("settings.multiEditErrorDetailHint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-multiEditErrorDetail" label={labLabel("multiEditErrorDetail", t("settings.multiEditErrorDetail"))} hint={t("settings.multiEditErrorDetailHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3937,7 +3937,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
-            <SettingsField label={labLabel("multiEditEvidenceNarrow", t("settings.multiEditEvidenceNarrow"))} hint={t("settings.multiEditEvidenceNarrowHint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-multiEditEvidenceNarrow" label={labLabel("multiEditEvidenceNarrow", t("settings.multiEditEvidenceNarrow"))} hint={t("settings.multiEditEvidenceNarrowHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
@@ -3954,7 +3954,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
-            <SettingsField label={labLabel("multiEditSkipFailed", t("settings.multiEditSkipFailed"))} hint={t("settings.multiEditSkipFailedHint")} icon={<Sparkles size={18} />}>
+            <SettingsField testId="lab-toggle-multiEditSkipFailed" label={labLabel("multiEditSkipFailed", t("settings.multiEditSkipFailed"))} hint={t("settings.multiEditSkipFailedHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
                   <button
