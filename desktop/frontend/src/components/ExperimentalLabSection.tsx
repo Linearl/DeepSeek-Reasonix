@@ -361,6 +361,9 @@ const LabRailItem = memo(function LabRailItem({ feature, active, onSelect, trans
     <button
       type="button"
       id={`lab-entry-${feature.id}`}
+      // tl1791：CDP 稳定锚点——rail 卡行 testid 与 lab-layout.yaml 卡 key 对齐
+      // （与上方 id 同模板；选择器 `[data-testid=lab-entry-<卡id>]`）。
+      data-testid={`lab-entry-${feature.id}`}
       className={`experimental-rail__item${active ? " experimental-rail__item--active" : ""}${feature.on || feature.kind === "param" || feature.kind === "action" ? "" : " experimental-rail__item--off"}`}
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(feature.id)}
@@ -893,6 +896,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   <button
                     type="button"
                     id={`lab-group-${g.key}`}
+                    // tl1791：CDP 稳定锚点——分组折叠头 testid 与 yaml 组 key 对齐
+                    // （`[data-testid=lab-group-<组key>]`；task 764 的 id 模板同源）。
+                    data-testid={`lab-group-${g.key}`}
                     className="experimental-lab__group-title experimental-lab__group-toggle"
                     aria-expanded={expanded}
                     onClick={() => toggleGroup(g.key)}

@@ -69,6 +69,7 @@ export function SettingsField({
   children,
   className,
   stacked = false,
+  testId,
 }: {
   label: ReactNode;
   hint?: ReactNode;
@@ -76,9 +77,12 @@ export function SettingsField({
   children: ReactNode;
   className?: string;
   stacked?: boolean;
+  /** tl1791 — 行级稳定锚点（data-testid，如 lab-toggle-prepairAutosplice）：
+   *  CDP/自动化定位用。可选 prop，不传零属性（既有调用零变化）。 */
+  testId?: string;
 }) {
   return (
-    <div className={`settings-field${stacked ? " settings-field--stacked" : ""}${className ? ` ${className}` : ""}`}>
+    <div data-testid={testId} className={`settings-field${stacked ? " settings-field--stacked" : ""}${className ? ` ${className}` : ""}`}>
       <div className={`settings-field__copy${icon ? " settings-field__copy--icon" : ""}`}>
         {icon && <span className="settings-field__icon" aria-hidden="true">{icon}</span>}
         <div className="settings-field__copy-body">
