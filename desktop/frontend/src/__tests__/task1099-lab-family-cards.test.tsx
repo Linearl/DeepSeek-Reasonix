@@ -18,6 +18,9 @@
 //  ⑥ 组件/样式合同：LabSectionCard 在 SettingsForm 定义并被 SettingsPanel
 //     导入；样式只用 theme token（无裸色值），窄屏媒体查询存在（响应式）；
 //  ⑦ 三语 locale：六个新键在 zh/en/zh-TW 均存在。
+// tl1772r2（20261124 用户验收返修）：tl1772 注入分层行自「决策模式」族卡
+// 移组 safetyCostControl 卡（键/setter 零变化）——②③④ 相关断言随迁：
+// 族卡负钉防回潮，落位正钉+徽章恰一次+setter 接线改在安全/成本控制切片。
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -46,6 +49,10 @@ console.log("\ntask 1099 lab family section cards");
 
 const smartCard = cardSlice('{selected === "smartAutomation" && (', '{selected === "searchHistory" && (');
 ok(smartCard.length > 0, "smartAutomation pane branch located");
+// tl1772r2：注入分层行落位面——安全/成本控制卡 pane 分支切片（561 ⑤ 同款
+// marker；marker 不存在会让切片为空、断言假红/假绿，先钉 located）。
+const safetyCard = cardSlice('{selected === "safetyCostControl" && (', '{selected === "sessionCollab" && (');
+ok(safetyCard.length > 0, "safetyCostControl pane branch located");
 
 // ① 两个分组卡（tl1453 后）+ 标题键各出现一次。
 {
@@ -70,6 +77,9 @@ function familySlice(titleKey: string): string {
   // tl1453：梦境族卡（整理开关 + 创建自动任务两行）随实验退役，切片断言摘除。
   const dp = familySlice("settings.lab.family.decisionPatterns");
   ok(dp.includes('label={labLabel("decisionPatterns", t("settings.decisionPatterns"))}'), "decision family card hosts the 决策模式提取 row");
+  // tl1772r2：注入分层行移组本卡——族卡负钉防回潮，落位正钉在安全/成本控制切片。
+  ok(!dp.includes('label={labLabel("decisionPatternsLayered"'), "tl1772r2: the decision family card no longer hosts the 注入分层 row (re-homed)");
+  ok(safetyCard.includes('label={labLabel("decisionPatternsLayered", t("settings.decisionPatternsLayered"))}'), "tl1772r2: the safetyCostControl card hosts the 注入分层 row");
   ok(dp.includes('label={t("settings.decisionPatternsCreateTask")}'), "decision family card hosts the 创建自动任务 row");
   ok(dp.includes('label={t("settings.decisionPatternsThreshold")}'), "decision family card hosts the 聚合阈值 row");
   ok(dp.includes('label={t("settings.decisionPatternsFilePath")}'), "decision family card hosts the 决策模式文件位置 row");
@@ -87,6 +97,9 @@ function familySlice(titleKey: string): string {
     const n = (smartCard.match(new RegExp(`labLabel\\("${id}"`, "g")) ?? []).length;
     ok(n === 1, `member badge stays exactly once on its own row (${id} × ${n})`);
   }
+  // tl1772r2：注入分层徽章随行迁安全/成本控制卡（恰一次）。
+  const dpl = (safetyCard.match(/labLabel\("decisionPatternsLayered"/g) ?? []).length;
+  ok(dpl === 1, `re-homed badge stays exactly once in safetyCostControl (decisionPatternsLayered × ${dpl})`);
 }
 
 // ④ 键/setter 接线不变（561 合同的 1099 面复核——聚合容器不得改写读写路径）。
@@ -100,6 +113,8 @@ function familySlice(titleKey: string): string {
   for (const [id, setter] of wirings) {
     ok(smartCard.includes(setter), `member keeps its own setter (${setter})`);
   }
+  // tl1772r2：移组行 setter 接线随迁安全/成本控制卡（聚合容器不得改写读写路径）。
+  ok(safetyCard.includes("app.SetExperimentalDecisionPatternsLayered(on)"), "tl1772r2: re-homed row keeps its own setter in safetyCostControl (app.SetExperimentalDecisionPatternsLayered(on))");
   ok(smartCard.includes("s.decisionPatternThreshold") && smartCard.includes("s.decisionPatternFilePath") && smartCard.includes("s.decisionPatternAutoApprove"),
     "decision dials keep reading their own config keys");
 }

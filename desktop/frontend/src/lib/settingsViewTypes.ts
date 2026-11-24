@@ -198,6 +198,9 @@ export interface SettingsView {
   stalledIntentNudge?: boolean;
   // Task 801: decision-pattern extraction + solidification (default off).
   experimentalDecisionPatterns?: boolean;
+  /** tl1772: injection-layering companion switch (default off = legacy
+   * full-content injection byte-for-byte; live-read per submission). */
+  experimentalDecisionPatternsLayered?: boolean;
   /** tl1193b: plan-E pinned standing-tier index mode (memory-context group,
    * unstable tier, default off, restart to apply). */
   experimentalPinnedIndex?: boolean;

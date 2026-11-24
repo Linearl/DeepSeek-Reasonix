@@ -115,7 +115,9 @@ export type ExperimentFeatureId =
   | "pinnedIndex"
   // tl1733: 记忆注入瘦身卡（提效组；可选档，默认关；boot 快照消费重启生效；
   // 开=应急旁路仅注入 pinned）。
-  | "memoryIndexSlim"
+  // tl1772：memoryIndexSlim 独立 pane 退役——并入 safetyCostControl 卡成员行
+  // （用户拍板「从提效组移到安全/成本控制组」；union id 同步摘除，档位与键
+  // 不动，行级徽章经 labLabel 保留——messageMerge 先例）。
   // 任务 603:「工具优化」family (edit readBack + evidence gate linkage).
   // 任务 943：族拆两卡——本 id 收窄为 readBack 面；multi_edit 直注独立卡。
   // 任务 971：扩为聚合页——readBack + multi_edit 直注 + restart_update 三开关
@@ -197,8 +199,8 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "jsonlZstd",
   // tl1193b: pinned index mode pane (memory-context group).
   "pinnedIndex",
-  // tl1733: 记忆注入瘦身 pane（提效组）。
-  "memoryIndexSlim",
+  // tl1733: 记忆注入瘦身 pane（提效组）。tl1772：白名单 id 随移组摘除——
+  // safetyCostControl 卡成员行承载（union id 同步摘除，键/setter 零变化）。
   // tl1741 返修：resourceGovernance 容器 id 白名单随卡体回归；五散条白名单
   // id（orphanHandling/idleReleaseMinutes/gcPercent/acpListen/localServer）
   // 随卡回收（成员行承载，feature 分支在卡 pane 硬编码、参数行走

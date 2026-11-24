@@ -2898,6 +2898,9 @@ export interface DesktopStartupSettingsView {
   experimentalTraceAsState?: boolean;
   /** Task 801: decision-pattern extraction + solidification; off unless the user opts in. */
   experimentalDecisionPatterns?: boolean;
+  /** tl1772: injection-layering companion switch (default off = legacy
+   * full-content injection byte-for-byte; live-read per submission). */
+  experimentalDecisionPatternsLayered?: boolean;
   /** Task 801: resolved decision-patterns file path (default global-workspace/docs). */
   decisionPatternFilePath?: string;
   /** Task 801: heartbeat consolidation threshold (0 = default 5). */

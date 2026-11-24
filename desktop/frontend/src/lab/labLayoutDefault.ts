@@ -110,11 +110,15 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "optional",
           // 任务 1070：补第四行「Standard 流续跑总闸」（默认关）。
           // tl1453：experimentalDream 随 dream/distill 实验退役，onKeys/成员摘除。
+          // tl1772：卡灯曾加分层伴生开关；tl1772r2：分层行移出本卡，灯键随迁
+          // （灯=家族任一非默认口径不变，注入面现读 config，保存即生效）。
           onKeys: ["experimentalDecisionPatterns", "experimentalHeartbeatBackground", "stalledIntentNudge", "standardContinuation"],
           members: [
             // 任务 801→961：决策模式自动提取+固化——压缩触发提取裁决轮次
             // 写记忆，心跳定期整合固化 decision-patterns.md。默认关=零行为。
             { id: "decisionPatterns", labelKey: "settings.decisionPatterns", tier: "optional" },
+            // tl1772r2：decisionPatternsLayered 成员行移出本卡——迁「安全/成本
+            // 控制」卡（键/档位不动，只移组；tl1772 memoryIndexSlim 同款）。
             // 任务 742→961：心跳任务后台化——开启后心跳触发不进标签栏（264
             // detached 语义，提交成功后 park）。默认关=现状一致。
             // tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐。
@@ -179,6 +183,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalCompactModel",
             "collabInboxMergeOn",
             "collabGuidanceMerge",
+            // tl1772：memoryIndexSlim 并卡，灯键随迁（口径不变）。
+            // tl1772r2：decisionPatternsLayered 行迁入，灯键随迁（口径不变）。
+            "experimentalMemoryIndexSlim",
+            "experimentalDecisionPatternsLayered",
           ],
           members: [
             // 任务 722 点5：指定压缩模型（707 交付项）归安全/成本控制。
@@ -188,6 +196,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 任务 727：心跳会话轮换（桥接 heartbeat-rotation.json enabled；
             // 默认开故不参与卡片灯，见上）。
             { id: "heartbeatRotation", labelKey: "settings.heartbeatRotation", tier: "optional" },
+            // tl1772（原 tl1733 独立卡移组）：记忆注入瘦身——安全/成本控制卡
+            // 成员行（895 sentinel 追加行先例）。档位与键不动：可选档，
+            // experimental_memory_index_slim。默认关=默认瘦身注入管线（短行+
+            // 零召回裁条带数据成熟期门槛+20K 字符预算，裁剪不落 IndexFrom 本
+            // 体）；开启=应急旁路——背景索引段整体停注仅留 pinned，按需层
+            // （memory search/read）不受影响。boot 快照消费（pinnedIndex 先
+            // 例），重启生效。
+            { id: "memoryIndexSlim", labelKey: "settings.memoryIndexSlim", tier: "optional" },
+            // tl1772r2（原 smartAutomation 卡成员行移组）：决策模式注入分层——
+            // 安全/成本控制卡成员行（用户拍板归组；与上行「记忆注入瘦身」是
+            // 两个不同开关：本行只动 autopilot 注入的决策模式段，不动背景记忆
+            // 索引段）。可选档，experimental_decision_patterns_layered 键不动。
+            // 两态语义：默认关=全量注入固化文件（12.8KB）逐字节一致/回退路径；
+            // 开=索引行常驻（每条 DP 一行「编号 场景关键词→决策一句话」，18 条
+            // ≈1.6KB，整块 ≈2.2KB 省 83%）+ 处理裁决类/用户纠正类消息先读对应
+            // DP 全文的硬指令；解析不出索引行时静默回退全文形态。注入面现读
+            // config，保存即生效。
+            { id: "decisionPatternsLayered", labelKey: "settings.decisionPatternsLayered", tier: "optional" },
           ],
         },
         {
@@ -225,12 +251,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         // experimental_collab_hub 已退役；LAB_FEATURE_DEPS 依赖不回归）。pane
         // 为常开展示行（glmPlanUsage 无开关展示行先例）。
         { id: "collabHub", labelKey: "settings.collabHub", tier: "stable", onKeys: [], alwaysOn: true },
-        // tl1733：记忆注入瘦身（提效组新卡，可选档，默认关）。默认关=默认
-        // 瘦身注入管线（短行+零召回裁条带数据成熟期门槛+20K 字符预算，裁剪
-        // 不落 IndexFrom 本体）；开启=应急旁路——背景索引段整体停注仅留
-        // pinned，按需层（memory search/read）不受影响。boot 快照消费
-        // （pinnedIndex 先例），重启生效。
-        { id: "memoryIndexSlim", labelKey: "settings.memoryIndexSlim", tier: "optional", onKeys: ["experimentalMemoryIndexSlim"] },
+        // tl1772：memoryIndexSlim 独立卡移出本组——并入上方「安全/成本控制」
+        // 卡成员行（档位与键不动，只移组；tl1733 原条目随之退役）。
+        // 并集解（20261124 补滚冲突）：alwaysOn 标记=tl1741r2 尾项去置灰保留。
       ],
     },
     {

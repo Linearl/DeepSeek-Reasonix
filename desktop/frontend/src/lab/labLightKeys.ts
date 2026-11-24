@@ -23,6 +23,9 @@ export const LAB_LIGHT_KEYS = {
   // tl1453：experimentalDream 谓词随 dream/distill 实验退役摘除。
   // 任务 801：决策模式自动提取+固化（默认关）。
   experimentalDecisionPatterns: (s: SettingsView) => Boolean(s.experimentalDecisionPatterns),
+  // tl1772：决策模式注入分层伴生开关（默认关=原全量注入逐字节一致；注入面
+  // 现读 config，保存即生效）。
+  experimentalDecisionPatternsLayered: (s: SettingsView) => Boolean(s.experimentalDecisionPatternsLayered),
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
   stalledIntentNudge: (s: SettingsView) => Boolean(s.stalledIntentNudge),
   // 任务 1024：composer 草稿优化（改写按钮，默认关）。

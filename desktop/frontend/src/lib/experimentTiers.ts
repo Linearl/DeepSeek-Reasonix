@@ -32,6 +32,9 @@ export type TierFeatureId =
   // tl1453："dream" 随 dream/distill 实验退役（宪法 Q1），出类型与档位表。
   // 任务 801：决策模式自动提取+固化（提取链+固化链，默认关）。
   | "decisionPatterns"
+  // tl1772：决策模式注入分层（decisionPatterns 伴生开关，可选档，默认关=
+  // 原全量注入逐字节一致；开=索引行+按需读全文硬指令）。
+  | "decisionPatternsLayered"
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
   // 本件补实验室设置页入口，默认关）。
   | "stalledIntentNudge"
@@ -247,6 +250,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1453：dream 出表（原可选档）——dream/distill 实验退役（宪法 Q1）。
   // 任务 801：决策模式（提取链+固化链）。归自动化组，档位可选。
   decisionPatterns: "optional",
+  // tl1772：注入分层伴生开关（decisionPatterns 行下方，可选档，默认关）。
+  decisionPatternsLayered: "optional",
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge）——归自动化
   // 组，档位可选（铁律 2，默认关）。
   stalledIntentNudge: "optional",
@@ -592,11 +597,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 3→4、总数 88→89（Go 渲染表同步 76→77，tasklist_db_path 为家族子键不
  * 另计）。
  * tl1718：composerToolsFold（composer 工具组默认折叠，界面组视图布局卡成员，
- * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。 */
+ * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。
+ * tl1772：decisionPatternsLayered（决策模式注入分层伴生开关，自动化组
+ * smartAutomation 卡 decisionPatterns 行下方，可选档）入表——可选 26→27、
+ * 总数 90→91（Go 渲染表同步 71→72）。memoryIndexSlim 同件移组
+ * （提效组独立卡 → 安全/成本控制卡成员行），档位与键不动、注册表计数不变。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
-  optional: 26,
+  optional: 27,
   unstable: 4,
   retired: 0,
 };
