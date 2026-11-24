@@ -2340,6 +2340,13 @@ type AgentConfig struct {
 	// prefix cache — the whole-range compress tool's cooldown deliberately
 	// does not apply here (收益限+窗口替代冷却,约束①).
 	ExperimentalModelRangesCompact bool `toml:"experimental_model_ranges_compact"`
+	// tl1787 续作 (实验档, 铁律 2 默认关): idle 期 pre-repair 分叉的后台
+	// 元信息拼接 (tl1674 阶段二定案) — events idle sweep tick 上挂独立
+	// pass: 判据通过的分叉把拼接点/段边界/校验值登记进 <stem>.splices.json
+	// 档案袋, 投影内容一个字节不动、零模型调用。off = sweep 不跑该 pass
+	// (登记面与引入前逐字节一致); on 且登记失败时不阻塞既有 sweep
+	// (静默记日志, 不告警不重试风暴)。
+	ExperimentalPrepairAutosplice bool `toml:"experimental_prepair_autosplice"`
 	// tl1419: sliding window length (minutes) for the model-driven ranges
 	// flood gate. 0 = built-in default (5). Configurable so observation data
 	// from the tl1397 telemetry surface can retune the limits without a

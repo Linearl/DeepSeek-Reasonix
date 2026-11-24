@@ -152,6 +152,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalContextBudget",
             "experimentalResearchBudget",
             "experimentalProactiveCompact",
+            // tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩族灯。
+            "experimentalRangesCompact",
+            "experimentalModelRangesCompact",
             "experimentalColdCacheCompact",
             "experimentalCurateContext",
             "experimentalReviewHint",
@@ -164,6 +167,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "compactionParallel", labelKey: "settings.compactionParallel", tier: "optional" },
             { id: "budgetControl", labelKey: "settings.contextBudget", tier: "recommended" },
             { id: "compressOpt", labelKey: "settings.proactiveCompact", tier: "recommended" },
+            // tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩两行（此前 Go
+            // 渲染表已登记、前端无处挂——设置页入口落地，未稳定档）。
+            { id: "rangesCompact", labelKey: "settings.rangesCompact", tier: "unstable" },
+            { id: "modelRangesCompact", labelKey: "settings.modelRangesCompact", tier: "unstable" },
             { id: "cacheTuning", labelKey: "settings.cacheTuning", tier: "optional" },
             // tl1309：乐观并行（原独立卡，推荐档，并入本卡尾部；pane 内
             // bash_heavy_guard / reasoning_only_continuation 为其家族伴生行，
@@ -434,7 +441,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           id: "runtimeObservability",
           labelKey: "settings.runtimeObservability",
           tier: "recommended",
-          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor", "eventsRotationNonDefault", "experimentalTrajectoryView"],
+          onKeys: ["experimentalSessionMonitor", "experimentalPerfMonitor", "eventsRotationNonDefault", "experimentalTrajectoryView",
+            // tl1787 续作：pre-repair 分叉后台元信息拼接灯（同族后台维护面）。
+            "experimentalPrepairAutosplice"],
           members: [
             // 监控（原 observability 独立卡，推荐档，本件并卡）。
             { id: "monitoring", labelKey: "settings.monitoring", tier: "recommended" },
@@ -442,6 +451,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             { id: "eventsRotation", labelKey: "settings.eventsRotation", tier: "optional" },
             // 轨迹观测（原界面组 viewLayout 卡成员，迁入本卡）。
             { id: "trajectoryView", labelKey: "settings.trajectoryView", tier: "optional" },
+            // tl1787 续作：pre-repair 分叉后台元信息拼接（events idle sweep
+            // 独立 pass；未稳定档，默认关）。
+            { id: "prepairAutosplice", labelKey: "settings.prepairAutosplice", tier: "unstable" },
           ],
         },
         // 任务 783：「用量监测」合并卡（coding plan 用量架构）——GLM Plan

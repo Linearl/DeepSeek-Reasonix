@@ -18,8 +18,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig := Default()
 
 	// automation（自动化）
-	orig.Agent.ExperimentalFullAccess = true    // fullAccess (M8 standalone)
-	orig.Sandbox.OptimisticWrite = true         // optimisticParallel (M8 standalone)
+	orig.Agent.ExperimentalFullAccess = true // fullAccess (M8 standalone)
+	orig.Sandbox.OptimisticWrite = true      // optimisticParallel (M8 standalone)
 	// tl1453：experimental_dream 随 dream/distill 实验退役，不再入往返面。
 	orig.Agent.ExperimentalSafetyCostControl = true // 任务 517 合并键（B1/B2/B3）
 	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
@@ -84,6 +84,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSessionMonitor = true // monitoring (M8 standalone, member 1)
 	orig.Agent.ExperimentalPerfMonitor = true      // monitoring (M8 standalone, member 2)
 	orig.Agent.ExperimentalPerfMonitor = true      // monitoring ([agent] authoritative after task 473)
+	// tl1787 续作：pre-repair 分叉后台元信息拼接开关（未稳定档）——登记面
+	// 无条件渲染往返（fixed-key-set rule）。
+	orig.Agent.ExperimentalPrepairAutosplice = true // prepairAutosplice
 	// tl1746：任务面板（未稳定档）——开关无条件渲染往返；tasklist_db_path
 	// 为家族子键（条件渲染：非空才落盘，fixture 给非空值验证往返面）。
 	orig.Desktop.ExperimentalTasklistPanel = true      // tasklistPanel
@@ -100,8 +103,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalJsonlZstd = true // jsonlZstd
 
 	// infra（基础设施；785 退役 S1 常驻底座开关条目）
-	orig.Desktop.ExperimentalACPListen = true  // acpListen (task 790)
-	orig.Desktop.ACPListenPort = 8791          // acpListen family key
+	orig.Desktop.ExperimentalACPListen = true // acpListen (task 790)
+	orig.Desktop.ACPListenPort = 8791         // acpListen family key
 	// tl1487 七组③：pathRules fixture 行随键退役移除。
 	orig.Agent.ExperimentalOrphanHandling = true          // orphanHandling
 	orig.Desktop.ExperimentalLocalServer = true           // localServer
@@ -154,6 +157,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		// (workflow_panel/templates absent: tl1741 retired the switches.)
 		"experimental_question_search = true",
+		// tl1787 续作：pre-repair 自愈拼接开关键无条件渲染（fixed-key-set）。
+		"experimental_prepair_autosplice = true",
 		"experimental_subagent_tps", // rendered from the nil-means-on helper; presence only
 		"experimental_completion_summary = true",
 		"experimental_quick_commands = true",
@@ -238,7 +243,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		t.Error("trace_as_state (agent, post-473 single key) did not round-trip")
 	}
 	for name, ok := range map[string]bool{
-		"agent.experimental_pinned_index":   got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
+		"agent.experimental_pinned_index": got.Agent.ExperimentalPinnedIndex, // tl1193b：memory-context 组往返
+		// tl1787 续作：pre-repair 自愈拼接开关往返。
+		"agent.experimental_prepair_autosplice": got.Agent.ExperimentalPrepairAutosplice,
 		// tl1746：任务面板开关+路径家族子键往返。
 		"desktop.experimental_tasklist_panel":        got.Desktop.ExperimentalTasklistPanel,
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,

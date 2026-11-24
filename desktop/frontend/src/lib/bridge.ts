@@ -504,11 +504,32 @@ export interface PreRepairBackupView {
   dir: string;
   transcript?: string;
   ownerPath?: string;
+  /** tl1787: the owner transcript sits inside a .trash bucket (the archive
+   *  chain moved the host and its backups together) — an archived artifact,
+   *  not a live session. The row is labeled and the delete gate lets it
+   *  through; merging is refused until the conversation is restored. */
+  ownerArchived?: boolean;
+  /** tl1787 续作: the backup is registered in the owner's splice ledger
+   *  (background autosplice or the manual merge) — the long chain is
+   *  queryable from the ledger. */
+  spliced?: boolean;
   label: string;
   stamp: string;
   bytes: number;
   files: number;
   modifiedAt: string;
+}
+
+/** tl1787 件3/B: the merge-back receipt — how many of the backup's unique
+ *  leading turns were grafted onto the live owner main (graft only adds:
+ *  existing lines stay byte-for-byte), and the owner's message count after
+ *  the merge so the "history is queryable" check has an on-screen number.
+ *  merged=false means the owner already contains every turn (nothing to do). */
+export interface PreRepairMergeView {
+  merged: boolean;
+  grafted: number;
+  ownerPath: string;
+  afterMessages: number;
 }
 
 /** tl1603: one refusal line of the batch cleanup receipt. reason is a stable
@@ -1224,6 +1245,10 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   DeletePreRepairBackup(dir: string): Promise<PreRepairDeleteView>;
   DeletePreRepairBackupPermanent(dir: string): Promise<void>;
   DeletePreRepairBackups(dirs: string[]): Promise<PreRepairBatchCleanupView>;
+  // tl1787 件3/B: 把改写前备份里主线缺失的独有历史接回活宿主主线（1.34
+  // graft 合并体系同一执行核：只增不改，纯本地零 token）；宿主已归档/孤儿
+  // 备份拒绝并给人话原因。
+  MergePreRepairBackup(dir: string): Promise<PreRepairMergeView>;
   // 任务 1011: session health / self-heal / versions panel (需求 E).
   ListSessionVersionGroups(): Promise<SessionVersionGroupView[]>;
   ListSessionHealthFindings(): Promise<SessionHealthFindingView[]>;
@@ -2270,6 +2295,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetProviderModelHighSpeed(provider: string, model: string, enabled: boolean): Promise<void>;
   SetExperimentalProactiveCompact(enabled: boolean): Promise<void>;
   SetProactiveCompactCooldownMinutes(minutes: number): Promise<void>;
+  // tl1787 件⑤/A: tl1397/tl1419 ranges 主动局部压缩族的设置面写通道（此前
+  // 只有 config 键，设置页点击无桥=写不进）。
+  SetExperimentalRangesCompact(enabled: boolean): Promise<void>;
+  SetExperimentalModelRangesCompact(enabled: boolean): Promise<void>;
+  SetModelRangesFoldWindowMinutes(minutes: number): Promise<void>;
+  SetModelRangesFoldWindowMax(maxFolds: number): Promise<void>;
+  // tl1787 续作: pre-repair 分叉后台元信息拼接开关（events idle sweep 独立
+  // pass；默认关）。
+  SetExperimentalPrepairAutosplice(enabled: boolean): Promise<void>;
   SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
   /** Task 369: selection quick-actions floating card switch. */
   SetExperimentalSelectionActions(enabled: boolean): Promise<void>;
@@ -4806,6 +4840,10 @@ function makeMockApp(): AppBindings {
     },
     async DeletePreRepairBackups(_dirs: string[]): Promise<PreRepairBatchCleanupView> {
       return { trashed: 0, trashedBytes: 0, staged: 0, failed: 0, failures: [] };
+    },
+    async MergePreRepairBackup(_dir: string): Promise<PreRepairMergeView> {
+      // mock: merge is a no-op in browser-dev mode (nothing to merge into)
+      return { merged: false, grafted: 0, ownerPath: "", afterMessages: 0 };
     },
     async ListRecoveryChains(mainPath: string): Promise<RecoveryChainSet> {
       return { mainPath, mainLabel: mainPath, chains: [], longestPath: "", longestHead: "", newestPath: "", newestHead: "" };
@@ -7517,6 +7555,11 @@ function makeMockApp(): AppBindings {
     async SetProviderModelHighSpeed() {},
     async SetExperimentalProactiveCompact() {},
     async SetProactiveCompactCooldownMinutes() {},
+    async SetExperimentalRangesCompact() {},
+    async SetExperimentalModelRangesCompact() {},
+    async SetModelRangesFoldWindowMinutes() {},
+    async SetModelRangesFoldWindowMax() {},
+    async SetExperimentalPrepairAutosplice() {},
     async RunSelectionSideQuery() { return ""; },
     async SetExperimentalSelectionActions() {},
     async SetExperimentalComposerDraft() {},

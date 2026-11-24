@@ -1,10 +1,12 @@
-// 任务 1368 线2 harness：版本副本面板的「删除选中对话」（整对话级清除）。
+// 任务 1368 线2 harness：版本副本面板的整对话级清除（tl1787 件1 起文案
+// 明示为「归档到回收站（含全部副本）」，入口自「更多▾」弹层提到底部栏——
+// 勾选会话即出现的固定位；能力本体与后端面不变，后端由
+// desktop/recovery_conversation_delete_test.go 钉住）。
 //
-// 验收（tl1368 正文）：勾选行点「删除选中对话」→ 主文件+全部副本+侧车入回
-// 收站（后端面由 desktop/recovery_conversation_delete_test.go 钉住），侧栏
-// 与面板均消失，回收站可还原。本 harness 从前端面钉四点：
-//  ① 「刷新」右边渲染「删除选中对话」按钮；未勾选会话时禁用；
-//  ② 勾选会话行后按钮带计数可用；点击先弹确认，未确认不得调用后端；
+// 验收：勾选行点「归档到回收站（含全部副本）」→ 主文件+全部副本+侧车入回
+// 收站，侧栏与面板均消失，回收站可还原。本 harness 从前端面钉四点：
+//  ① 未勾选时底部无该入口（选中即现，不占空位）；勾选后入口带计数可用；
+//  ② 点击先弹确认，未确认不得调用后端；
 //  ③ 确认后以勾选的 mainPath 调 DeleteConversationWithCopies；回执区报
 //     「主线入回收站 + 副本 N 条归档」；列表刷新后该行从面板消失；
 //  ④ 后端拒绝时回执区出现失败行（错误原文直出）。
@@ -150,7 +152,7 @@ async function openPanelWithSelection(spies: Spies, overrides: Partial<AppBindin
 
 console.log("\nrecovery conversation delete with copies (1368 线2)");
 
-// ① 「刷新」右边渲染「删除选中对话」；未勾选时禁用。
+// ① tl1787 件1：未勾选时底部无归档入口（选中即现的固定位，不占空位）。
 {
   const spies: Spies = { listCalls: 0, deletedConversations: [], deletedOk: [], report: null };
   stubBridge({}, spies);
@@ -164,25 +166,24 @@ console.log("\nrecovery conversation delete with copies (1368 线2)");
 
   const refresh = buttonByText("Refresh");
   ok(Boolean(refresh), "① the Refresh button is present");
-  const del = buttonByText("Delete selected conversations");
-  ok(Boolean(del), "① the whole-conversation delete button renders beside Refresh");
-  ok(Boolean(del?.disabled), "① the button is disabled before any conversation is checked");
+  const del = buttonByText("Archive to Recycle Bin (with every copy)");
+  ok(!del, "① the archive entry is absent with nothing selected (tl1787: 选中即现)");
 
   await act(async () => root.unmount());
 }
 
-// ② 勾选后按钮带计数可用；点击先弹确认，未确认不得调用后端。
+// ② 勾选后入口带计数可用；点击先弹确认，未确认不得调用后端。
 {
   const spies: Spies = { listCalls: 0, deletedConversations: [], deletedOk: [], report: null };
   const root = await openPanelWithSelection(spies);
 
-  const del = buttonByText("Delete selected conversations");
-  ok(Boolean(del) && !del?.disabled, "② the button is enabled with a checked conversation");
-  ok((del?.textContent || "").includes("(1)"), "② the button counts the checked conversations");
+  const del = buttonByText("Archive to Recycle Bin (with every copy)");
+  ok(Boolean(del) && !del?.disabled, "② the archive entry is enabled with a checked conversation");
+  ok((del?.textContent || "").includes("(1)"), "② the entry counts the checked conversations");
 
   await act(async () => { del?.click(); });
   await flush();
-  ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "② the delete asks for confirmation first");
+  ok(Boolean(document.querySelector(".reasonix-confirm-dialog")), "② the archive asks for confirmation first");
   ok(spies.deletedConversations.length === 0, "② nothing reaches the backend before confirmation");
 
   await act(async () => root.unmount());
@@ -193,12 +194,12 @@ console.log("\nrecovery conversation delete with copies (1368 线2)");
   const spies: Spies = { listCalls: 0, deletedConversations: [], deletedOk: [], report: { mainTrashed: true, copiesArchived: 1 } };
   const root = await openPanelWithSelection(spies, {}, []);
 
-  const del = buttonByText("Delete selected conversations");
+  const del = buttonByText("Archive to Recycle Bin (with every copy)");
   await act(async () => { del?.click(); });
   await flush();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
-    .find((b) => b.textContent?.trim() === "Delete selected conversations");
-  ok(Boolean(confirmBtn), "③ the confirmation dialog offers the delete action");
+    .find((b) => b.textContent?.trim() === "Archive to Recycle Bin (with every copy)");
+  ok(Boolean(confirmBtn), "③ the confirmation dialog offers the archive action");
   await act(async () => { confirmBtn?.click(); });
   await flush();
 
@@ -224,11 +225,11 @@ console.log("\nrecovery conversation delete with copies (1368 线2)");
     },
   });
 
-  const del = buttonByText("Delete selected conversations");
+  const del = buttonByText("Archive to Recycle Bin (with every copy)");
   await act(async () => { del?.click(); });
   await flush();
   const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button"))
-    .find((b) => b.textContent?.trim() === "Delete selected conversations");
+    .find((b) => b.textContent?.trim() === "Archive to Recycle Bin (with every copy)");
   await act(async () => { confirmBtn?.click(); });
   await flush();
 

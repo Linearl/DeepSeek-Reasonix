@@ -2091,6 +2091,25 @@ func ModelRangesCompactLive() bool {
 	return cfg.Agent.ExperimentalModelRangesCompact
 }
 
+// SetExperimentalPrepairAutosplice toggles tl1787 续作's idle-time pre-repair
+// fork metadata-splice pass (iron rule 2: default off — off keeps the sweep
+// without the splice pass, byte-for-byte identical registration surface).
+func (c *Config) SetExperimentalPrepairAutosplice(enabled bool) error {
+	c.Agent.ExperimentalPrepairAutosplice = enabled
+	return nil
+}
+
+// PrepairAutospliceLive is the package-level read for the pre-repair
+// autosplice switch (tl1787 续作), same read-only live semantics as
+// RangesCompactLive (the sweep tick reads it once per 30-minute pass).
+func PrepairAutospliceLive() bool {
+	cfg, err := LoadUserConfigReadOnly()
+	if err != nil || cfg == nil {
+		return false
+	}
+	return cfg.Agent.ExperimentalPrepairAutosplice
+}
+
 // ModelRangesFoldWindowLive returns the effective flood-gate window
 // parameters (minutes, max folds), resolving the 0 = built-in defaults so
 // callers never see unset knobs. Invalid stored values (hand-edited TOML

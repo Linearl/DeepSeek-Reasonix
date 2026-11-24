@@ -626,6 +626,42 @@ func (a *App) SetProactiveCompactCooldownMinutes(minutes int) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetProactiveCompactCooldownMinutes(minutes) })
 }
 
+// SetExperimentalRangesCompact toggles tl1397's ranges small-segment
+// incremental compression (iron rule 2: default off — off keeps the
+// compression path byte-for-byte identical). Live read at fold time; the
+// lab card communicates the unstable tier.
+func (a *App) SetExperimentalRangesCompact(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalRangesCompact(enabled) })
+}
+
+// SetExperimentalPrepairAutosplice toggles tl1787 续作's idle-time pre-repair
+// fork metadata splice (iron rule 2: default off — off keeps the sweep without
+// the splice pass). Live read per sweep tick; the lab card communicates the
+// unstable tier.
+func (a *App) SetExperimentalPrepairAutosplice(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalPrepairAutosplice(enabled) })
+}
+
+// SetExperimentalModelRangesCompact toggles tl1419's model-driven ranges
+// folds (iron rule 2: default off — off keeps compress_ranges out of the
+// registry entirely, boot-gated injection). Run-time folding additionally
+// requires the ranges lane switch on.
+func (a *App) SetExperimentalModelRangesCompact(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalModelRangesCompact(enabled) })
+}
+
+// SetModelRangesFoldWindowMinutes stores the flood-gate sliding window
+// length (0 = built-in default, otherwise 1..1440 minutes; config clamps).
+func (a *App) SetModelRangesFoldWindowMinutes(minutes int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetModelRangesFoldWindowMinutes(minutes) })
+}
+
+// SetModelRangesFoldWindowMax stores the flood-gate per-window fold cap
+// (0 = built-in default, otherwise 1..50; config clamps).
+func (a *App) SetModelRangesFoldWindowMax(maxFolds int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetModelRangesFoldWindowMax(maxFolds) })
+}
+
 // SetExperimentalColdCacheCompact toggles the task-297 cold-cache pass
 // (the desktop tick live-reads it; off by default).
 func (a *App) SetExperimentalColdCacheCompact(enabled bool) error {

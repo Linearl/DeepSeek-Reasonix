@@ -18,6 +18,7 @@ package main
 // 「可删」态跑真缝（裸转录=healthy，真实接线全链路）。
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -94,6 +95,29 @@ func writeTrashBucket(t *testing.T, sessions, bucket, memberBase string) {
 	if err := os.WriteFile(filepath.Join(dir, memberBase), []byte("archived"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// writeTrashedFamily 模拟 tl1787 新 14 案例的归档形态：归档链把宿主转录与它
+// 的 pre-repair 备份**一起**搬进 <sessions>/.trash/<bucket>/（store.SessionTrashSidecars
+// 的 glob），并落桶 meta（.trash-meta.json）——桶内备份旁侧 owner「存在」
+// 但它是归档工件。返回桶内备份目录路径。
+func writeTrashedFamily(t *testing.T, sessions, stem, stamp string) string {
+	t.Helper()
+	bucket := filepath.Join(sessions, ".trash", stem+".jsonl-deleted-1")
+	if err := os.MkdirAll(bucket, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bucket, stem+".jsonl"), []byte("archived"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := json.Marshal(trashedSessionMeta{Key: stem + ".jsonl", DeletedAt: 1729000000000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bucket, sessionTrashMetaFile), meta, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return writePreRepairTree(t, bucket, stem, stamp, 120)
 }
 
 // TestPreRepairDeleteTrashesLiveOwnerBackup（三态①：可删）——活宿主+健康，
@@ -203,6 +227,66 @@ func TestPreRepairDeleteAllowsArchivedRemains(t *testing.T) {
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != backup {
 		t.Fatalf("trash calls = %v, want [%s]", spy.calls, backup)
+	}
+}
+
+// TestPreRepairDeleteAllowsBackupInsideTrashBucket（tl1787 新 14 案例形态）
+// ——归档链把宿主与备份一起搬进回收站桶后，桶内备份按活宿主体检会被已归档
+// 会话拖出 owner-unhealthy（projection_overflow 现场）拒删；健康闸识别归档态
+// 放行：体检零调用（喂必败假报告证明没走体检）、删除成功、走平台回收站。
+// 同族扩展=tl1646 孤儿放行；活跃宿主保护由 RefusesUnhealthyOwner 既有钉承担
+// （零回退）。
+func TestPreRepairDeleteAllowsBackupInsideTrashBucket(t *testing.T) {
+	sessions := stagePreRepairFixture(t)
+	backup := writeTrashedFamily(t, sessions, "fork14", "20261110T010000")
+	spy := withPreRepairTrashSpy(t, nil)
+	previous := preRepairHealthInspect
+	preRepairHealthInspect = func(path string, _ agent.HealthInspectOptions) agent.SessionHealthReport {
+		return agent.SessionHealthReport{
+			Path: path, Healthy: false,
+			Issues: []agent.SessionHealthIssue{{Code: agent.HealthProjectionOverflow, Detail: "archived session must never be inspected"}},
+		}
+	}
+	t.Cleanup(func() { preRepairHealthInspect = previous })
+
+	app := &App{}
+	verdict, err := app.DeletePreRepairBackup(backup)
+	if err != nil {
+		t.Fatalf("a backup inside the trash bucket (archived owner) must be deletable: %v", err)
+	}
+	if !verdict.Trashed {
+		t.Fatalf("verdict = %+v, want trashed", verdict)
+	}
+	if _, err := os.Stat(backup); !os.IsNotExist(err) {
+		t.Fatalf("the deleted in-bucket backup must be gone from the bucket (stat err=%v)", err)
+	}
+	if len(spy.calls) != 1 || spy.calls[0] != backup {
+		t.Fatalf("trash calls = %v, want exactly [%s]", spy.calls, backup)
+	}
+}
+
+// TestPreRepairBatchCleanupIncludesInBucketBackup——批量清理对「宿主与备份同
+// 桶」形态同样放行（与新 14 案例同闸），与活宿主备份各删各的、回执零失败。
+func TestPreRepairBatchCleanupIncludesInBucketBackup(t *testing.T) {
+	sessions := stagePreRepairFixture(t)
+	writeLiveOwner(t, sessions, "s1")
+	b1 := writePreRepairTree(t, sessions, "s1", "20261108T010000", 100)
+	inBucket := writeTrashedFamily(t, sessions, "fork14", "20261109T010000")
+	spy := withPreRepairTrashSpy(t, nil)
+
+	app := &App{}
+	run, err := app.DeletePreRepairBackups([]string{b1, inBucket})
+	if err != nil {
+		t.Fatalf("batch: %v", err)
+	}
+	if run.Trashed != 2 || run.Failed != 0 {
+		t.Fatalf("run = trashed %d / failed %d, want 2/0 (in-bucket backup rides the batch)", run.Trashed, run.Failed)
+	}
+	if len(run.Failures) != 0 {
+		t.Fatalf("failures = %+v, want none", run.Failures)
+	}
+	if len(spy.calls) != 2 {
+		t.Fatalf("trash calls = %v, want both dirs", spy.calls)
 	}
 }
 
@@ -371,5 +455,38 @@ func TestPreRepairEnumerationListsOrphansPlainly(t *testing.T) {
 	}
 	if byStem["lonely"].Bytes <= 0 || byStem["lonely"].Label == "" {
 		t.Fatalf("orphan backup = %+v, want complete readings (bytes/label)", byStem["lonely"])
+	}
+}
+
+// TestPreRepairEnumerationMarksArchivedOwner（tl1787）——宿主与备份同桶的
+// 归档形态在枚举里单列标注：OwnerPath 指向桶内转录、OwnerArchived=true
+// （前端据此给「原对话已归档」披露而非孤儿警示）；活宿主行 OwnerArchived=false。
+func TestPreRepairEnumerationMarksArchivedOwner(t *testing.T) {
+	sessions := stagePreRepairFixture(t)
+	writeLiveOwner(t, sessions, "s1")
+	writePreRepairTree(t, sessions, "s1", "20261108T010000", 100)
+	inBucket := writeTrashedFamily(t, sessions, "fork14", "20261110T010000")
+
+	views := preRepairBackupViewsIn([]string{sessions})
+	if len(views) != 2 {
+		t.Fatalf("views = %d, want 2", len(views))
+	}
+	var archived, live *PreRepairBackupView
+	for i := range views {
+		switch {
+		case views[i].Dir == inBucket:
+			archived = &views[i]
+		case strings.Contains(views[i].Dir, "s1.pre-repair-"):
+			live = &views[i]
+		}
+	}
+	if archived == nil || live == nil {
+		t.Fatalf("views = %+v, want one live-owner row and one in-bucket row", views)
+	}
+	if archived.OwnerPath == "" || !archived.OwnerArchived {
+		t.Fatalf("in-bucket row = %+v, want owner path set with OwnerArchived", archived)
+	}
+	if live.OwnerPath == "" || live.OwnerArchived {
+		t.Fatalf("live-owner row = %+v, want owner path set without OwnerArchived", live)
 	}
 }

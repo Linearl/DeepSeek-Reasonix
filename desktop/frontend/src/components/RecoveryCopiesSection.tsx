@@ -591,6 +591,9 @@ export function RecoveryCopiesSection() {
   // 单删在途按行记（preRepairDeleting），删哪条只禁哪条。
   const [preRepairBusy, setPreRepairBusy] = useState(false);
   const [preRepairDeleting, setPreRepairDeleting] = useState<Set<string>>(new Set());
+  // tl1787 件3/B：合并的在途标记按行记（与单删同口径）——合并桥要对活宿主
+  // 做前缀接回+事件日志折叠（大会话秒到分钟级），在途只禁自己那行的合并钮。
+  const [preRepairMerging, setPreRepairMerging] = useState<Set<string>>(new Set());
   // tl1658 现场①：批量的逐项进度（pre-repair-cleanup:progress 事件驱动）。
   // 181 项/3.4GB 的清理是分钟级阻塞桥调用，此前全程零反馈——用户无从知道
   // 是否在跑（dag-migration:progress 同一先例）。null=不在途/无进度。
@@ -938,10 +941,17 @@ export function RecoveryCopiesSection() {
   // 复位——失败不卡状态（验收「状态复位钉」）。
   const preRepairCanCleanup =
     typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
+  // tl1787 件3/B：合并入口的能力探测（旧 harness 的 Partial stub 无此方法时
+  // 不渲染合并钮——typeof 守卫同 load()/preRepairCanCleanup 先例）。
+  const preRepairCanMerge = typeof app.MergePreRepairBackup === "function";
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
     if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
     const soleCopy = !view.ownerPath;
+    // tl1787：宿主与备份同桶的归档形态——确认弹窗给「随对话归档」披露而非
+    // 孤儿警示；两语义（默认回收站可还原 / 极端路径永久删除）分别由
+    // RecycleNote 与 permanentOnly 二段弹窗承担（tl1658 既有纪律，文案明示）。
+    const archivedOwner = Boolean(view.ownerArchived);
     const ok = await confirm({
       title: t("settings.recoveryCopiesPreRepairDeleteTitle"),
       message: (
@@ -951,6 +961,9 @@ export function RecoveryCopiesSection() {
           </p>
           {soleCopy ? (
             <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairSoleWarn")}</p>
+          ) : null}
+          {archivedOwner ? (
+            <p className="rc-muted">{t("settings.recoveryCopiesPreRepairArchivedNote")}</p>
           ) : null}
           <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairRecycleNote")}</p>
         </div>
@@ -1119,6 +1132,54 @@ export function RecoveryCopiesSection() {
       showToast(String(e), "error");
     } finally {
       setRepairingOwner("");
+    }
+  };
+
+  /** tl1787 件3/B：pre-repair 备份合并回主线——折叠/改写掉的历史不因备份
+   *  形态隔离而永久丢失。复用 1.34 合并体系的 graft 执行核（promote 前缀接
+   *  回同一原语，纯本地数据操作零 token）：备份里主线缺失的独有前缀按轮次
+   *  对齐接回主线头部（只增不改，既有行逐字节保留），合并后历史在对话内
+   *  可查（验收4）。入口仅活宿主行：宿主已归档（ownerArchived）先从回收站
+   *  还原对话再合并；孤儿备份（无 ownerPath）没有可回的主线。 */
+  const mergePreRepair = async (view: PreRepairBackupView) => {
+    if (!preRepairCanMerge || preRepairMerging.has(view.dir)) return;
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesPreRepairMergeTitle"),
+      message: (
+        <div>
+          <p>
+            {view.label} · {formatBytes(view.bytes)} · {formatWhen(view.modifiedAt)}
+          </p>
+          <p>{t("settings.recoveryCopiesPreRepairMergeLead")}</p>
+          <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairMergeWarn")}</p>
+        </div>
+      ),
+      confirmLabel: t("settings.recoveryCopiesPreRepairMerge"),
+      cancelLabel: t("common.cancel"),
+      tone: "danger",
+    });
+    if (!ok) return;
+    setPreRepairMerging((current) => new Set(current).add(view.dir));
+    try {
+      const report = await app.MergePreRepairBackup(view.dir);
+      if (report.merged) {
+        showToast(
+          t("settings.recoveryCopiesPreRepairMergeDone").replace("{n}", String(report.grafted)),
+          "info",
+        );
+      } else {
+        showToast(t("settings.recoveryCopiesPreRepairMergeNothing"), "info");
+      }
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`${t("settings.recoveryCopiesPreRepairMergeFailed")}：${message}`, "error");
+    } finally {
+      setPreRepairMerging((current) => {
+        const next = new Set(current);
+        next.delete(view.dir);
+        return next;
+      });
     }
   };
 
@@ -3172,6 +3233,12 @@ export function RecoveryCopiesSection() {
                                   {!view.ownerPath
                                     ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
                                     : null}
+                                  {view.ownerArchived
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairArchived")}`
+                                    : null}
+                                  {view.spliced
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
+                                    : null}
                                   {view.transcript ? (
                                     <button
                                       className="btn btn--small"
@@ -3183,6 +3250,20 @@ export function RecoveryCopiesSection() {
                                       {preRepairPreviewing === view.dir
                                         ? "…"
                                         : t("settings.recoveryCopiesPreRepairView")}
+                                    </button>
+                                  ) : null}
+                                  {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (
+                                    <button
+                                      className="btn btn--secondary btn--small"
+                                      type="button"
+                                      data-pre-repair-merge=""
+                                      disabled={preRepairMerging.has(view.dir)}
+                                      title={t("settings.recoveryCopiesPreRepairMergeHint")}
+                                      onClick={() => void mergePreRepair(view)}
+                                    >
+                                      {preRepairMerging.has(view.dir)
+                                        ? "…"
+                                        : t("settings.recoveryCopiesPreRepairMerge")}
                                     </button>
                                   ) : null}
                                   {preRepairCanCleanup ? (
@@ -3432,8 +3513,23 @@ export function RecoveryCopiesSection() {
                   {t("settings.recoveryCopiesClearHistory")}
                 </button>
                 <div className="rc-foot__spacer" />
-                {/* 任务 1064：批量删除所选分支——勾选的是副本行左侧的复选框
-                    （branchesSelected），与会话行的合并勾选互不干扰。 */}
+                {/* tl1787 件1：整对话「归档到回收站（含全部副本）」——自「更多▾」
+                    次要弹层提到底部栏（选中对话即出现的固定入口）。能力本体是
+                    1368 线2 的 DeleteConversationWithCopies：主文件、v3 版本、
+                    全部副本与侧车分别进两条可恢复回收站，RestoreSession 可整体
+                    还原；二次确认弹窗保留（破坏性操作两段确认纪律）。 */}
+                {selected.size > 0 ? (
+                  <button
+                    className="btn btn--secondary btn--small rc-delete"
+                    type="button"
+                    data-conversation-archive=""
+                    title={t("settings.recoveryCopiesDeleteConversationHint")}
+                    disabled={busy || scanningAll}
+                    onClick={() => void deleteConversations()}
+                  >
+                    {`${t("settings.recoveryCopiesDeleteConversation")} (${selected.size})`}
+                  </button>
+                ) : null}
                 {branchesSelected.size > 0 ? (
                   <button
                     className="btn btn--secondary btn--small rc-delete"
@@ -3507,21 +3603,8 @@ export function RecoveryCopiesSection() {
                           {`${t("settings.recoveryCopiesScanSelected")} (${selected.size})`}
                         </button>
                       ) : null}
-                      {/* 任务 1368 线2：整对话级删除——归档选中会话的主文件（含
-                          v3 版本与侧车）与全部副本到两条可恢复回收站。与 1064 的
-                          「删除所选」（删副本分支）是两个粒度：这里勾的是会话行
-                          （selected），一次清掉整个对话。 */}
-                      <button
-                        className="btn btn--secondary btn--small rc-delete"
-                        type="button"
-                        title={t("settings.recoveryCopiesDeleteConversationHint")}
-                        disabled={busy || scanningAll || selected.size === 0}
-                        onClick={() => void deleteConversations()}
-                      >
-                        {selected.size > 0
-                          ? `${t("settings.recoveryCopiesDeleteConversation")} (${selected.size})`
-                          : t("settings.recoveryCopiesDeleteConversation")}
-                      </button>
+                      {/* 任务 1368 线2 → tl1787 件1：整对话归档入口已提到底部栏
+                          （选中对话即出现的固定位），「更多▾」弹层不再重复挂。 */}
                     </div>
                     <p className="rc-more__hint">{t("settings.recoveryCopiesSynthesizePickHint")}</p>
                   </div>

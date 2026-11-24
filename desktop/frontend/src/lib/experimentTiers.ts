@@ -238,7 +238,16 @@ export type TierFeatureId =
   // 参数卡同款豁免）。
   | "gcPercent"
   // tl1309 卡③：后台会话闲置释放（775 首批参数卡）入表——推荐档随迁，同上。
-  | "idleReleaseMinutes";
+  | "idleReleaseMinutes"
+  // tl1787 件⑤/A：tl1397 ranges 主动局部压缩（Go 渲染表既有条目转两侧共享
+  // ——此前 Go-only config-only 豁免，设置页入口落地时收回）。
+  | "rangesCompact"
+  // tl1419 模型驱动 ranges 折叠（同上口径转两侧共享；窗口两键为家族子键，
+  // 不另计条目）。
+  | "modelRangesCompact"
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（Go 渲染表新条目两侧共享，
+  // 未稳定档）。
+  | "prepairAutosplice";
 
 export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> = {
   // ── automation（自动化，6 项；任务 650：optimisticParallel 迁提效）──
@@ -280,6 +289,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   cacheTuning: "optional",
   // tl1733：记忆注入瘦身（默认关=默认瘦身注入管线；开=应急旁路仅 pinned）。
   memoryIndexSlim: "optional",
+  // tl1787 件⑤/A：tl1397 ranges 小段增量压缩（未稳定档，镜像 Go 渲染表——
+  // Go-only config-only 豁免随设置页入口落地收回）。
+  rangesCompact: "unstable",
+  // tl1419：模型驱动 ranges 折叠（未稳定档，同上）。
+  modelRangesCompact: "unstable",
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（未稳定档，镜像 Go 渲染表）。
+  prepairAutosplice: "unstable",
   // tl1487 一组④：冷缓存压缩独立可选档（compressOpt 附属行起挂自己的徽章；
   // 用户 20261107 八组清单「冷缓存压缩→可选」）。
   coldCacheCompact: "optional",
@@ -601,12 +617,18 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * tl1772：decisionPatternsLayered（决策模式注入分层伴生开关，自动化组
  * smartAutomation 卡 decisionPatterns 行下方，可选档）入表——可选 26→27、
  * 总数 90→91（Go 渲染表同步 71→72）。memoryIndexSlim 同件移组
- * （提效组独立卡 → 安全/成本控制卡成员行），档位与键不动、注册表计数不变。 */
+ * （提效组独立卡 → 安全/成本控制卡成员行），档位与键不动、注册表计数不变。
+ * tl1787 件⑤/A：rangesCompact + modelRangesCompact（tl1397/tl1419 ranges 主动
+ * 局部压缩两开关，未稳定档）入表——未稳定 4→6、总数 91→93（两侧共享，
+ * Go-only 豁免同步收回两条；并集解基数含 tl1772 的 optional+1）。
+ * tl1787 续作：prepairAutosplice（pre-repair 分叉后台元信息拼接，未稳定档）
+ * 入表——未稳定 6→7、总数 93→94（两侧共享；并集解 20261124 撞 tl1772
+ * 实测定稿）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
   optional: 27,
-  unstable: 4,
+  unstable: 7,
   retired: 0,
 };
 

@@ -61,8 +61,13 @@ const (
 	// repairlog 同纪律：追加式审计侧车，每会话一个文件、一次接管追加一行，
 	// 不进会话列表（IsSessionTranscriptName 显式排除），删除会话时一并清掉。
 	SessionConflictPreserveLogSuffix = ".conflict-preserved.jsonl"
-	SessionEventIndexSuffix            = ".event-index.json"
-	SessionDisplayIndexSuffix          = ".display-index.json"
+	// SessionSpliceLedgerSuffix 是 pre-repair 分叉拼接档案袋（tl1787 续作，
+	// tl1674 阶段二定案：<stem>.splices.json）。合并是纯元信息操作——拼接点
+	// 登记/段边界/校验值都记在这份 sidecar 上，投影内容一个字节不动。与
+	// repairlog 同纪律：元信息审计侧车，不进会话列表，删除会话时一并清掉。
+	SessionSpliceLedgerSuffix = ".splices.json"
+	SessionEventIndexSuffix   = ".event-index.json"
+	SessionDisplayIndexSuffix = ".display-index.json"
 	// SessionGuardianTranscriptSuffix 是 guardian 伴随转录的尾缀
 	// （<stem>.guardian.jsonl）。它是会话形态的伴随文件：经同一会话层存取、带
 	// 自己的 meta/events/index 侧车，但不进会话列表（IsSessionTranscriptName
@@ -416,6 +421,19 @@ func SessionRewriteAttributionLog(sessionPath string) string {
 	return sessionStem(sessionPath) + SessionRewriteAttributionLogSuffix
 }
 
+// SessionSpliceLedger is the pre-repair fork splice dossier of a session
+// (tl1787 续作, tl1674 阶段二定案: <stem>.splices.json). The merge is a pure
+// metadata operation — splice-point registration, segment boundaries and
+// checksums live on this sidecar while the projection content stays
+// byte-for-byte untouched. It stays beside the transcript like every other
+// sidecar so deleting the session removes the splice records too.
+func SessionSpliceLedger(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionSpliceLedgerSuffix
+}
+
 // SessionConflictPreserveLog is the fork-takeover preservation log of a
 // session (tl1748: <stem>.conflict-preserved.jsonl). Before a rev-lag takeover
 // rewrites the transcript, the abandoned disk side's messages that the live
@@ -529,6 +547,10 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionDisplayIndex(sessionPath),
 		SessionConflictLog(sessionPath),
 		SessionRepairLog(sessionPath),
+		// tl1787 续作：pre-repair 分叉拼接档案袋（纯元信息 sidecar）随家族
+		// 走删除/还原/身份换位全链——清单单一来源纪律（加一行=全删除链同
+		// commit 生效）。
+		SessionSpliceLedger(sessionPath),
 		SessionRewriteAttributionLog(sessionPath),
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),

@@ -69,6 +69,18 @@ const (
 	preRepairReasonPermanentOnly = "permanent-only"
 )
 
+// preRepairOwnerArchived 报告 owner 转录是否躺在 .trash 回收站桶里（tl1787
+// 新 14 案例：归档链把宿主转录与它的 pre-repair 备份**一起**搬进
+// <dir>/.trash/<桶>/（store.SessionTrashSidecars 的 glob），于是备份在桶内
+// 枚举得到、旁侧 owner「存在」——但那是归档工件而非活宿主；按活宿主体检
+// 会对已归档会话报 owner-unhealthy（projection_overflow 现场）拒删。桶 meta
+// 文件是桶身份标记（reserveUniqueSessionTrashItemDir 落盘），有它 = owner
+// 在桶里 = 归档态。
+func preRepairOwnerArchived(owner string) bool {
+	_, err := os.Stat(filepath.Join(filepath.Dir(owner), sessionTrashMetaFile))
+	return err == nil
+}
+
 // preRepairBackupBytes 是备份目录的体量读数（一层平铺 stat 和，与枚举同一口径）。
 func preRepairBackupBytes(dir string) int64 {
 	var total int64
@@ -138,11 +150,16 @@ func (a *App) preRepairCleanupGate(backupDir string, healthCache map[string]bool
 		return "", 0, fmt.Errorf("backup path outside known session directories")
 	}
 	// ── 健康闸：活宿主才体检（宿主不在=孤儿副本，tl1646 放行；宿主的内容
-	// 已随删除链搬走的形态同样无从体检也不必体检）──
+	// 已随删除链搬走的形态同样无从体检也不必体检）。tl1787 新 14 案例的同族
+	// 扩展：宿主转录躺在 .trash 桶里 = 已归档态而非活宿主——归档链把宿主与
+	// 备份一起搬进桶（store.SessionTrashSidecars glob），桶内 owner「存在」
+	// 但它是随对话归档的工件；按活宿主体检会对已归档会话报 owner-unhealthy
+	// 拒删（fork开发-新14 现场：projection_overflow）。已归档放行，活跃宿主
+	// 保护不变。──
 	owner := filepath.Join(parent, stem+store.SessionTranscriptSuffix)
 	ownerLive := false
 	if oinfo, oerr := os.Lstat(owner); oerr == nil && !oinfo.IsDir() {
-		ownerLive = true
+		ownerLive = !preRepairOwnerArchived(owner)
 	}
 	if ownerLive {
 		var report agent.SessionHealthReport

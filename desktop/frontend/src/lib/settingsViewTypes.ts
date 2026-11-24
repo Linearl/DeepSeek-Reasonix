@@ -127,6 +127,14 @@ export interface SettingsView {
   experimentalSubagentPolicy?: boolean;
   experimentalSubagentTps?: boolean;
   experimentalCompletionSummary?: boolean;
+  // tl1787 件⑤/A: tl1397/tl1419 ranges 主动局部压缩族读数（此前仅 config 键，
+  // 无设置面读数）。两开关默认关；窗口两键 0 = 内置默认。
+  experimentalRangesCompact?: boolean;
+  experimentalModelRangesCompact?: boolean;
+  modelRangesFoldWindowMinutes?: number;
+  modelRangesFoldWindowMax?: number;
+  // tl1787 续作: pre-repair 分叉后台元信息拼接开关读数（默认关）。
+  experimentalPrepairAutosplice?: boolean;
   // Task 262: gates the whole quick-commands surface (ships off).
   experimentalQuickCommands?: boolean;
   // tl1741：experimentalCDPDebugPort 随撤开关退役——CDP endpoint 无条件起。

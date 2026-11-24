@@ -3620,6 +3620,26 @@ export const zh: Record<DictKey, string> = {
 "settings.researchBudgetHint": "只读调研到 10 轮（或耗时超同类中位数 2 倍）时提示收敛；模型可带理由申请预算翻倍，最多 3 次到 80 轮。关闭后只保留 10 轮提醒，扩展工具自动隐藏。",
 "settings.researchBudget.on": "开",
 "settings.researchBudget.off": "关",
+  // tl1787 件⑤/A：tl1397/tl1419 ranges 主动局部压缩族（上下文治理卡内新行；
+  // 此前只有 config 键无设置页入口——补 UI 接线）。
+  "settings.rangesCompact": "主动局部压缩（ranges 小段增量）",
+  "settings.rangesCompactHint": "把「上一摘要边界 → 活跃轮」的未折叠增量折成追加式小摘要：保头前缀逐字节不动（prefix-cache 友好），摘要输入只含增量段、不随历史长度涨。未稳定档：开启后近因细节从逐字退为摘要级，且高频小折的缓存收益依赖 provider 缓存行为；破线自动回退全量压缩。",
+  "settings.rangesCompact.on": "开",
+  "settings.rangesCompact.off": "关",
+  "settings.rangesCompact.windowMinutes": "模型驱动折叠滑动窗口（分钟）",
+  "settings.rangesCompact.windowMinutesHint": "模型驱动 ranges 折叠（下一行开关）的频次闸窗口长度；0 = 内置默认 5 分钟。",
+  "settings.modelRangesCompact": "模型驱动局部压缩（compress_ranges 工具）",
+  "settings.modelRangesCompactHint": "注入 compress_ranges 工具，模型在合适时机自主决定何时/压缩哪些段（host 端执行；需先开上方 ranges 通道）。洪水闸：滑动窗口内折叠次数有上限（默认 2 次/5 分钟）。",
+  "settings.modelRangesCompact.on": "开",
+  "settings.modelRangesCompact.off": "关",
+  "settings.modelRangesCompact.windowMax": "窗口内折叠次数上限",
+  // tl1787 续作：pre-repair 分叉后台元信息拼接（events idle sweep 独立 pass；
+  // 拼接判据/档案袋登记/校验值重算全在元信息层，投影零改动零额度）。
+  "settings.prepairAutosplice": "备份分叉自愈拼接（后台元信息）",
+  "settings.prepairAutospliceHint": "空闲期自动检测 pre-repair 分叉：判据通过（lineage/改写点时间戳/内容连续性）即把拼接点/段边界/校验值登记进会话拼接档案袋——历史可查的元信息拼接，投影内容一个字节不动、零模型调用；失败只记日志不阻塞既有 sweep。未稳定档。",
+  "settings.prepairAutosplice.on": "开",
+  "settings.prepairAutosplice.off": "关",
+  "settings.modelRangesCompact.windowMaxHint": "滑动窗口内允许的模型驱动折叠次数；0 = 内置默认 2 次。",
 "settings.preapproveManagedPaths": "受管路径预授权",
 "settings.preapproveManagedPathsHint": "开启后，仅在 autopilot（无人值守）模式下，下方勾选的敏感写入类别跳过人工审批弹窗。各类别默认不勾：关闭=完全保留现有弹窗行为。",
 "settings.preapproveManagedPaths.on": "开",
@@ -5114,11 +5134,12 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesVersionDeleteFailedToast": "{count} 个版本删除失败",
   // 任务 1368 线2：整对话级删除——主文件（含 v3 版本与侧车）与全部副本一起
   // 进两条可恢复回收站（主文件走会话回收站可整体还原；副本走 .trash 的
-  // forced 归档链路）。
-  "settings.recoveryCopiesDeleteConversation": "删除选中对话",
-  "settings.recoveryCopiesDeleteConversationTitle": "删除选中对话（含全部副本）",
-  "settings.recoveryCopiesDeleteConversationLead": "即将删除的对话（主文件、全部版本与副本、侧车一起进回收站）",
-  "settings.recoveryCopiesDeleteConversationWarn": "主文件与全部副本会分别移入可恢复的回收站（不会永久删除）；正在打开的该会话标签页会被关闭。",
+  // forced 归档链路）。tl1787 件1：入口提到底部栏，文案按用户原话明示
+  // 「归档到回收站（含全部副本）」语义（删除=进可恢复回收站，非永久删除）。
+  "settings.recoveryCopiesDeleteConversation": "归档到回收站（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationTitle": "归档选中对话到回收站（含全部副本）",
+  "settings.recoveryCopiesDeleteConversationLead": "即将归档的对话（主文件、全部版本与副本、侧车一起进回收站）",
+  "settings.recoveryCopiesDeleteConversationWarn": "主文件与全部副本会分别移入可恢复的回收站（不会永久删除，可从回收站还原）；正在打开的该会话标签页会被关闭。",
   "settings.recoveryCopiesOutcomeConversationDeleted": "已删除（主线入回收站，副本 {copies} 条归档）",
   "settings.recoveryCopiesOutcomeConversationCopiesOnly": "已删除（主线原本不在，副本 {copies} 条归档）",
   // 任务 1065：选 HEAD 反向合成最长链——继承 1.34 合并规则（轮次优先推荐 +
@@ -5304,6 +5325,20 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairDeleteFailed": "改写前备份删除失败",
   "settings.recoveryCopiesPreRepairRecycleNote": "备份目录将进入系统回收站——删错了可从回收站原位还原。含超长路径的备份会先经短路径中转再入桶，此类从回收站还原时会回到中转目录（不是原位置），超长文件名也会被截短。",
   "settings.recoveryCopiesPreRepairSoleWarn": "该对话已不存在，这份备份是它仅存的副本；删除后不可恢复——请确认不再需要。",
+  // tl1787：宿主与备份同桶的归档形态（归档链把宿主与备份一起搬进 .trash 桶）
+  // 行内标注与确认弹窗披露；合并回主线的入口文案（件3/B，graft 复用）。
+  "settings.recoveryCopiesPreRepairArchived": "原对话已归档",
+  "settings.recoveryCopiesPreRepairArchivedNote": "该备份随原对话一起进过回收站桶（对话已归档）；删除把这份备份送进系统回收站（可还原），桶内其余内容不受影响。",
+  "settings.recoveryCopiesPreRepairMerge": "合并回主线",
+  "settings.recoveryCopiesPreRepairMergeHint": "把这份备份里主线缺失的独有历史合并回当前主线（纯本地，不调用模型）——折叠/改写掉的历史不再丢失。",
+  "settings.recoveryCopiesPreRepairMergeTitle": "合并改写前备份回主线",
+  "settings.recoveryCopiesPreRepairMergeLead": "将以当前主线为基准，把备份里主线缺失的独有历史按轮次接回主线开头（只增不改，重复内容零双份）。",
+  "settings.recoveryCopiesPreRepairMergeWarn": "主线转录会被重写（既有内容逐字节保留；事件日志折叠为一条替换记录，下次轮换前可回放找回）；合并后历史在对话内可查。",
+  "settings.recoveryCopiesPreRepairMergeDone": "已接回 {n} 条历史到主线",
+  "settings.recoveryCopiesPreRepairMergeNothing": "主线已包含这份备份的全部历史，无需合并",
+  "settings.recoveryCopiesPreRepairMergeFailed": "合并失败",
+  // tl1787 续作：拼接档案袋登记标注（后台自愈/手动合并共用一份台账）。
+  "settings.recoveryCopiesPreRepairSpliced": "已登记拼接",
   "settings.recoveryCopiesPreRepairCleanSelected": "清理所选（{n}）",
   "settings.recoveryCopiesPreRepairCleanAll": "清理全组",
   "settings.recoveryCopiesPreRepairCleanTitle": "清理改写前备份",
