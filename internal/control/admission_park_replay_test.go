@@ -19,6 +19,7 @@ package control
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -206,16 +207,33 @@ func TestParkReplayRowPersistsAtParkTime(t *testing.T) {
 // 钉2：park 后进程退出（Close，parked body 随进程消亡），manifest 行留队列；
 // 重启（新 controller 同 session）后行可检索且可重放（派发为下一轮输入）。
 func TestParkReplayRowSurvivesProcessExit(t *testing.T) {
-	dir := t.TempDir()
+	// tl-prered: t.TempDir 的 RemoveAll 与 Close 后仍会异动目录的写入方在
+	// Windows 上竞速——close(block) 释放的轮体收尾写 session 状态、c2 落盘
+	// 都可能撞上清理（tl1767r2 申报的 rename Access denied 家族）。手动管
+	// 目录：重试式 RemoveAll 先注册（LIFO 最后跑，40x50ms 预算耗尽滞后写）；
+	// 测试尾用 TurnDone 信号 join 被释放的轮体收尾，缩重试窗口。与 tl1789
+	// 停止升级钉同款修法（ecf31d689f）。
+	dir, err := os.MkdirTemp("", "tl-prered-parkreplay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for i := 0; i < 40; i++ {
+			if rmErr := os.RemoveAll(dir); rmErr == nil {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
 	sessionPath := filepath.Join(dir, "session.jsonl")
 	runner := &inboxDispatchRunner{inputs: make(chan string, 8)}
+	turnDone := make(chan struct{}, 8)
 	newController := func() *Controller {
-		done := make(chan struct{}, 8)
 		return New(Options{
 			Runner: runner,
 			Sink: event.FuncSink(func(e event.Event) {
 				if e.Kind == event.TurnDone {
-					done <- struct{}{}
+					turnDone <- struct{}{}
 				}
 			}),
 			SessionDir:  dir,
@@ -257,6 +275,13 @@ func TestParkReplayRowSurvivesProcessExit(t *testing.T) {
 	c.Close()
 	c.autosaveWG.Wait()
 	close(block) // 让旧 controller 的阻塞轮体退出，释放其 goroutine
+	// tl-prered: join 被释放轮体的收尾（TurnDone 发出即收尾写已过峰值），
+	// 给上面的重试清理一个准静止目录；预算兜底交给重试 RemoveAll。
+	select {
+	case <-turnDone:
+	case <-time.After(10 * time.Second):
+		// 轮体未在预算内收尾也不断言失败——清理重试兜底，此处仅尽力缩窗。
+	}
 
 	// 重启：新 controller 同 session。行以 uncertain 停靠（body 随进程消亡，
 	// 未核销）——可检索、可重发。
