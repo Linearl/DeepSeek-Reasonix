@@ -210,11 +210,16 @@ async function fireInitialObservation(): Promise<void> {
 /**
  * 流式追加的一拍（生产顺序）：内容在尾写之间长出（follow-lag 窗口），
  * 尾写的 echo scroll 观察恰在此刻读几何——scrollTop 坐在旧底、
- * scrollHeight 已含新卡片的增量。
+ * scrollHeight 已含新卡片的增量。增量长在最后一个块的内容流里（生产里
+ * 追加的工作过程卡片就是可见块）：块几何随 scrollHeight 一起长，否则 stub
+ * 的可见块集不覆盖新 floor，settle 会按 kernel 真实防护逻辑报
+ * blank-viewport 异常（与本件机制无关）。
  */
 async function streamAppendEchoObservation(growthPx: number): Promise<void> {
   bumpFrame();
   geom.height += growthPx;
+  const lastKey = Object.keys(geom.blocks)[Object.keys(geom.blocks).length - 1]!;
+  geom.blocks[lastKey] = { top: geom.blocks[lastKey]!.top, height: geom.blocks[lastKey]!.height + growthPx };
   await act(async () => { hookRef.current!.onScroll(); });
 }
 
