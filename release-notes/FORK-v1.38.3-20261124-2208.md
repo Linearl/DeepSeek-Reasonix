@@ -1,9 +1,9 @@
 # 包114 release notes — v1.38.3-20261124-2208
 
 > 基线：包113（v1.38.3-20261124-1332，构建点 `4a46bce041`）
-> 构建点：本 notes commit 后 tip（棘轮六线实测一次抬齐 commit 随）
-> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
-> 执行线：zcode 开发线（14 支 merge 全量本包，zcode 滚合；同日编队 1792→1674b）
+> 构建点：`08fcc08a4d`（main-v2-stable，含棘轮六线一次抬齐+tl1797 悬停卡 shadow token 化两 commit）
+> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`（74,245,389 B）
+> 执行线：zcode 开发线（14 支 merge 全量本包，zcode 滚合；同日编队 1792→1674b；二轮构建=一轮 css token 门禁拦→修→二轮 rc=0）
 > <!-- claims: feat-tl1792,feat-tl1768r2,feat-tl1767r3,feat-tl1758,feat-tl1775,feat-tl1776b,feat-tl1744b,feat-tl1794,feat-tl1791,feat-tl1793,feat-tl1797,feat-tl1795,feat-tl-prered,feat-tl1674b -->
 
 ## 一、安全/正确性（P1 主力）
