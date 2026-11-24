@@ -2390,9 +2390,11 @@ export const zhTW: Record<DictKey, string> = {
   "settings.decisionPatternsNotGeneratedYet": "該檔案由首次決策固化輪自動產生（達門檻後出現）——現在可先開啟所在資料夾",
 "settings.decisionPatternsAutoApprove": "跳過人工批准直接修改",
 "settings.decisionPatternsAutoApproveHint": "預設關：心跳彙報提取到的模式後等待你批准才寫入。開啟後整合全自動（寫入前仍有 5 版本備份輪轉可回滾）。",
-// tl1772：決策模式注入分層（A 方案：索引常駐+全文按需）。
-"settings.decisionPatternsLayered": "注入分層（索引常駐+全文按需）",
-"settings.decisionPatternsLayeredHint": "控制 autopilot 注入決策模式的形態。預設關=全量注入固化檔案（12.8KB ≈ 4-5K token/次）。開啟=只注入索引行（每條一行「編號 場景關鍵詞→決策一句話」，18 條 ≈1.5KB 省 85%+），並附硬指令：處理裁決類或使用者糾正類訊息時必須先用檔案讀取工具讀取對應 DP 全文（含完整理由/來源）；索引解析不出條目時自動回退全文形態。注入面現讀配置，儲存即生效（對下一條 autopilot 訊息生效）。",
+// tl1772：決策模式注入分層（A 方案：索引常駐+全文按需）。tl1772r2：label
+// 加「決策模式」前綴防與「記憶注入瘦身」混淆；hint 改兩態語義口徑（開=
+// 索引 ≈1.6KB 常駐+全文按需讀，關=全量注入逐位元組）並註明兩開關互異。
+"settings.decisionPatternsLayered": "決策模式注入分層（索引常駐+全文按需）",
+"settings.decisionPatternsLayeredHint": "決策模式注入形態的兩態開關——注意與「記憶注入瘦身」是兩個不同開關（本開關只動 autopilot 注入的決策模式段，不動背景記憶索引段）。關（預設）=全量注入固化檔案（12.8KB ≈ 4-5K token/次），與引入前逐位元組一致。開=只常駐注入索引行（每條一行「編號 場景關鍵詞→決策一句話」，18 條 ≈1.6KB，整塊 ≈2.2KB 省 83%），並附硬指令：處理裁決類或使用者糾正類訊息時必須先用檔案讀取工具讀取對應 DP 全文（含完整理由/來源）；索引解析不出條目時自動回退全文形態。注入面現讀配置，儲存即生效（對下一條 autopilot 訊息生效）。",
 "settings.decisionPatternsLayered.on": "開",
 "settings.decisionPatternsLayered.off": "關",
 "settings.sessionCollab": "會話協作",
@@ -5290,7 +5292,7 @@ export const zhTW: Record<DictKey, string> = {
   // tl1741：頂部卡右側子項概要（拍板 20261121 三條款③——右側空間改主題概要）。
   "settings.smartAutomation.brief.title": "本卡子項",
   "settings.smartAutomation.brief.decisionPatterns": "決策模式擷取：從使用者否定/修正 AI 的輪次擷取裁決，心跳任務定期固化進決策模式檔案。",
-"settings.smartAutomation.brief.decisionPatternsLayered": "注入分層：autopilot 只注入決策模式索引行，裁決類訊息按編號讀全文（省 85%+）。",
+  // tl1772r2：brief.decisionPatternsLayered 隨注入分層行移組本卡摘除（安全/成本控制卡無 brief 面）。
   "settings.smartAutomation.brief.heartbeatBackground": "心跳任務背景化：計畫任務提交後轉入背景駐留，話題標籤不常駐標籤欄。",
   "settings.smartAutomation.brief.stalledIntentNudge": "提前結束續輪提醒：模型宣布下一步卻停手時，追加一次續輪提醒。",
   "settings.smartAutomation.brief.standardContinuation": "普通對話續跑：「列了待辦沒收尾」時宿主補一輪有界續跑（無進展即停）。",

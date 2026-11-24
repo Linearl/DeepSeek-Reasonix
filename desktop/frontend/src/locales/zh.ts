@@ -3052,9 +3052,11 @@ export const zh: Record<DictKey, string> = {
   "settings.decisionPatternsNotGeneratedYet": "该文件由首次决策固化轮自动生成（达阈值后出现）——现在可先打开所在文件夹",
 "settings.decisionPatternsAutoApprove": "跳过人工批准直接修改",
 "settings.decisionPatternsAutoApproveHint": "默认关：心跳汇报提取到的模式后等待你批准才写入。开启后整合全自动（写入前仍有 5 版本备份轮转可回滚）。",
-// tl1772：决策模式注入分层（A 方案：索引常驻+全文按需）。
-"settings.decisionPatternsLayered": "注入分层（索引常驻+全文按需）",
-"settings.decisionPatternsLayeredHint": "控制 autopilot 注入决策模式的形态。默认关=全量注入固化文件（12.8KB ≈ 4-5K token/次）。开启=只注入索引行（每条一行「编号 场景关键词→决策一句话」，18 条 ≈1.5KB 省 85%+），并附硬指令：处理裁决类或用户纠正类消息时必须先用文件读取工具读取对应 DP 全文（含完整理由/来源）；索引解析不出条目时自动回退全文形态。注入面现读配置，保存即生效（对下一条 autopilot 消息生效）。",
+// tl1772：决策模式注入分层（A 方案：索引常驻+全文按需）。tl1772r2：label
+// 加「决策模式」前缀防与「记忆注入瘦身」混淆；hint 改两态语义口径（开=
+// 索引 ≈1.6KB 常驻+全文按需读，关=全量注入逐字节）并注明两开关互异。
+"settings.decisionPatternsLayered": "决策模式注入分层（索引常驻+全文按需）",
+"settings.decisionPatternsLayeredHint": "决策模式注入形态的两态开关——注意与「记忆注入瘦身」是两个不同开关（本开关只动 autopilot 注入的决策模式段，不动背景记忆索引段）。关（默认）=全量注入固化文件（12.8KB ≈ 4-5K token/次），与引入前逐字节一致。开=只常驻注入索引行（每条一行「编号 场景关键词→决策一句话」，18 条 ≈1.6KB，整块 ≈2.2KB 省 83%），并附硬指令：处理裁决类或用户纠正类消息时必须先用文件读取工具读取对应 DP 全文（含完整理由/来源）；索引解析不出条目时自动回退全文形态。注入面现读配置，保存即生效（对下一条 autopilot 消息生效）。",
 "settings.decisionPatternsLayered.on": "开",
 "settings.decisionPatternsLayered.off": "关",
 "settings.sessionCollab": "跨会话协作",
@@ -3672,7 +3674,7 @@ export const zh: Record<DictKey, string> = {
   // tl1741：顶部卡右侧子项概要（拍板 20261121 三条款③——右侧空间改主题概要）。
   "settings.smartAutomation.brief.title": "本卡子项",
   "settings.smartAutomation.brief.decisionPatterns": "决策模式提取：从用户否定/修正 AI 的轮次提取裁决，心跳任务定期固化进决策模式文件。",
-"settings.smartAutomation.brief.decisionPatternsLayered": "注入分层：autopilot 只注入决策模式索引行，裁决类消息按编号读全文（省 85%+）。",
+  // tl1772r2：brief.decisionPatternsLayered 随注入分层行移组本卡摘除（安全/成本控制卡无 brief 面）。
   "settings.smartAutomation.brief.heartbeatBackground": "心跳任务后台化：计划任务提交后转入后台驻留，话题标签不常驻标签栏。",
   "settings.smartAutomation.brief.stalledIntentNudge": "提前结束续轮提醒：模型宣布下一步却停手时，追加一次续轮提醒。",
   "settings.smartAutomation.brief.standardContinuation": "普通对话续跑：「列了待办没收尾」时宿主补一轮有界续跑（无进展即停）。",

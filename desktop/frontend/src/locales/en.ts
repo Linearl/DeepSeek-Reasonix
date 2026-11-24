@@ -3073,8 +3073,11 @@ export const en = {
 "settings.decisionPatternsAutoApprove": "Skip approval, write directly",
 "settings.decisionPatternsAutoApproveHint": "Off by default: the heartbeat reports the extracted patterns and waits for your approval before writing. When on, consolidation is fully automatic (5-version backup rotation still applies).",
 // tl1772: decision-patterns injection layering (plan A: resident index + on-demand full text).
-"settings.decisionPatternsLayered": "Injection layering (resident index + full text on demand)",
-"settings.decisionPatternsLayeredHint": "Controls the shape of the autopilot decision-patterns injection. Off (default) = inject the whole solidified file (12.8KB ≈ 4-5K tokens per shot). On = inject index lines only (one line per entry: DP id + scene keywords → decision gist, 18 entries ≈ 1.5KB, −85%), plus a hard instruction: when handling ruling-type or user-correction messages, the model must first read the referenced DP full text (rationale/source) from the file. Falls back to the full-content form automatically when the index parses to nothing. The injection face reads config live, so a flip applies on the next autopilot message.",
+// tl1772r2: label gains the decision-pattern prefix to avoid confusion with memory index slim;
+// hint restated as two-state semantics (on = resident ~1.6KB index + full text on demand,
+// off = byte-identical full injection) and notes the two switches are distinct.
+"settings.decisionPatternsLayered": "Decision-pattern injection layering (resident index + full text on demand)",
+"settings.decisionPatternsLayeredHint": "Two-state switch for the shape of the autopilot decision-patterns injection — distinct from memory index slim (this switch only reshapes the decision-patterns segment injected to autopilot, not the background memory index). Off (default) = inject the whole solidified file (12.8KB ≈ 4-5K tokens per shot), byte-identical to the pre-feature behavior. On = inject a resident index only (one line per entry: DP id + scene keywords → decision gist, 18 entries ≈ 1.6KB, whole block ≈ 2.2KB, −83%), plus a hard instruction: when handling ruling-type or user-correction messages, the model must first read the referenced DP full text (rationale/source) from the file. Falls back to the full-content form automatically when the index parses to nothing. The injection face reads config live, so a flip applies on the next autopilot message.",
 "settings.decisionPatternsLayered.on": "On",
 "settings.decisionPatternsLayered.off": "Off",
 "settings.sessionCollab": "Session collaboration",
@@ -3692,7 +3695,8 @@ export const en = {
   // tl1741: right-side sub-item brief on the header card (ruling 20261121 clause 3).
   "settings.smartAutomation.brief.title": "Sub-items in this card",
   "settings.smartAutomation.brief.decisionPatterns": "Decision-pattern extraction: harvest verdicts from user corrections; heartbeat tasks consolidate them into the pattern file.",
-"settings.smartAutomation.brief.decisionPatternsLayered": "Injection layering: autopilot injects index lines only; the model reads the referenced DP full text for ruling-type messages (−85%).",
+  // tl1772r2: brief.decisionPatternsLayered removed with the injection-layering row re-homed (the
+  // safetyCostControl card carries no brief block).
   "settings.smartAutomation.brief.heartbeatBackground": "Background heartbeat mode: scheduled runs park detached after submit — the topic tab no longer stays in the tab strip.",
   "settings.smartAutomation.brief.stalledIntentNudge": "Stalled-intent nudge: one follow-up reminder when the model announces a next step but stops.",
   "settings.smartAutomation.brief.standardContinuation": "Standard continuation: the host adds one bounded follow-up turn when a turn ends with unfinished work.",
