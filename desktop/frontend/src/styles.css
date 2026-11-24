@@ -17233,7 +17233,7 @@ button.statusbar__mcp:focus-visible {
 .mem-doc:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--hover-shadow);
 }
 .mem-doc::before {
   content: "";
@@ -17421,7 +17421,7 @@ button.statusbar__mcp:focus-visible {
 .mem-fact:hover {
   border-color: var(--border);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px -8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--hover-shadow);
 }
 .mem-fact--archived {
   --mem-type-color: var(--fg-faint);
@@ -26111,7 +26111,7 @@ button.statusbar__mcp:focus-visible {
 }
 .theme-card:hover {
   border-color: var(--button-border-hover);
-  transform: translateY(-2px);
+  transform: translateY(var(--hover-lift));
 }
 .theme-card--on {
   border-color: var(--accent);
@@ -35171,7 +35171,7 @@ button.statusbar__mcp:focus-visible {
   color: var(--fg);
   border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
   background: color-mix(in srgb, var(--accent) 4%, var(--bg-elev));
-  transform: translateY(-2px);
+  transform: translateY(var(--hover-lift));
 }
 
 :root[data-theme-style] .msg {
