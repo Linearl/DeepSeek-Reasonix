@@ -312,7 +312,7 @@ func TestAttendedAskIgnoresTimeoutSwitch(t *testing.T) {
 		AutopilotAskTimeoutEnabled: true,
 		AutopilotAskWait:           20 * time.Millisecond,
 	})
-	if c.autopilot {
+	if c.autopilot.Load() {
 		t.Fatal("controller reported itself unattended without the autopilot option")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)

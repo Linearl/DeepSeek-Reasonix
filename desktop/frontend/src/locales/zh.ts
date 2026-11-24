@@ -104,6 +104,7 @@ export const zh: Record<DictKey, string> = {
   "action.subagentCancel": "终止子代理",
   "action.terminalInsert": "插入终端输出",
   "action.qualityFloorSet": "设置质量下限",
+  "action.approvalTierSet": "切换审批档位",
   "action.diagExport": "导出诊断信息",
   "action.folderPick": "选择文件夹",
   "action.goalOperation": "目标操作",

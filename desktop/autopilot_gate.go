@@ -44,6 +44,12 @@ const (
 	// yourself, record the decision, and continue": this notice plus the
 	// autopilot-toggle log line are that record.
 	NoticeCodeAutopilotAssumedYolo = "autopilot_assumed_yolo"
+	// NoticeCodeAutopilotRestoreReconciled (tl1795): at restore the goal-state
+	// sidecar of a finished autopilot run said "unattended", but the persisted
+	// tab entry — written later by the user's tier switch — said attended. The
+	// tab entry is the user's last intent, so the restore keeps the tab
+	// attended instead of resurrecting autopilot behind a YOLO-composer.
+	NoticeCodeAutopilotRestoreReconciled = "autopilot_restore_reconciled"
 )
 
 const (
@@ -52,6 +58,7 @@ const (
 	autopilotRequiresYoloText  = "Autopilot requires the YOLO approval mode (需要 yolo 审批模式); switch approval to YOLO first."
 	autopilotClosedOffYoloText = "Approval mode left YOLO, so autopilot was switched off (审批离开 yolo，autopilot 已自动关闭)."
 	autopilotAssumedYoloText   = "Autopilot on: approval switched to YOLO automatically (decision recorded) (无人值守开启，审批已自动切到 yolo，决策已记录)."
+	autopilotRestoreReconciledText = "Restored as attended: this session's saved approval posture outranks the stale unattended marker from a previous run (按会话保存的审批档恢复为有人值守；之前无人值守标记已过时，autopilot 不再自动续挂)."
 )
 
 // autopilotGateAllowed reports whether autopilot may turn on under the given
@@ -117,4 +124,31 @@ func (a *App) noticeCodeForTab(tabID string, level event.Level, code, text strin
 	if tab != nil && tab.sink != nil {
 		event.EmitEvent(tab.sink, event.Event{Kind: event.Notice, Level: level, Code: code, Text: text})
 	}
+}
+
+// autopilotPostureDropper is the optional controller capability behind
+// dropAutopilotLivePosture (tl1795). Optional like modeApplier /
+// toolApprovalApplier above the ask chain, so test fakes implementing the
+// plain SessionAPI keep compiling.
+type autopilotPostureDropper interface {
+	ClearAutopilotPosture()
+}
+
+// dropAutopilotLivePosture drops the unattended posture from a live
+// controller (tl1795). The task-595 tier leave and the task-325 reverse
+// linkage clear tab.autopilot on the desktop side, but the controller's
+// construction-time copy fed the ask chain until the next rebuild — the
+// "switched to YOLO, ask still self-answers at 15s" defect. Call after
+// releasing a.mu, next to applyTabToolApprovalModeToController. Reports
+// whether a live posture was actually dropped.
+func dropAutopilotLivePosture(ctrl control.SessionAPI) bool {
+	if ctrl == nil {
+		return false
+	}
+	dropper, ok := ctrl.(autopilotPostureDropper)
+	if !ok || dropper == nil {
+		return false
+	}
+	dropper.ClearAutopilotPosture()
+	return true
 }

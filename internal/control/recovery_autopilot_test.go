@@ -108,7 +108,7 @@ func TestUnattendedQuestionStopsInsteadOfWaiting(t *testing.T) {
 func TestInteractiveQuestionStillWaits(t *testing.T) {
 	ag := agent.New(nil, tool.NewRegistry(), agent.NewSession("sys"), agent.Options{}, event.Discard)
 	c := New(Options{Runner: ag, Executor: ag, Sink: event.Discard})
-	if c.autopilot || c.unattendedRun() {
+	if c.autopilot.Load() || c.unattendedRun() {
 		t.Fatal("interactive controller reported itself as unattended")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)

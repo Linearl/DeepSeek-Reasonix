@@ -106,6 +106,7 @@ export const en = {
   "action.subagentCancel": "Stop sub-agent",
   "action.terminalInsert": "Insert terminal output",
   "action.qualityFloorSet": "Set quality floor",
+  "action.approvalTierSet": "Switch approval tier",
   "action.diagExport": "Export diagnostics",
   "action.folderPick": "Choose folder",
   "action.goalOperation": "Goal action",

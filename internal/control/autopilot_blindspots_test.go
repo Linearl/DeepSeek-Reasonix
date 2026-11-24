@@ -21,11 +21,11 @@ import (
 func TestAutopilotDisablesAutoGuardArming(t *testing.T) {
 	c := New(Options{Policy: permission.Policy{Mode: permission.Allow}})
 	c.SetToolApprovalMode(ToolApprovalAuto)
-	c.autopilot = true
+	c.autopilot.Store(true)
 	if got := c.recoveryGateMode(); got != ToolApprovalYolo {
 		t.Fatalf("autopilot gate mode = %q, want %q: the gate must bypass itself", got, ToolApprovalYolo)
 	}
-	c.autopilot = false
+	c.autopilot.Store(false)
 	if got := c.recoveryGateMode(); got != ToolApprovalAuto {
 		t.Fatalf("interactive gate mode = %q, want %q", got, ToolApprovalAuto)
 	}

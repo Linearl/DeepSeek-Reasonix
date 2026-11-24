@@ -57,7 +57,9 @@ func batchContextFixture(t *testing.T, level, planContent string) (*Controller, 
 	if err := cfg.SaveTo(filepath.Join(home, "config.toml")); err != nil {
 		t.Fatal(err)
 	}
-	return &Controller{autopilot: true}, plan
+	c := &Controller{}
+	c.autopilot.Store(true)
+	return c, plan
 }
 
 func TestBatchContextHeaderIsEmptyWhenDialOff(t *testing.T) {
@@ -319,7 +321,8 @@ func TestBatchHeaderCarriesChainTailFromLiveSession(t *testing.T) {
 	if err := cfg.SaveTo(filepath.Join(home, "config.toml")); err != nil {
 		t.Fatal(err)
 	}
-	c := &Controller{autopilot: true}
+	c := &Controller{}
+	c.autopilot.Store(true)
 	if header := c.autopilotBatchContextHeader(); strings.Contains(header, "prev-round chain tail") {
 		t.Fatal("a session without a schema-2 head must not print a fake chain tail")
 	}

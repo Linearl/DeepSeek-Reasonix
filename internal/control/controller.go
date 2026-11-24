@@ -147,7 +147,13 @@ type Controller struct {
 	goalTokenBudget int
 	// autopilot marks an unattended run: nobody can answer a prompt, so the run
 	// answers reversible questions itself and pauses on the dangerous ones (A3).
-	autopilot bool
+	// tl1795: construction-time set like before, but now clearable on a live
+	// controller (ClearAutopilotPosture) — the desktop tier switch leaves the
+	// autopilot tier while turns keep running, so the ask chain must observe
+	// the leave without waiting for a rebuild. atomic.Bool because the store
+	// races turn-goroutine reads by design; Load() first in every predicate so
+	// a cleared posture is observed no later than the sync edge it creates.
+	autopilot atomic.Bool
 	// autopilotApprovalGrace is how long an unattended run waits for a human on an
 	// approval prompt before the reviewer decides instead (A5).
 	autopilotApprovalGrace time.Duration
@@ -1126,14 +1132,13 @@ func New(opts Options) *Controller {
 			// replaying onto the shelf.
 			appliedReceipts: opts.InboxAppliedReceipts,
 			// 任务866: the follow-up twin — plain user-turn bodies back the
-			// residue matcher for rows no steer receipt describes (degraded
-			// collab follow-ups parked as TranscriptNotDurable).
+			// residue matcher for rows that already applied settle
+			// instead of replaying onto the shelf.
 			appliedBodies: opts.InboxAppliedBodyReceipts,
 		},
 		taskBudget:                 opts.TaskBudget,
 		goalTokenBudget:            opts.GoalTokenBudget,
 		sessionTitleModel:          strings.TrimSpace(opts.SessionTitleModel),
-		autopilot:                  opts.Autopilot && opts.AutopilotMaxRuntime > 0,
 		autopilotApprovalGrace:     autopilotApprovalGrace(opts),
 		approvalTier:               NormalizeApprovalTier(opts.ApprovalTier),
 		autopilotAskWait:           opts.AutopilotAskWait,
@@ -1219,6 +1224,10 @@ func New(opts Options) *Controller {
 		runtimeOwner:                      runtimeOwner,
 		approval:                          newApprovalManager(opts.Policy, ToolApprovalAsk, opts.ApprovalTimeout),
 	}
+	// tl1795: the unattended flag left the struct literal with its atomic.Bool
+	// conversion — construction-time value, live-clearable later (see
+	// ClearAutopilotPosture).
+	c.autopilot.Store(opts.Autopilot && opts.AutopilotMaxRuntime > 0)
 	// Session-private temporary directory: reuse a shared Manager on hot
 	// rebuild, otherwise create one. Retain so ReleaseResources/Close drop the
 	// owner reference without racing a replacement Controller.
@@ -1997,7 +2006,7 @@ func (c *Controller) runGoalLoopWithRawDisplay(ctx context.Context, input, raw, 
 // turn context because it must not import control.
 func (c *Controller) withRecoveryFenceBindings(ctx context.Context) context.Context {
 	ctx = agent.WithToolApprovalMode(ctx, c.ToolApprovalMode())
-	if c.autopilot {
+	if c.autopilot.Load() {
 		ctx = agent.WithUnattendedRun(ctx)
 	}
 	// Task 242: every turn also carries the live fallback target ("" when the
@@ -3503,13 +3512,13 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// 477/109 waits, because "ask me" cannot turn a destructive question into
 	// one the run may answer itself.
 	explicitAskGranted := c.explicitAskGranted.Load()
-	reversibleTimedAsk := c.autopilot && reversibleAsk && !explicitAskGranted
+	reversibleTimedAsk := c.autopilot.Load() && reversibleAsk && !explicitAskGranted
 	// tl1408: the high-risk tier's timer predicate, in the same shape as the
 	// askTimer arming and the AutoDecideWaitMs stamp below. The explicit ask
 	// grant deliberately does NOT exempt it — the grant never reaches the
 	// high-risk tier (task 806b), those asks keep the 477/109 waits.
-	autopilotHighRiskAsk := c.autopilot && !reversibleAsk
-	if explicitAskGranted && c.autopilot && reversibleAsk {
+	autopilotHighRiskAsk := c.autopilot.Load() && !reversibleAsk
+	if explicitAskGranted && c.autopilot.Load() && reversibleAsk {
 		// 判据锚 (task 806b): the one grep-able line answering "why did this
 		// reversible ask NOT auto-decide".
 		slog.Info("[ask-panel] ask chain checkpoint", "stage", "explicit_grant",
@@ -3548,7 +3557,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 			route := routeAsk(askRouteInputs{
 				risk:          askRisk,
 				explicitGrant: explicitAskGranted,
-				autopilot:     c.autopilot,
+				autopilot:     c.autopilot.Load(),
 				// Task 1062: the hop strips the heartbeat-turn marker — the
 				// parent's Ask must decide by the parent's own posture
 				// (attended parent answers; autopilot parent applies its 477
@@ -3608,7 +3617,7 @@ func (c *Controller) Ask(ctx context.Context, questions []event.AskQuestion) ([]
 	// and a heartbeat ask with a task-225 parent was already offered the
 	// delegation hop above. Both risk tiers take it: refusing (not deciding)
 	// is the safe direction for a run nobody watches.
-	if heartbeatTurnRequested(ctx) && !(c.autopilot && !reversibleAsk) {
+	if heartbeatTurnRequested(ctx) && !(c.autopilot.Load() && !reversibleAsk) {
 		// 判据锚: one grep-able log line plus one notice, same shape as the
 		// task-477 anchor — "did the heartbeat backstop fire and what did it
 		// decide" is answerable from the log and the transcript alone.
@@ -7492,6 +7501,44 @@ func (c *Controller) ToolApprovalMode() string {
 	return c.approval.mode()
 }
 
+// AutopilotActive reports the live unattended posture (tl1795). The desktop
+// reconcile/test paths read it after ClearAutopilotPosture to assert the tier
+// leave actually reached the ask chain's gate.
+func (c *Controller) AutopilotActive() bool {
+	return c != nil && c.autopilot.Load()
+}
+
+// ClearAutopilotPosture drops the unattended-run posture from a live
+// controller (tl1795). The desktop task-595 tier leave clears tab.autopilot,
+// but the controller carried its construction-time copy forever: the next ask
+// still read autopilot, armed the 15s auto-decide, and answered on the user's
+// behalf in a session the user had just switched back to attended. This is the
+// live half of that fix — no rebuild required, mid-run included.
+//
+// Ordering contract: the plain autopilot-gated durations (grace, ask wait,
+// ask-timeout switch, auto-continue) are zeroed BEFORE the atomic store, so a
+// reader that observes autopilot==false also observes the cleared durations;
+// a reader that still observes true races the duration writes but reads the
+// old coherent autopilot set (monotonic to the safe direction: the values only
+// ever clear). The goal machine zeroes under its own lock.
+func (c *Controller) ClearAutopilotPosture() {
+	if c == nil {
+		return
+	}
+	was := c.autopilot.Load()
+	if !was {
+		return
+	}
+	c.autopilotApprovalGrace = 0
+	c.autopilotAskWait = 0
+	c.autopilotAskTimeoutEnabled = false
+	c.autopilotAskAutoContinue = false
+	c.goals.clearAutopilot()
+	c.autopilot.Store(false)
+	slog.Info("[autopilot-posture] live posture cleared", "session", c.SessionPath())
+	c.refreshRuntimeState(event.Event{})
+}
+
 // SetAutoApproveTools turns YOLO tool auto-approval on or off for the session:
 // while on, every tool approval request is auto-allowed (writers and bash run
 // without asking). Ask requests and plan approval still reach the user. Deny
@@ -7759,8 +7806,8 @@ func (s sandboxEscapeApprover) ApproveSandboxEscape(ctx context.Context, req san
 	// escape through without a prompt. The bypass logs its category and
 	// subject for the audit trail; every other combination still reaches the
 	// human prompt below, byte-for-byte as before.
-	if s.c.preapproveManaged.allows(s.c.autopilot, managedKindBash) {
-		auditPreapprove(string(managedKindBash), subject, s.c.autopilot)
+	if s.c.preapproveManaged.allows(s.c.autopilot.Load(), managedKindBash) {
+		auditPreapprove(string(managedKindBash), subject, s.c.autopilot.Load())
 		return true, "", nil
 	}
 	reply, err := s.c.requestFreshApprovalDecision(ctx, SandboxEscapeApprovalTool, subject, req.Args, reason)
@@ -7809,8 +7856,8 @@ func (m managedConfigWriteApprover) ApproveManagedConfigWrite(ctx context.Contex
 	// managed files (config.toml and friends) classify as "other" and always
 	// keep asking, so the checkboxes never widen past their four classes.
 	kind := classifyManagedWrite(req.Path, m.c.preapproveManaged)
-	if kind != managedKindOther && m.c.preapproveManaged.allows(m.c.autopilot, kind) {
-		auditPreapprove(string(kind), subject, m.c.autopilot)
+	if kind != managedKindOther && m.c.preapproveManaged.allows(m.c.autopilot.Load(), kind) {
+		auditPreapprove(string(kind), subject, m.c.autopilot.Load())
 		return true, "", nil
 	}
 	args, _ := json.Marshal(map[string]string{"path": req.Path})
@@ -8204,7 +8251,7 @@ func (c *Controller) requestApprovalDecisionWithOptions(ctx context.Context, too
 	// cannot delete, push, or spend on its own - the model is told why and can try
 	// another way.
 	var graceCh <-chan time.Time
-	if c.autopilot && c.autopilotApprovalGrace > 0 {
+	if c.autopilot.Load() && c.autopilotApprovalGrace > 0 {
 		graceTimer := time.NewTimer(c.autopilotApprovalGrace)
 		defer graceTimer.Stop()
 		graceCh = graceTimer.C
