@@ -43,8 +43,8 @@ console.log("\ntask 649 收件箱改进包（分段控件上移 / 收发双方�
   ok(!filters.includes("collab-inbox-panel__ordertoggle") && !filters.includes("collab-inbox-panel__viewtoggle"),
     "the filters row no longer hosts the sort/view controls");
   ok(css.includes(".collab-inbox-panel__ordertoggle,\n.collab-inbox-panel__viewtoggle")
-    && /border-radius: 999px;\s*\n\s*overflow: hidden;/.test(css),
-    "the segmented controls render as joined capsule segments (999px capsule tier)");
+    && /border-radius: var\(--radius-pill\);\s*\n\s*overflow: hidden;/.test(css),
+    "the segmented controls render as joined capsule segments (pill capsule tier; 999px literal migrated to the --radius-pill token by tl833 radius-convergence, value equivalent)");
   ok(css.includes(".collab-inbox-panel__state--on {\n  background: var(--accent-soft);"),
     "the active segment lights up with the accent-soft token (.set-seg language)");
 }

@@ -90,6 +90,32 @@ Object.defineProperty(dom.window.HTMLElement.prototype, "offsetHeight", {
     return 0;
   },
 });
+// tl-prered 同类补刀（与 composer-quick-command-bang 同机制修绿，非 skip）：
+// @tanstack/virtual-core 视口量测走 clientWidth/clientHeight（dist getRect），
+// jsdom 无布局引擎恒 0 → calculateRange 判 outerSize===0 → range=null → 菜单壳
+// 渲染而行（role=option）永不挂载，第 5 场景的行内容断言落空。stub 清单与
+// getBoundingClientRect/offsetHeight 桩同源；attachEvent/detachEvent no-op shim
+// 清 ChangeEventPlugin IE 兜底 TypeError 噪声（不影响断言，仅清输出）。
+Object.defineProperty(dom.window.HTMLElement.prototype, "clientHeight", {
+  configurable: true,
+  get(this: HTMLElement) {
+    if (this.classList.contains("slashmenu")) return 360;
+    if (this.classList.contains("slashmenu__row")) return 34;
+    return 0;
+  },
+});
+Object.defineProperty(dom.window.HTMLElement.prototype, "clientWidth", {
+  configurable: true,
+  get: () => 360,
+});
+Object.defineProperty(dom.window.HTMLElement.prototype, "attachEvent", {
+  configurable: true,
+  value: () => {},
+});
+Object.defineProperty(dom.window.HTMLElement.prototype, "detachEvent", {
+  configurable: true,
+  value: () => {},
+});
 Object.defineProperty(window, "matchMedia", {
   configurable: true,
   value: () => ({

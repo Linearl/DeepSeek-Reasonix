@@ -114,9 +114,14 @@ const SENT_STAMP = "2026-10-19T22:09:00+08:00 Mon";
 const SENT_MS = Date.parse(SENT_STAMP.replace(/\s+[A-Za-z]{3}$/, ""));
 
 // 866/1553 stamping 后的投递文本形态：header（含发送于）+ 正文 + `---` 元数据尾。
+// tl-prered 夹具换代：tl1566 起解析器消费到闭括号（`[跨会话消息]`/`[跨会话消息·群聊]`
+// 标记族），无闭括号的截断粘贴不算投递形态（collabMessage.ts collabAsImSource
+// `indexOf("]") < 0 → return null`）——本套件夹具此前缺右中括号，解析器恒 null，
+// 卡片化全链 13 断言连坐（10/13 稳定红）。tl1639(e124b2f791) 当轮已确诊本根因，
+// 「本件不代修、只在案申报」，本件补齐。
 function stampedText(body: string): string {
   return [
-    `${COLLAB_MSG_PREFIX} 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID} (hop=1)，发送于 ${SENT_STAMP}`,
+    `${COLLAB_MSG_PREFIX}] 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID} (hop=1)，发送于 ${SENT_STAMP}`,
     "",
     body,
     "",
@@ -134,7 +139,7 @@ console.log("\ntl1092 collab card time + copy");
   eq(parsed?.sentAt, SENT_MS, "① sentAt 等于 stamping 时间戳");
 
   const legacy = collabAsImSource([
-    `${COLLAB_MSG_PREFIX} 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID}`,
+    `${COLLAB_MSG_PREFIX}] 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID}`,
     "",
     "旧投递文本没有时间戳",
   ].join("\n"));
@@ -142,7 +147,7 @@ console.log("\ntl1092 collab card time + copy");
 
   // 正文/元数据尾出现同形片段时不得误解析（只锚 header 行）。
   const spoof = collabAsImSource([
-    `${COLLAB_MSG_PREFIX} 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID}`,
+    `${COLLAB_MSG_PREFIX}] 来自 contact_id=${FROM_ID} → 发至 contact_id=${TO_ID}`,
     "",
     "正文里写了「，发送于 1999-01-01T00:00:00+08:00 Fri」这种话",
   ].join("\n"));
