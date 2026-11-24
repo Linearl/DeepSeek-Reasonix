@@ -57,9 +57,8 @@ export interface SettingsView {
   experimentalTrajectoryView?: boolean;
   // tl1746: gates the embedded read-only tasklist panel (lab switch, default off).
   experimentalTasklistPanel?: boolean;
-  // tl1796: composer autopilot-offer gate (opt-in, default off) — read on
-  // every startup/settings load/save replay by applyDesktopPreferences.
-  experimentalAutopilotComposer?: boolean;
+  // tl1796 r2：experimentalAutopilotComposer 读回字段随撤开关退役——
+  // autopilot 档恒显，无键可读。
   // tl1746: tasklist database path override (empty = built-in default; the panel resolves at query time).
   tasklistDbPath?: string;
   // Conversation store mode in use (task 155): "v3_only" | "dual_write_read_v3" |

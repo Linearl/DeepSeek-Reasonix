@@ -1066,16 +1066,9 @@ func (c *Config) SetExperimentalTasklistPanel(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalAutopilotComposer toggles whether the composer mode bar
-// offers the autopilot tier (tl1796). Pure frontend gate: the mode-bar options
-// re-derive from the settings view on every load/save replay, so a flip
-// applies without a restart. This is the tl1741-gap repair — the retired
-// [desktop] autopilot preference left the frontend offer gate reading a
-// removed mirror field; this key is the fresh opt-in write point.
-func (c *Config) SetExperimentalAutopilotComposer(enabled bool) error {
-	c.Desktop.ExperimentalAutopilotComposer = enabled
-	return nil
-}
+// tl1796 r2：SetExperimentalAutopilotComposer 随撤开关退役——composer 模式条
+// autopilot 档恒显（装机实测打回：opt-in 默认关=选项默认缺失），键自 struct
+// 退役，deprecated 清单承接存量手写键。
 
 // SetTasklistDBPath sets the tasklist database path override (tl1746 phase 1;
 // decision_pattern_file_path family-key precedent). Empty string = the

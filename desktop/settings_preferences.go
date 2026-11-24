@@ -244,13 +244,8 @@ func (a *App) SetExperimentalCapabilityGroups(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCapabilityGroups(enabled) })
 }
 
-// SetExperimentalAutopilotComposer toggles whether the composer mode bar
-// offers the autopilot tier (tl1796 opt-in repair of the tl1741 retirement
-// gap). Pure frontend gate — the mode-bar options re-derive on the next
-// settings load/save replay, no restart.
-func (a *App) SetExperimentalAutopilotComposer(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalAutopilotComposer(enabled) })
-}
+// tl1796 r2：SetExperimentalAutopilotComposer 随撤开关退役——composer 模式条
+// autopilot 档恒显，无写点可暴露（tl1741 撤 SetDesktopAutopilot 同款收场）。
 
 // SetAutonomousUpdateResume sets the auto-resume scope dial (task 254): off
 // resumes nothing, goal_autopilot resumes goal runs and autopilot sessions

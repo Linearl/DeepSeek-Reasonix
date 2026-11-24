@@ -685,7 +685,6 @@ export function Composer({
   historyPickerEnabled = false,
   onInsertQuickCommand,
   onManageQuickCommands,
-  autopilotEnabled = false,
   autopilotOn = false,
   insertRequest,
   selectedTextRequest,
@@ -839,7 +838,8 @@ export function Composer({
   // Task 261 (upstream #10425): clock-icon history picker + narrowed plain-ArrowUp
   // trigger. Off (default) keeps the exact legacy history behaviour.
   historyPickerEnabled?: boolean;
-  autopilotEnabled?: boolean; // offered only once the preference is on
+  // tl1796 r2：autopilot 档显隐门 prop 随撤开关退役——autopilot 档恒显
+  // （tl1741 stable 档无开关口径同源）。
   onInsertQuickCommand?: (text: string) => void;
   // Task 721: the content menu's picker bottom entry opens the shared
   // quick-command manager dialog (owner controls the open state).
@@ -6594,14 +6594,16 @@ export function Composer({
                       { value: "ask", label: t("composer.modeAsk"), hint: t("composer.accessAskTitle") },
                       { value: "auto", label: t("composer.modeNormal"), hint: t("composer.accessAutoTitle") },
                       { value: "yolo", label: t("composer.modeYolo"), hint: t("composer.accessYoloTitle", { shortcut: yoloComboLabel }) },
-                      ...(autopilotEnabled ? [{ value: "autopilot", label: t("composer.taskModeAutopilot"), hint: t("composer.taskModeAutopilotHint") }] : []),
+                      // tl1796 r2：autopilot 档恒显（装机实测打回 opt-in 门：
+                      // 「任何时候都应该出现」），无键可关。
+                      { value: "autopilot", label: t("composer.taskModeAutopilot"), hint: t("composer.taskModeAutopilotHint") },
                     ]}
                   />
                 ) : (
                 <div
                   className="composer-modebar composer-modebar--approval"
                   data-mode={autopilotModeOn ? "autopilot" : toolApprovalMode}
-                  data-autopilot={autopilotEnabled ? "on" : "off"}
+                  data-autopilot="on"
                   title={t("composer.accessMenuTitle", { shortcut: yoloComboLabel })}
                 >
                   <span className="composer-modebar__thumb" aria-hidden="true" />
@@ -6642,19 +6644,18 @@ export function Composer({
                       运行中可切（审批条在待批时仍可用），补上「+」菜单运行中
                       不可点导致的中途开 autopilot 缺口。autopilot 隐含 yolo：
                       后端自动满足 325 前置并留痕，此处只发档位切换。 */}
-                  {autopilotEnabled && (
-                    <button
-                      type="button"
-                      className={`composer-modebar__item composer-modebar__item--autopilot${autopilotModeOn ? " composer-modebar__item--active" : ""}`}
-                      onClick={() => chooseTaskMode("autopilot")}
-                      disabled={approvalBarDisabled}
-                      aria-pressed={autopilotModeOn}
-                      title={t("composer.taskModeAutopilotHint")}
-                    >
-                      <Zap size={14} />
-                      <span>{t("composer.taskModeAutopilot")}</span>
-                    </button>
-                  )}
+                  {/* tl1796 r2：显隐门随撤开关退役——第四档恒显。 */}
+                  <button
+                    type="button"
+                    className={`composer-modebar__item composer-modebar__item--autopilot${autopilotModeOn ? " composer-modebar__item--active" : ""}`}
+                    onClick={() => chooseTaskMode("autopilot")}
+                    disabled={approvalBarDisabled}
+                    aria-pressed={autopilotModeOn}
+                    title={t("composer.taskModeAutopilotHint")}
+                  >
+                    <Zap size={14} />
+                    <span>{t("composer.taskModeAutopilot")}</span>
+                  </button>
                 </div>
                 )}
               </div>
