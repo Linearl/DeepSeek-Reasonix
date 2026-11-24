@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { app, type ConsolidationReport, type PreRepairBackupView, type PreRepairDeleteView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
+import { app, type ConsolidationReport, type PreRepairBackupView, type PreRepairDeleteView, type PreRepairSplicePreviewView, type RecoveryCopyGroupView, type RecoveryChainPreview, type RecoveryChainSet, type RecoveryChainView, type SessionVersionGroupView, type SessionRepairRecordView, type SessionHealthReportView } from "../lib/bridge";
 import { formatBytes } from "../lib/format";
 import { useT, type Translator } from "../lib/i18n";
 import { formatRecoveryActivateError } from "../lib/recoveryActivateError";
@@ -278,6 +278,63 @@ type SynthesisOutcome = {
  *  then asked whether the copy should win. Neither mode runs without its own
  *  confirmation.
  */
+
+/** SplicePreviewBody is the manual-splice chain preview (tl1674b phase 2):
+ *  the segmented structure the user confirms before the metadata-only
+ *  registration. Diverged forks show prefix / lost old-chain segment / main
+ *  continuation; fold-continuations show the whole old chain before the new.
+ *  covered / no-anchor verdicts render the plain reason with no confirmable
+ *  registration. The health notice is disclosure, not a gate. */
+function SplicePreviewBody({ preview }: { preview: PreRepairSplicePreviewView }) {
+  const t = useT();
+  const tailMessages = Math.max(preview.ownerMessages - (preview.splicePoint ?? 0), 0);
+  return (
+    <div>
+      <p>{t("settings.recoveryCopiesPreRepairSpliceHead")}</p>
+      {preview.splicable ? (
+        <ul className="rc-versions__issues" data-pre-repair-splice-segments="">
+          <li>
+            {t("settings.recoveryCopiesPreRepairSpliceSegOwner").replace("{n}", String(preview.ownerMessages))}
+          </li>
+          {preview.kind === "fold-continuation" ? (
+            <li>
+              {t("settings.recoveryCopiesPreRepairSpliceSegFold").replace("{m}", String(preview.segmentMessages))}
+            </li>
+          ) : (
+            <>
+              <li>
+                {t("settings.recoveryCopiesPreRepairSpliceSegShared").replace("{k}", String(preview.sharedPrefix ?? 0))}
+              </li>
+              <li>
+                {t("settings.recoveryCopiesPreRepairSpliceSegLost")
+                  .replace("{m}", String(preview.segmentMessages))
+                  .replace("{start}", String(preview.segmentStart ?? 0))
+                  .replace("{end}", String(preview.segmentEnd))
+                  .replace("{k}", String(preview.sharedPrefix ?? 0))}
+              </li>
+              <li>
+                {t("settings.recoveryCopiesPreRepairSpliceSegTail").replace("{n}", String(tailMessages))}
+              </li>
+            </>
+          )}
+        </ul>
+      ) : (
+        <p className="rc-muted" data-pre-repair-splice-reason="">
+          {t("settings.recoveryCopiesPreRepairSpliceNotSplicable").replace(
+            "{reason}",
+            preview.reason || "—",
+          )}
+        </p>
+      )}
+      {!preview.ownerHealthy && preview.healthCodes?.length ? (
+        <p className="rc-preview__warn" data-pre-repair-splice-health="">
+          {t("settings.recoveryCopiesPreRepairSpliceHealth").replace("{codes}", preview.healthCodes.join(","))}
+        </p>
+      ) : null}
+      <p className="rc-muted">{t("settings.recoveryCopiesPreRepairSplicePromise")}</p>
+    </div>
+  );
+}
 
 /** ChainPreviewBody is the whole preview dialog body as its own component, so
  *  the tail-reveal state lives inside the rendered dialog. The body used to be
@@ -594,6 +651,9 @@ export function RecoveryCopiesSection() {
   // tl1787 件3/B：合并的在途标记按行记（与单删同口径）——合并桥要对活宿主
   // 做前缀接回+事件日志折叠（大会话秒到分钟级），在途只禁自己那行的合并钮。
   const [preRepairMerging, setPreRepairMerging] = useState<Set<string>>(new Set());
+  // tl1674b 阶段二：手动拼接的在途标记按行记（同口径）——预览+登记两次桥
+  // 调用期间只禁自己那一行。
+  const [preRepairSplicing, setPreRepairSplicing] = useState<Set<string>>(new Set());
   // tl1658 现场①：批量的逐项进度（pre-repair-cleanup:progress 事件驱动）。
   // 181 项/3.4GB 的清理是分钟级阻塞桥调用，此前全程零反馈——用户无从知道
   // 是否在跑（dag-migration:progress 同一先例）。null=不在途/无进度。
@@ -944,6 +1004,9 @@ export function RecoveryCopiesSection() {
   // tl1787 件3/B：合并入口的能力探测（旧 harness 的 Partial stub 无此方法时
   // 不渲染合并钮——typeof 守卫同 load()/preRepairCanCleanup 先例）。
   const preRepairCanMerge = typeof app.MergePreRepairBackup === "function";
+  // tl1674b 阶段二：手动拼接入口的能力探测（同一 typeof 守卫纪律）。
+  const preRepairCanSplice =
+    typeof app.MergePreRepairSplice === "function" && typeof app.PreviewPreRepairSplice === "function";
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
     if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
@@ -1176,6 +1239,80 @@ export function RecoveryCopiesSection() {
       showToast(`${t("settings.recoveryCopiesPreRepairMergeFailed")}：${message}`, "error");
     } finally {
       setPreRepairMerging((current) => {
+        const next = new Set(current);
+        next.delete(view.dir);
+        return next;
+      });
+    }
+  };
+
+  /** tl1674b 阶段二：手动拼接入口（自动自愈之外的人工路径）——两段交互：
+   *  ① 链预览（PreviewPreRepairSplice 纯读数）：分段结构（公共前缀/旧链丢
+   *     失段/主线续段）+ HEAD 语义披露（HEAD=当前主线新链，旧链以元信息登
+   *     记为历史绝不倒灌——与 1787 自动路径同一语义）+ 健康闸**提示**（宿
+   *     主不健康只披露 codes 建议修复，不硬拦——纯元信息操作不危及数据）；
+   *  ② 确认后 MergePreRepairSplice 登记（同一判据/同一档案袋，source=
+   *     manual）：主线转录与事件日志逐字节不动，行内徽标转「已登记拼接
+   *     （手动）」。无法拼接的形态（covered/无锚点）弹窗只保留关闭——不
+   *     给可确认的空登记。 */
+  const splicePreRepair = async (view: PreRepairBackupView) => {
+    if (!preRepairCanSplice || preRepairSplicing.has(view.dir)) return;
+    setPreRepairSplicing((current) => new Set(current).add(view.dir));
+    let preview: PreRepairSplicePreviewView;
+    try {
+      preview = await app.PreviewPreRepairSplice(view.dir);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`${t("settings.recoveryCopiesPreRepairSpliceFailed")}：${message}`, "error");
+      setPreRepairSplicing((current) => {
+        const next = new Set(current);
+        next.delete(view.dir);
+        return next;
+      });
+      return;
+    }
+    setPreRepairSplicing((current) => {
+      const next = new Set(current);
+      next.delete(view.dir);
+      return next;
+    });
+    const body = <SplicePreviewBody preview={preview} />;
+    if (!preview.splicable) {
+      // 无法拼接：只披露原因（covered 是「无事可登记」不是失败）。
+      await confirm({
+        title: t("settings.recoveryCopiesPreRepairSpliceTitle"),
+        message: body,
+        confirmLabel: t("common.close"),
+        cancelLabel: t("common.cancel"),
+      });
+      return;
+    }
+    const ok = await confirm({
+      title: t("settings.recoveryCopiesPreRepairSpliceTitle"),
+      message: body,
+      confirmLabel: t("settings.recoveryCopiesPreRepairSplice"),
+      cancelLabel: t("common.cancel"),
+    });
+    if (!ok) return;
+    setPreRepairSplicing((current) => new Set(current).add(view.dir));
+    try {
+      const receipt = await app.MergePreRepairSplice(view.dir);
+      if (receipt.registered) {
+        showToast(
+          t("settings.recoveryCopiesPreRepairSpliceDone")
+            .replace("{m}", String(receipt.segmentMessages ?? 0))
+            .replace("{k}", String(receipt.splicePoint ?? 0)),
+          "info",
+        );
+      } else {
+        showToast(t("settings.recoveryCopiesPreRepairSpliceCovered"), "info");
+      }
+      await load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      showToast(`${t("settings.recoveryCopiesPreRepairSpliceFailed")}：${message}`, "error");
+    } finally {
+      setPreRepairSplicing((current) => {
         const next = new Set(current);
         next.delete(view.dir);
         return next;
@@ -3236,9 +3373,13 @@ export function RecoveryCopiesSection() {
                                   {view.ownerArchived
                                     ? ` · ${t("settings.recoveryCopiesPreRepairArchived")}`
                                     : null}
-                                  {view.spliced
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
-                                    : null}
+                                  {view.spliced && view.splicedBy === "manual"
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedManual")}`
+                                    : view.spliced && view.splicedBy === "auto"
+                                      ? ` · ${t("settings.recoveryCopiesPreRepairSplicedAuto")}`
+                                      : view.spliced
+                                        ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
+                                        : null}
                                   {view.transcript ? (
                                     <button
                                       className="btn btn--small"
@@ -3250,6 +3391,22 @@ export function RecoveryCopiesSection() {
                                       {preRepairPreviewing === view.dir
                                         ? "…"
                                         : t("settings.recoveryCopiesPreRepairView")}
+                                    </button>
+                                  ) : null}
+                                  {preRepairCanSplice && view.transcript && view.ownerPath && !view.ownerArchived && !view.spliced ? (
+                                    // tl1674b 阶段二：手动拼接入口（活宿主行专属；
+                                    // 已登记行不再给——登记幂等，重复确认无意义）。
+                                    <button
+                                      className="btn btn--secondary btn--small"
+                                      type="button"
+                                      data-pre-repair-splice=""
+                                      disabled={preRepairSplicing.has(view.dir)}
+                                      title={t("settings.recoveryCopiesPreRepairSpliceHint")}
+                                      onClick={() => void splicePreRepair(view)}
+                                    >
+                                      {preRepairSplicing.has(view.dir)
+                                        ? "…"
+                                        : t("settings.recoveryCopiesPreRepairSplice")}
                                     </button>
                                   ) : null}
                                   {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (

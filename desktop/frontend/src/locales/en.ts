@@ -5378,6 +5378,26 @@ export const en = {
   // tl1787 continuation: the splice-ledger registration marker (shared by the
   // background autosplice and the manual merge).
   "settings.recoveryCopiesPreRepairSpliced": "splice registered",
+  // tl1674b phase 2: the manual splice entry (the human path beside the
+  // background self-heal) — preview the chain, confirm, register the dossier
+  // (metadata-only, projection untouched).
+  "settings.recoveryCopiesPreRepairSplice": "Register splice",
+  "settings.recoveryCopiesPreRepairSpliceHint": "Register this fork as metadata into the long-chain system: the current main is the new-chain HEAD, the old chain is recorded in the ledger. The main transcript and event log stay byte-for-byte; zero model calls.",
+  "settings.recoveryCopiesPreRepairSpliceTitle": "Register splice — merge the fork back (metadata)",
+  "settings.recoveryCopiesPreRepairSpliceHead": "Chain preview · HEAD = the current main (the new chain wins; the old chain is recorded as history, never poured back)",
+  "settings.recoveryCopiesPreRepairSpliceSegOwner": "Main (new-chain HEAD): {n} messages",
+  "settings.recoveryCopiesPreRepairSpliceSegShared": "Shared prefix: first {k} messages (identical on both sides)",
+  "settings.recoveryCopiesPreRepairSpliceSegLost": "Old-chain lost segment: {m} messages (backup messages {start}–{end}), recorded right after main message {k}",
+  "settings.recoveryCopiesPreRepairSpliceSegFold": "Fold continuation: the whole old chain of {m} messages is recorded before the new chain (repair-record anchor on file)",
+  "settings.recoveryCopiesPreRepairSpliceSegTail": "Main continuation: the {n} messages after the splice point stay exactly where they are",
+  "settings.recoveryCopiesPreRepairSplicePromise": "Metadata-only: the registration writes the ledger (<session>.splices.json) and nothing else; on failure nothing is written; no projection is ever regenerated.",
+  "settings.recoveryCopiesPreRepairSpliceHealth": "The main session did not pass its health check ({codes}) — a metadata-only splice is unaffected, but consider repairing the session before cleaning up backups.",
+  "settings.recoveryCopiesPreRepairSpliceNotSplicable": "Cannot splice: {reason}",
+  "settings.recoveryCopiesPreRepairSpliceDone": "Splice registered (manual): {m} old-chain messages · splice point after main message {k}",
+  "settings.recoveryCopiesPreRepairSpliceCovered": "The main already contains everything in this backup — nothing to register",
+  "settings.recoveryCopiesPreRepairSpliceFailed": "Splice registration failed",
+  "settings.recoveryCopiesPreRepairSplicedManual": "splice registered (manual)",
+  "settings.recoveryCopiesPreRepairSplicedAuto": "splice registered (self-heal)",
   "settings.recoveryCopiesPreRepairCleanSelected": "Clean selected ({n})",
   "settings.recoveryCopiesPreRepairCleanAll": "Clean all",
   "settings.recoveryCopiesPreRepairCleanTitle": "Clean pre-repair backups",

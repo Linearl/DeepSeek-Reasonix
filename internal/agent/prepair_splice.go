@@ -76,6 +76,10 @@ type PreRepairSplicePlan struct {
 	SplicePoint int `json:"splicePoint,omitempty"`
 	// SegmentMessages 是丢失段的条数（=SegmentEnd-SegmentStart）。
 	SegmentMessages int `json:"segmentMessages"`
+	// OwnerMessages/BackupMessages 是两侧（trim 后）的总条数（tl1674b 链预览
+	// 的对屏读数：面板按它展示「主线 N 条 / 备份 M 条」的分段结构）。
+	OwnerMessages  int `json:"ownerMessages,omitempty"`
+	BackupMessages int `json:"backupMessages,omitempty"`
 	// Reason 是不可拼接时的人话原因（可拼接时为空）。
 	Reason string `json:"reason,omitempty"`
 }
@@ -178,6 +182,12 @@ func CheckPreRepairSplice(ownerPath, backupTranscript string, repairAt int64) (P
 	}
 	ownerMsgs := trimLeadingSystemMessages(canonical.messages)
 	backupMsgs := trimLeadingSystemMessages(copied.messages)
+	// 链预览的对屏读数（tl1674b）：两侧 trim 后总条数，随每个判据出口带出。
+	sides := func(plan PreRepairSplicePlan) PreRepairSplicePlan {
+		plan.OwnerMessages = len(ownerMsgs)
+		plan.BackupMessages = len(backupMsgs)
+		return plan
+	}
 
 	// covered 口径（集合级）：备份每条消息都已在主线。
 	known := make(map[string]struct{}, len(ownerMsgs))
@@ -191,37 +201,37 @@ func CheckPreRepairSplice(ownerPath, backupTranscript string, repairAt int64) (P
 		}
 	}
 	if unique == 0 {
-		return PreRepairSplicePlan{Reason: "backup fully contained in the main line (covered; nothing was lost)"}, nil
+		return sides(PreRepairSplicePlan{Reason: "backup fully contained in the main line (covered; nothing was lost)"}), nil
 	}
 
 	// 形态②分叉长链：精确公共前缀（回退到轮边界）+ 备份独有段非空。
 	k := exactCommonPrefixLength(ownerMsgs, backupMsgs)
 	k = lastTurnStartAtOrBefore(backupMsgs, k)
 	if k > 0 && k < len(backupMsgs) {
-		return PreRepairSplicePlan{
+		return sides(PreRepairSplicePlan{
 			Kind:            PreRepairSpliceDiverged,
 			SharedPrefix:    k,
 			SegmentStart:    k,
 			SegmentEnd:      len(backupMsgs),
 			SegmentMessages: len(backupMsgs) - k,
 			SplicePoint:     k,
-		}, nil
+		}), nil
 	}
 
 	// 形态③折叠续接：无公共前缀，但有改写锚点（调用方已验时间线）——整条
 	// 旧链接在新链之前。
 	if repairAt > 0 {
-		return PreRepairSplicePlan{
+		return sides(PreRepairSplicePlan{
 			Kind:            PreRepairSpliceFoldContinuation,
 			SharedPrefix:    0,
 			SegmentStart:    0,
 			SegmentEnd:      len(backupMsgs),
 			SegmentMessages: len(backupMsgs),
 			SplicePoint:     0,
-		}, nil
+		}), nil
 	}
 
-	return PreRepairSplicePlan{Reason: "no content continuity and no repair-record anchor — needs a manual HEAD pick"}, nil
+	return sides(PreRepairSplicePlan{Reason: "no content continuity and no repair-record anchor — needs a manual HEAD pick"}), nil
 }
 
 // lastTurnStartAtOrBefore 把消息级分歧点对齐到轮边界（备份侧）：idx 本身
