@@ -5995,6 +5995,7 @@ export const en = {
   // software update
   "config.loadWarning": "Configuration issue: {msg}",
   "config.openConfig": "Open config",
+  "config.copyError": "Copy error details",
   "config.reloadConfig": "Reload",
   "config.doctorHint": "Or run: reasonix doctor repair",
   "updater.autoCheckLabel": "Check for updates on startup",
