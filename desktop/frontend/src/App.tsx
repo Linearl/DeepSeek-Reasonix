@@ -7611,7 +7611,7 @@ export default function App() {
               label: t("palette.cmd.exportLogs"),
               // 与调色板 cmd-export-logs 同体：拉起设置→诊断页的既有导出链路。
               onSelect: () => {
-                setSettingsFocus((current) => ({ target: "model-stats", requestId: (current?.requestId ?? 0) + 1 }));
+                setSettingsFocus((current) => ({ target: "model-stats", requestId: settingsFocusRequestId(current) + 1 }));
                 setSettingsTarget("diagnostics");
               },
             },

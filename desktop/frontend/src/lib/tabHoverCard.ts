@@ -141,14 +141,12 @@ function consumptionFace(extra: TabHoverExtra | undefined, t: Translator): TabHo
     const usagePct = Math.min(100, Math.max(0, Math.round((ctx.used / ctx.window) * 100)));
     const compactPct = ctx.compactRatio && ctx.compactRatio > 0 ? Math.round(ctx.compactRatio * 100) : null;
     // StatusBar.tsx:278 同口径：compactRatio 为 0-1 分数。
-    const thresholdTokens = compactPct != null ? Math.round(ctx.window * (compactPct / 100)) : null;
-    const headroom = thresholdTokens != null ? Math.max(0, thresholdTokens - ctx.used) : null;
-    const value = headroom != null
+    const value = compactPct != null
       ? t("tabBar.hoverCard.contextWithHeadroom", {
           used: formatTokens(ctx.used),
           window: formatTokens(ctx.window),
           pct: usagePct,
-          headroom: formatTokens(headroom),
+          headroom: formatTokens(Math.max(0, Math.round(ctx.window * (compactPct / 100)) - ctx.used)),
           compactPct,
         })
       : t("tabBar.hoverCard.context", { used: formatTokens(ctx.used), window: formatTokens(ctx.window), pct: usagePct });

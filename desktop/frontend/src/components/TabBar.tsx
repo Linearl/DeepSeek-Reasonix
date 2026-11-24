@@ -279,7 +279,9 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
       hoverCardFetchGen.current = generation;
       setHoverCard({ tabId: tab.id, anchor: element, extra: null });
       if (!onFetchTabHoverInfo) return;
-      void onFetchTabHoverInfo(tab).then((extra) => {
+      // Promise 链包一层：resolver 同步返回/同步抛错（测试桩、未来的轻量
+      // 实现）都走同一异步链，不炸 setTimeout 回调。
+      void Promise.resolve().then(() => onFetchTabHoverInfo(tab)).then((extra) => {
         if (hoverCardFetchGen.current !== generation) return;
         setHoverCard((current) => (current && current.tabId === tab.id ? { ...current, extra: extra ?? null } : current));
       }).catch(() => {
@@ -592,7 +594,7 @@ export function TabBar({ tabs, activeTabId, onTabChange, onTabClose, onTabsClose
   const hoverCardTab = hoverCard ? orderedTabs.find((tab) => tab.id === hoverCard.tabId) : undefined;
   const hoverNow = useTick(Boolean(hoverCardTab?.running));
   const hoverSections: TabHoverCardSections | null = hoverCard && hoverCardTab
-    ? tabHoverCardModel(hoverCardTab, hoverCard.extra, t, hoverNow)
+    ? tabHoverCardModel(hoverCardTab, hoverCard.extra ?? undefined, t, hoverNow)
     : null;
   const hoverAnchorRect = hoverCard?.anchor.isConnected ? hoverCard.anchor.getBoundingClientRect() : null;
   // 水平钳位：卡片最宽 360px + 8px 边距；窗口过窄退到左缘 8px。
