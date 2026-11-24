@@ -67,6 +67,9 @@ type desktopLifecycleObservation struct {
 	DetectedAt string
 	DeathAt    string
 	ExitCode   int
+	// ExitReason (tl1786) is the launcher's exit-code death-class sentence
+	// from the same record; empty on pre-tl1786 evidence.
+	ExitReason string
 	// Task 1027 (issue #60): the record's wedge point (teardown stage the
 	// watchdog was waiting on), carried through consume to the report.
 	// Empty when the process did not die of the shutdown watchdog.
@@ -536,12 +539,18 @@ func (t *desktopLifecycleTracker) writeConsumePassStamp(at time.Time) {
 // launcherDeathEvidence is the consume-once record the resident launcher
 // writes when a supervised desktop exits abnormally (task 736, issue #39).
 // The JSON mirrors the writer in internal/desktoplauncher — keep both in
-// lockstep.
+// lockstep. tl1786 adds attribution fields (Reason/Stack/LifecyclePhase/
+// WedgePoint/CrashFatalSeen) on the SAME schemaVersion 1: the writer's new
+// fields decode as empty here, which keeps this reader compatible with both
+// old records (no fields) and new ones (fields present).
 type launcherDeathEvidence struct {
 	SchemaVersion int    `json:"schemaVersion"`
 	PID           int    `json:"pid"`
 	ExitCode      int    `json:"exitCode"`
 	ExitedAt      string `json:"exitedAt"` // RFC3339Nano, launcher clock
+	// Reason is the launcher's exit-code death-class sentence (tl1786). Empty
+	// on pre-tl1786 records.
+	Reason string `json:"reason,omitempty"`
 }
 
 const (
@@ -594,6 +603,7 @@ func (t *desktopLifecycleTracker) applyLauncherDeathEvidence(observations []desk
 		}
 		observations[i].DeathAt = record.ExitedAt
 		observations[i].ExitCode = record.ExitCode
+		observations[i].ExitReason = record.Reason
 		_ = os.Remove(path)
 		return
 	}
