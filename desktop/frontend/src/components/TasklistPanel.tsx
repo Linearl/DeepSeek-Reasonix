@@ -18,9 +18,10 @@
 // load / CollabHub inboxBindings 同款先例）。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, RefreshCw, Settings2, X } from "lucide-react";
+import { Activity, ExternalLink, RefreshCw, Settings2, X } from "lucide-react";
 import {
   app,
+  type TasklistBoardOpenResult,
   type TasklistCount,
   type TasklistOverview,
   type TasklistQueryFilters,
@@ -38,12 +39,15 @@ export interface TasklistPanelBindings {
   queryTasks(path: string, filters: TasklistQueryFilters): Promise<TasklistQueryResult>;
   /** 面板每次打开读一次设置快照拿 tasklistDbPath（方案 §三.2：免重启动态）。 */
   settings(): Promise<SettingsView>;
+  /** tl1775: 在系统默认浏览器打开 tl.py export 静态看板（tasklist.html）。 */
+  openBoard(path: string): Promise<TasklistBoardOpenResult>;
 }
 
 const REAL_BINDINGS: TasklistPanelBindings = {
   getOverview: (path, refresh) => app.GetTasklistOverview(path, refresh),
   queryTasks: (path, filters) => app.QueryTasks(path, filters),
   settings: () => app.Settings(),
+  openBoard: (path) => app.OpenTasklistBoard(path),
 };
 
 /** tl.py 的 8 态（固定序；状态分布按此展示）。 */
@@ -90,6 +94,9 @@ export function TasklistPanel({
   const [listError, setListError] = useState("");
   const [filters, setFilters] = useState<TasklistQueryFilters>({});
   const [loadingOverview, setLoadingOverview] = useState(false);
+  // tl1775 浏览器打开看板：stale = 导出早于数据库（提示可刷新，不拦截）；
+  // error = 未导出/库缺失/打开失败（直接展示 Go 侧文案，任务列表错误同款）。
+  const [boardHint, setBoardHint] = useState<{ kind: "stale" | "error"; text: string } | null>(null);
   // generation fence（ResourcePanel 同款）：面板关闭后过期回包零写入。
   const seqRef = useRef(0);
   const mountedRef = useRef(false);
@@ -173,6 +180,25 @@ export function TasklistPanel({
     [onClose],
   );
 
+  // tl1775「浏览器打开」：交给 Go 侧 shell 打开（cmd start 后台化，面板不阻塞）；
+  // 过期只在面板提示（不自动跑 export——子进程生命周期不在本期）。
+  const openBoard = useCallback(async () => {
+    try {
+      const res = await b.openBoard(dbPath);
+      if (!mountedRef.current) return;
+      if (res.error) {
+        setBoardHint({ kind: "error", text: res.error });
+      } else if (res.stale) {
+        setBoardHint({ kind: "stale", text: t("tasklist.board.stale") });
+      } else {
+        setBoardHint(null);
+      }
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setBoardHint({ kind: "error", text: err instanceof Error ? err.message : String(err) });
+    }
+  }, [b, dbPath, t]);
+
   const maxStatus = useMemo(() => Math.max(1, ...(overview?.byStatus ?? []).map((c) => c.count)), [overview]);
   const maxDomain = useMemo(() => Math.max(1, ...(overview?.openByDomain ?? []).map((c) => c.count)), [overview]);
   const maxPrio = useMemo(() => Math.max(1, ...(overview?.openByPriority ?? []).map((c) => c.count)), [overview]);
@@ -210,12 +236,24 @@ export function TasklistPanel({
             <RefreshCw size={13} />
             {t("tasklist.refresh")}
           </button>
+          {/* tl1775：一键在系统默认浏览器打开 tl.py export 静态看板。 */}
+          <button type="button" className="btn btn--secondary btn--sm" data-testid="tl-open-board"
+            title={t("tasklist.board.open")} onClick={() => { void openBoard(); }}>
+            <ExternalLink size={13} />
+            {t("tasklist.board.open")}
+          </button>
           <button type="button" className="palette__esc" onClick={onClose} aria-label={t("tasklist.close")}>
             <X size={13} />
           </button>
         </div>
 
         <div className="res-panel__body">
+          {boardHint?.kind === "stale" && (
+            <p className="settings-field__hint-line" data-testid="tl-board-stale">{boardHint.text}</p>
+          )}
+          {boardHint?.kind === "error" && (
+            <p className="settings-field__hint-line tlpanel__error-reason" role="alert" data-testid="tl-board-error">{boardHint.text}</p>
+          )}
           {overviewError ? (
             <div className="tlpanel__error" role="alert" data-testid="tl-error">
               <p className="tlpanel__error-title">{t("tasklist.error.title")}</p>

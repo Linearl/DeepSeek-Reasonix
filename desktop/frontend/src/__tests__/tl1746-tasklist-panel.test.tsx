@@ -159,6 +159,8 @@ function fixtureBindings(): TasklistPanelBindings {
     getOverview: () => Promise.resolve({ ...FIXTURE_OVERVIEW }),
     queryTasks: () => Promise.resolve({ ...FIXTURE_LIST, rows: FIXTURE_LIST.rows.map((r) => ({ ...r })) }),
     settings: () => Promise.resolve({ tasklistDbPath: "" }),
+    // tl1775: 面板头部「浏览器打开」——fixture 不真开，标记调用即可。
+    openBoard: () => Promise.resolve({ path: "D:/fixture/tasklist.html", stale: false, opened: true, error: "" }),
   };
 }
 
@@ -167,6 +169,7 @@ function failingBindings(): TasklistPanelBindings {
     getOverview: () => Promise.reject(new Error("任务数据库不存在：D:/nope/tasklist.db")),
     queryTasks: () => Promise.reject(new Error("任务数据库不存在：D:/nope/tasklist.db")),
     settings: () => Promise.resolve({ tasklistDbPath: "D:/nope/tasklist.db" }),
+    openBoard: () => Promise.resolve({ path: "", stale: false, opened: false, error: "任务数据库不存在：D:/nope/tasklist.db" }),
   };
 }
 

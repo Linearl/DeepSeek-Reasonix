@@ -2958,6 +2958,8 @@ export const en = {
   "tasklist.tab.list": "Tasks",
   "tasklist.refresh": "Refresh",
   "tasklist.close": "Close",
+  "tasklist.board.open": "Open in browser",
+  "tasklist.board.stale": "The board may be stale (exported before the database changed) — run python scripts/tl.py export in the tasklist directory to refresh it.",
   "tasklist.loading": "Reading the tasklist database…",
   "tasklist.cached": "cached",
   "tasklist.retry": "Retry",
