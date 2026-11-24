@@ -18,6 +18,7 @@ import { createPortal } from "react-dom";
 import { ChevronDown, Folder, Search } from "lucide-react";
 import { useT } from "../lib/i18n";
 import { useMountTransition } from "../lib/useMountTransition";
+import { MENU_HOVER_OPEN_DELAY_MS } from "../lib/motion";
 import { reportFrontendLog } from "../lib/frontendLog";
 import { paletteSessionDisplayTitle, paletteSessionHint, sessionActivityTime } from "../lib/session";
 import { topicActivityLabel } from "../lib/projectTreeTopic";
@@ -27,7 +28,6 @@ import {
   applySessionWallOpenOnly,
   groupSessionsForWall,
   SESSION_WALL_EXCERPT_TARGET,
-  SESSION_WALL_HOVER_OPEN_DELAY_MS,
   sessionWallHoverLayerOrigin,
   type SessionWallGroupMode,
 } from "../lib/sessionWall";
@@ -197,7 +197,7 @@ export function SessionWallPanel({
       const rect = element.getBoundingClientRect();
       const { left, top } = sessionWallHoverLayerOrigin(rect, { width: window.innerWidth, height: window.innerHeight });
       setHoverLayer({ session, groupLabel, left, top });
-    }, SESSION_WALL_HOVER_OPEN_DELAY_MS);
+    }, MENU_HOVER_OPEN_DELAY_MS);
   }, []);
 
   const dayLabel = useCallback(

@@ -21,6 +21,7 @@ import "./TopicbarMoreMenuContent.css";
 
 import { writeClipboardText } from "../lib/clipboard";
 import { t } from "../lib/i18n";
+import { MENU_HOVER_OPEN_DELAY_MS } from "../lib/motion";
 import { app as desktopApp } from "../lib/bridge";
 import { useToast } from "../lib/toast";
 import { OpenerIcon, openWorkspaceWithOpener, type ExternalOpenerBridge } from "./ExternalOpener";
@@ -104,7 +105,7 @@ function SubmenuIndicator() {
 }
 
 // tl 1153：二级菜单 hover 触发延迟（平台惯例 ~300ms：短暂扫过不弹，停留才弹）。
-export const SUBMENU_HOVER_OPEN_DELAY_MS = 300;
+// tl1798：值收口 lib/motion.ts（MENU_HOVER_OPEN_DELAY_MS，拍板统一 300ms），本文件不再私有定义。
 
 // tl 1153：二级触发项组件化——aria-haspopup/aria-expanded、ArrowRight 键盘展开、
 // 点击切换、tl 1148 指示箭头与 hover ~300ms 自动展开（tl 1153）集中在此；1149 新增
@@ -237,7 +238,7 @@ export function TopicbarMoreMenuContent({
       // hover 展开只切状态、不移动焦点；子菜单弹出后鼠标移入子菜单不关闭（面板
       // 就挂在触发项 host 下，移出触发项只取消挂起计时器，不收已展开的面板）。
       setSubmenu(id);
-    }, SUBMENU_HOVER_OPEN_DELAY_MS);
+    }, MENU_HOVER_OPEN_DELAY_MS);
   }, [cancelHoverOpen]);
 
   const focusSubmenu = (id: SubmenuId) => {

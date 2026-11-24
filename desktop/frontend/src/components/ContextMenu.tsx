@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Check } from "lucide-react";
+import { MENU_HOVER_CLOSE_DELAY_MS, MENU_HOVER_OPEN_DELAY_MS } from "../lib/motion";
 
 export type ContextMenuPoint = {
   left: number;
@@ -51,8 +52,8 @@ const EDGE_GAP = 8;
 // tl 1168 hover timing: the row must be *dwelled on* before the submenu opens
 // (a pointer just passing through must not flash a panel), while an already
 // open panel switches instantly as the pointer slides across sibling rows.
-export const CONTEXT_MENU_HOVER_OPEN_MS = 180;
-const HOVER_CLOSE_MS = 300;
+// tl1798: delay values live solely in lib/motion.ts (MENU_HOVER_*_DELAY_MS,
+// 拍板统一 300ms) — no component-private `*_MS` constants here.
 
 function clampMenuPoint(left: number, top: number, width: number, height: number): ContextMenuPoint {
   if (typeof window === "undefined") return { left, top };
@@ -146,13 +147,13 @@ export function ContextMenu({
     if (expanded === key) return;
     // First open waits for the dwell; sliding from another open submenu
     // switches immediately (the delay exists to disambiguate, not to lag).
-    const delay = expanded === null ? CONTEXT_MENU_HOVER_OPEN_MS : 0;
+    const delay = expanded === null ? MENU_HOVER_OPEN_DELAY_MS : 0;
     hoverOpenTimerRef.current = window.setTimeout(() => setExpanded(key), delay);
   };
 
   const scheduleFlyoutClose = () => {
     clearHoverTimers();
-    hoverCloseTimerRef.current = window.setTimeout(() => setExpanded(null), HOVER_CLOSE_MS);
+    hoverCloseTimerRef.current = window.setTimeout(() => setExpanded(null), MENU_HOVER_CLOSE_DELAY_MS);
   };
 
   useEffect(() => clearHoverTimers, []);

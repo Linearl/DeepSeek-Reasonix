@@ -10,6 +10,13 @@ export const DUR_NORMAL = 0.2;
 /** 300ms — drawers, modals, panel slides. Matches CSS --dur-slow. */
 export const DUR_SLOW = 0.3;
 
+/** 300ms — menu hover-open delay（tl1798 拍板统一：全部菜单/子菜单/图墙 hover 展开共用，
+ * 禁止组件内私有 `*_HOVER_*_MS` 常量——扫过不弹、停留才弹防误触窗口）. */
+export const MENU_HOVER_OPEN_DELAY_MS = 300;
+
+/** 300ms — menu hover-close grace delay（tl1798 拍板与 open 同源同值：移出后短暂宽限防误关）. */
+export const MENU_HOVER_CLOSE_DELAY_MS = 300;
+
 /** Fast-out/decelerate curve used by expanding and entrance animations. */
 export const CSS_EASE_OUT = "cubic-bezier(0.2, 0.72, 0.2, 1)";
 

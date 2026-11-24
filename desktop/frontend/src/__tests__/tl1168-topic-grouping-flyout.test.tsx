@@ -21,7 +21,8 @@ import { JSDOM } from "jsdom";
 import { StrictMode } from "react";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { ContextMenu, CONTEXT_MENU_HOVER_OPEN_MS, type ContextMenuItem } from "../components/ContextMenu";
+import { ContextMenu, type ContextMenuItem } from "../components/ContextMenu";
+import { MENU_HOVER_OPEN_DELAY_MS } from "../lib/motion";
 import { useProjectTreeOrganization } from "../components/ProjectTreeOrganization";
 import type { Translator } from "../lib/i18n";
 import type { ProjectNode, ProjectTreeOrganizationBindings, SessionGroup } from "../lib/types";
@@ -64,7 +65,7 @@ async function flush() {
 }
 async function dwell() {
   // The hover-open delay plus a small scheduler margin.
-  await new Promise((resolve) => setTimeout(resolve, CONTEXT_MENU_HOVER_OPEN_MS + 80));
+  await new Promise((resolve) => setTimeout(resolve, MENU_HOVER_OPEN_DELAY_MS + 80));
 }
 
 function menuButtons(): HTMLElement[] {
@@ -170,7 +171,7 @@ let latestItems: ContextMenuItem[] = [];
   await act(async () => root.unmount());
 }
 
-// ── E. hover 停留展开：mouseover 停留 CONTEXT_MENU_HOVER_OPEN_MS 后 flyout
+// ── E. hover 停留展开：mouseover 停留 MENU_HOVER_OPEN_DELAY_MS 后 flyout
 //      面板出现、叶子在第二级面板里；划过即走不展开。
 console.log("\ntl1168 E: hover 停留展开 + 划过防误触");
 {
