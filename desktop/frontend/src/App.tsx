@@ -71,6 +71,10 @@ function rowTitleOfEntry(entry: SubagentDirectoryEntry): string {
 // 单独轻量模块：workflowDag 的 fixture/布局只随面板懒加载 chunk 走，不进
 // initial 面（首版实测炸 initial 线的教训）。
 import { openProductDocs } from "./lib/docsSite";
+// tl1744：右上角问号帮助菜单——组件（图标+受控 ContextMenu）与 gh-issue-submit
+// 预填 prompt 构造器。菜单项动作在下方挂载点闭包 App 状态组装。
+import { HelpMenuButton } from "./components/HelpMenuButton";
+import { ghIssueComposerPrompt } from "./lib/helpMenu";
 import { WorkflowPanelBoundary } from "./components/WorkflowPanelBoundary";
 // tl1456：资源管理器面板（命令面板 → 工具与诊断）。直接 import——组件轻
 //（无图表库/无独立 store），不值得为一次 palette 入口切 lazy chunk。
@@ -1382,6 +1386,8 @@ export default function App() {
     replaceComposerInsert,
     prefillSubagentCommand,
     insertQuickCommand,
+    insertComposerIntoTab,
+    clearComposerInsertForTab,
     addWorkspaceTextToComposer,
     addTerminalOutputToComposer,
     addSelectedTextToComposer,
@@ -5010,6 +5016,37 @@ export default function App() {
     await openBlankSession(target.scope, target.workspaceRoot);
   }, [activeTab, blankSessionTarget, closeTransientOverlays, openBlankSession, openRemoteProjectCommand, showToast]);
 
+  // tl1744：问号菜单「问题上报 / 给产品提需求」——发起新会话并在其 composer
+  // 预填 gh-issue-submit 调用词。预填是两段式：点击时记录发起前的 tabId 与
+  // prompt（此刻新 tab 尚不存在）；activeTabId 变为非发起 tab 时（导航完成）
+  // 把 prompt 写进该 tab 的 composer 请求表。不自动发送：新会话 controller
+  // 未必就绪（composer 有 workspaceStarting 守卫），且 gh-issue-submit 硬规则
+  // 要求用户先看草稿——回车是用户补完描述的自然动作，预填即终态。
+  // 残留清场见下方 effect 内注释：请求表不自动清空，残留会让 Composer 重挂载
+  // 时二次灌注。
+  const helpIssuePromptRef = useRef<{ fromTabId: string; prompt: string } | null>(null);
+  const helpIssueInsertedTabRef = useRef<string | null>(null);
+  const startGhIssueSession = useCallback((prompt: string) => {
+    helpIssuePromptRef.current = { fromTabId: activeTabIdRef.current ?? "", prompt };
+    void handleNewTab();
+  }, [handleNewTab]);
+
+  // tl1744 预填的两段式后半段 + 残留清场。离开已预填的 tab 即刻清请求表——
+  // Composer 的去重 ref 是组件内存，重挂载后不认识旧请求 id，不清就是每次
+  // 切回该 tab 都把调用词再灌一遍。
+  useEffect(() => {
+    const inserted = helpIssueInsertedTabRef.current;
+    if (inserted && inserted !== activeTabId) {
+      clearComposerInsertForTab(inserted);
+      helpIssueInsertedTabRef.current = null;
+    }
+    const pending = helpIssuePromptRef.current;
+    if (!pending || !activeTabId || activeTabId === pending.fromTabId) return;
+    helpIssuePromptRef.current = null;
+    helpIssueInsertedTabRef.current = activeTabId;
+    insertComposerIntoTab(activeTabId, pending.prompt);
+  }, [activeTabId, insertComposerIntoTab, clearComposerInsertForTab]);
+
   // 任务546：新建会话「沿用最近会话的目录」。菜单打开时拉取一次候选；
   // 目录失效 ⇒ 回落默认 cwd（等同点「+」）+ 可见 toast 提示，不静默。
   const fetchLastSessionWorkspace = useCallback(async (): Promise<LastSessionWorkspaceInfo | null> => {
@@ -7459,6 +7496,51 @@ export default function App() {
             }}
           />
         </Suspense>
+      )}
+      {/* tl1744：右上角问号帮助菜单（五项）——常驻窗口控件左侧。三项复用
+          既有能力（cmd-product-docs 同源的 openProductDocs / 诊断页导出入口 /
+          更新页「关于·版本」，与调色板帮助组逐字同源）；两项（问题上报/提需求）
+          走 startGhIssueSession 新会话+gh-issue-submit 链路。与窗口控件同门控
+          （windowsFramelessChrome，darwin 有原生标题栏/help 菜单不在此挤）。 */}
+      {windowsFramelessChrome && (
+        <HelpMenuButton
+          items={[
+            {
+              key: "help-product-docs",
+              icon: <BookOpen size={14} />,
+              label: t("palette.cmd.productDocs"),
+              onSelect: () => openProductDocs(),
+            },
+            {
+              key: "help-report-issue",
+              icon: <MessageSquare size={14} />,
+              label: t("helpMenu.reportIssue"),
+              onSelect: () => startGhIssueSession(ghIssueComposerPrompt(t("helpMenu.issuePromptBug"))),
+            },
+            {
+              key: "help-feature-request",
+              icon: <Lightbulb size={14} />,
+              label: t("helpMenu.featureRequest"),
+              onSelect: () => startGhIssueSession(ghIssueComposerPrompt(t("helpMenu.issuePromptFeature"))),
+            },
+            {
+              key: "help-export-logs",
+              icon: <FileDown size={14} />,
+              label: t("palette.cmd.exportLogs"),
+              // 与调色板 cmd-export-logs 同体：拉起设置→诊断页的既有导出链路。
+              onSelect: () => {
+                setSettingsFocus((current) => ({ target: "model-stats", requestId: (current?.requestId ?? 0) + 1 }));
+                setSettingsTarget("diagnostics");
+              },
+            },
+            {
+              key: "help-about",
+              icon: <Info size={14} />,
+              label: t("palette.cmd.about"),
+              onSelect: () => setSettingsTarget("updates"),
+            },
+          ]}
+        />
       )}
       {windowsFramelessChrome && (
         <WindowsWindowControls

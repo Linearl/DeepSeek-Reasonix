@@ -34,6 +34,14 @@ export const FORK_OPEN_ISSUES_URL = `${FORK_REPO_URL}/issues?q=is%3Aissue%20stat
 /** fork 新建 issue（走仓库的 issue 模板选择器）。 */
 export const FORK_NEW_ISSUE_URL = `${FORK_REPO_URL}/issues/new/choose`;
 
+/**
+ * fork 仓库 slug（owner/repo）。tl1744 问号菜单的 gh-issue-submit 预填 prompt
+ * 用：终端里的 gh 命令认的是 slug 不是完整 URL，且会话工作区是用户自己的项目
+ * （git remote 解析不到 fork 仓库），prompt 必须显式点名目标仓库。从
+ * FORK_REPO_URL 派生，改指向仍只动上面一处。
+ */
+export const FORK_REPO_SLUG = FORK_REPO_URL.replace("https://github.com/", "");
+
 /** fork 产品文档站（GitHub Pages）。 */
 export const FORK_DOCS_SITE_URL = "https://linearl.github.io/DeepSeek-Reasonix/";
 

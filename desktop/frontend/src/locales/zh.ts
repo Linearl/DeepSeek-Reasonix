@@ -6879,4 +6879,14 @@ export const zh: Record<DictKey, string> = {
   "status.elapsedLabel": "运行时间",
   "status.elapsedTitle": "会话运行时间——与右侧栏概览「会话指标」卡同读数",
 
+  // tl1744：右上角问号帮助菜单。三项复用调色板词条（palette.cmd.productDocs /
+  // palette.cmd.exportLogs / palette.cmd.about），不另立键；两项 gh-issue-submit
+  // 链路与预填 prompt 是新键（{repo} 占位；/gh-issue-submit 调用词由
+  // ghIssueComposerPrompt 原样拼在开头，不进词条）。
+  "helpMenu.open": "帮助",
+  "helpMenu.reportIssue": "问题上报",
+  "helpMenu.featureRequest": "给产品提需求",
+  "helpMenu.issuePromptBug": "请帮我向 {repo} 提交一个 bug 报告：用仓库的 bug 模板，先搜索已有 issue 排除重复，再起草给我确认。问题描述与复现步骤：",
+  "helpMenu.issuePromptFeature": "请帮我向 {repo} 提交一个功能需求：用仓库的 feature 模板，先搜索已有 issue 排除重复，再起草给我确认。需求背景与期望：",
+
 };

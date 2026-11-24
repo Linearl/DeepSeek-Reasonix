@@ -63,6 +63,28 @@ export function useComposerInsertOwner(input: ComposerInsertOwnerInput) {
       [activeTabId]: { id: Date.now(), text: command, mode: "prefix" },
     }));
   }, [activeTabId]);
+  // tl1744：向指定 tab 预填 composer 文本（问号菜单「问题上报/提需求」→ 新会话
+  // 预填 gh-issue-submit 调用词）。与 replaceComposerInsert 同款显式 tabId 形参，
+  // 区别在发起时目标 tab 还不是 activeTabId，闭包绑定的 activeTabId 够不着它。
+  // 配套 clearComposerInsertForTab 做消费后清场：请求表从不自动清空，残留会让
+  // Composer 重挂载时把旧文本再灌一次（组件内 consumedInsertId 去重 ref 随卸载
+  // 重置，挡不住跨挂载的二次消费）。
+  const insertComposerIntoTab = useCallback((tabId: string, text: string) => {
+    if (!tabId || !text) return;
+    setComposerInsertRequestsByTab((current) => ({
+      ...current,
+      [tabId]: { id: Date.now(), text },
+    }));
+  }, []);
+  const clearComposerInsertForTab = useCallback((tabId: string) => {
+    if (!tabId) return;
+    setComposerInsertRequestsByTab((current) => {
+      if (!(tabId in current)) return current;
+      const next = { ...current };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
   // Quick-command snippets (#18) insert at the caret; the user still sends.
   const insertQuickCommand = useCallback((text: string) => {
     if (!activeTabId || !text) return;
@@ -144,6 +166,8 @@ export function useComposerInsertOwner(input: ComposerInsertOwnerInput) {
     replaceComposerInsert,
     prefillSubagentCommand,
     insertQuickCommand,
+    insertComposerIntoTab,
+    clearComposerInsertForTab,
     addWorkspaceTextToComposer,
     addTerminalOutputToComposer,
     addSelectedTextToComposer,
