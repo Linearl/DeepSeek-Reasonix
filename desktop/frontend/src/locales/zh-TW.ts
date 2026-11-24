@@ -4379,6 +4379,7 @@ export const zhTW: Record<DictKey, string> = {
   // 軟體更新
   "config.loadWarning": "設定問題：{msg}",
   "config.openConfig": "開啟設定",
+  "config.copyError": "複製錯誤訊息",
   "config.reloadConfig": "重新載入",
   "config.doctorHint": "或執行：reasonix doctor repair",
   "updater.currentVersion": "當前版本：{v}",

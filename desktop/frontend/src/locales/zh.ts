@@ -5949,6 +5949,7 @@ export const zh: Record<DictKey, string> = {
   // 软件更新
   "config.loadWarning": "配置问题：{msg}",
   "config.openConfig": "打开配置",
+  "config.copyError": "复制错误信息",
   "config.reloadConfig": "重新加载",
   "config.doctorHint": "或运行：reasonix doctor repair",
   "updater.autoCheckLabel": "启动时检测新版本",

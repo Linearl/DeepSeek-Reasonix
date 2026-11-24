@@ -1,5 +1,6 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { Translator } from "../lib/i18n";
+import { writeClipboardText } from "../components/CopyButton";
 import { RemoteReclaimBanner } from "../components/RemoteReclaimBanner";
 import { UpdateBanner } from "../components/UpdateBanner";
 
@@ -30,6 +31,24 @@ export type SessionStatusBannersProps = {
 /** Presentation-only banner stack between the topic bar and the main pane. */
 export function SessionStatusBanners(props: SessionStatusBannersProps) {
   const { t } = props;
+  // tl1792: the config banner visually truncates its message (CSS ellipsis),
+  // so offer a one-click copy of the full, untruncated diagnostics string.
+  const [configErrorsCopied, setConfigErrorsCopied] = useState(false);
+  const configErrorsCopyTimer = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (configErrorsCopyTimer.current != null) window.clearTimeout(configErrorsCopyTimer.current);
+  }, []);
+  const copyConfigErrors = () => {
+    const payload = props.configWarnings.join("\n");
+    if (!payload) return;
+    void writeClipboardText(payload).catch(() => {});
+    setConfigErrorsCopied(true);
+    if (configErrorsCopyTimer.current != null) window.clearTimeout(configErrorsCopyTimer.current);
+    configErrorsCopyTimer.current = window.setTimeout(() => {
+      setConfigErrorsCopied(false);
+      configErrorsCopyTimer.current = null;
+    }, 1200);
+  };
   return (
     <>
       {props.takenOver ? (
@@ -65,6 +84,9 @@ export function SessionStatusBanners(props: SessionStatusBannersProps) {
           <span className="banner__spacer" />
           <button type="button" className="btn btn--secondary btn--small" onClick={props.onOpenConfigFile}>
             {t("config.openConfig")}
+          </button>
+          <button type="button" className="btn btn--secondary btn--small" onClick={copyConfigErrors}>
+            {configErrorsCopied ? t("msg.copied") : t("config.copyError")}
           </button>
           <button type="button" className="btn btn--secondary btn--small" onClick={props.onReloadConfigFile}>
             {t("config.reloadConfig")}
