@@ -5,7 +5,7 @@ import { create } from "zustand";
 import { shouldShowStartupSplash } from "../lib/startupSplashState";
 import type { ExtensionActionView, SessionMeta } from "../lib/types";
 import type { SettingsTab } from "../lib/types";
-import type { SettingsInitialFocus } from "../components/SettingsPanel";
+import type { SettingsInitialFocus } from "../lib/settingsFocus";
 
 import { applySetState } from "./setState";
 

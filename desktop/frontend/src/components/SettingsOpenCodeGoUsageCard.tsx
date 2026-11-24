@@ -19,6 +19,8 @@ export function SettingsOpenCodeGoUsageCard() {
   const { t } = useI18n();
   return (
     <SettingsField
+      // tl1791：CDP 稳定锚点——成员行 testid 与 lab-layout.yaml 成员 id 对齐。
+      testId="lab-toggle-opencodeGoUsage"
       label={
         <>
           {t("settings.opencodeGoUsage")}

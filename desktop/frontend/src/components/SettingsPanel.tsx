@@ -104,7 +104,11 @@ import { readNotifyDisplayPrefs, setNotifyKindEnabled, subscribeNotifyDisplayPre
 // ordering) resolves from lab-layout.yaml through the yaml mechanism; the
 // built-in default is the safety-net fallback (missing/corrupt yaml). Tier
 // badges ride the resolved layout, not a separate members map.
-import { findLabEntryIdByQuery, labEntries } from "../lab/labLayout";
+import { findLabEntry, findLabEntryIdByQuery, labEntries } from "../lab/labLayout";
+// tl1791：设置页深链（#settings/lab/<卡id>）——面板挂载期间的 hashchange
+// 重定位（未挂载时的开面板半边在 App 装配层，见 settingsDeepLink.ts 头注）。
+import { parseLabDeepLink } from "../lib/settingsDeepLink";
+import { settingsFocusRequestId, type SettingsInitialFocus } from "../lib/settingsFocus";
 // 任务 775: kind:param 参数卡的值语义层（yaml 只描述结构与引用，读取/写入
 // 绑定收拢在注册表——724 的 onKeys→labLightKeys 同构分层）。
 // 任务 563: the picks wall reads its live on/off states through this context
@@ -142,10 +146,11 @@ import { DesktopCloseBehaviorHint } from "./DesktopCloseBehaviorHint";
 import { ProviderModelsEditor } from "./ProviderModelsEditor";
 import type { DesktopPlatform } from "../lib/desktopPlatform";
 import { loadFoldExcessSessions, saveFoldExcessSessions } from "../lib/foldExcessSessions";
-export type SettingsInitialFocus =
-  | { target: "bot-allowlist"; connectionId?: string; requestId?: number }
-  | { target: "model-access"; requestId?: number; onboarding?: boolean }
-  | { target: "model-stats"; requestId: number };
+// tl1791：SettingsInitialFocus 类型 + settingsFocusRequestId 判重 helper 下沉
+// lib/settingsFocus.ts（零依赖 leaf）——App 装配层与 app-runtime 命令面（主
+// chunk）要用 helper 这个 VALUE，从 SettingsPanel 取会把懒加载设置面板 chunk
+// 拖进主包（bundle 棘轮预算不可接受）。这里转出口保持既有 import 面零改动。
+export type { SettingsInitialFocus } from "../lib/settingsFocus";
 
 const MCPServersSettingsPage = lazy(() => import("./CapabilitiesPanel").then((module) => ({ default: module.MCPServersSettingsPage })));
 const RemoteHostsPage = lazy(() => import("./RemoteHostsPage").then((module) => ({ default: module.RemoteHostsPage })));
@@ -229,7 +234,10 @@ export function SettingsPanel({
   const [monoFontFamily, setMonoFontFamilyState] = useState<MonoFontFamily>(getMonoFontFamily());
   const [customFontName, setCustomFontNameState] = useState<string>(getCustomFontName());
   const [customMonoFontName, setCustomMonoFontNameState] = useState<string>(getCustomMonoFontName());
-  const [tab, setTab] = useState<SettingsTab>(initialTab ?? "general");
+  // tl1791：实验室深链落位——initialFocus.target==="lab" 时首开即落实验室页
+  // （App 装配层在 openPage 时已带 experimental，这里兜住面板直接挂载的旁路
+  // 场景）；entry 合法性由 ExperimentalSection 的组查找把关，未知 id 零行为。
+  const [tab, setTab] = useState<SettingsTab>(initialFocus?.target === "lab" ? "experimental" : (initialTab ?? "general"));
   const settingsContentRef = useRef<HTMLElement>(null);
   const pendingSubagentCommandRef = useRef<string | null>(null);
   const requestClose = useCallback(() => {
@@ -424,7 +432,7 @@ export function SettingsPanel({
   useEffect(() => {
     if (initialFocus?.target === "model-access") setTab("providers");
     if (initialFocus?.target === "model-stats") setTab("model-stats");
-  }, [initialFocus?.target, initialFocus?.requestId]);
+  }, [initialFocus?.target, settingsFocusRequestId(initialFocus)]);
   useEffect(() => {
     const content = settingsContentRef.current;
     if (!content) return;
@@ -610,7 +618,12 @@ export function SettingsPanel({
   // 任务 764：设置搜索覆盖实验室——从搜索点进实验室页时把命中的条目带给
   // ExperimentalSection（预选 + 展开所在组 + 滚动到可见），「搜『心跳任务
   // 后台化』能到达该条目」。非实验室页或未命中时清空（零行为）。
-  const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(null);
+  // tl1791：深链落位同管道——initialFocus.target==="lab"（#settings/lab/<卡id>
+  // 经 App 装配层传入）时以该卡为初始焦点；entry 合法性由 ExperimentalSection
+  // 的组查找把关（不在布局中的 id 零行为，764「搜索无命中」同口径）。
+  const [pendingLabEntry, setPendingLabEntry] = useState<ExperimentFeatureId | null>(
+    () => (initialFocus?.target === "lab" ? (initialFocus.entry as ExperimentFeatureId) : null),
+  );
   const selectTab = (next: SettingsTab, query?: string) => {
     setPendingLabEntry(
       next === "experimental" && query?.trim()
@@ -619,6 +632,25 @@ export function SettingsPanel({
     );
     setTab(next); onNavigate?.(next);
   };
+  // tl1791：面板已挂载期间的深链重定位——设置页开着时 CDP/用户改 hash
+  // （如 #settings/lab/fullAccess）→ 切到实验室页并预选该卡。未知 id 零
+  // 行为；同一 id 重复写不重触发 focusEntry effect（React 同值短路）。
+  // 设置页未挂载半边（从工作区直接落位开面板）在 App 装配层。
+  const labFocusTabRef = useRef(tab);
+  labFocusTabRef.current = tab;
+  useEffect(() => {
+    const onLabHashChange = () => {
+      const entry = parseLabDeepLink(window.location.hash);
+      if (!entry || !findLabEntry(LAB_LAYOUT_FOR_SEARCH, entry)) return;
+      if (labFocusTabRef.current !== "experimental") {
+        setTab("experimental");
+        onNavigate?.("experimental");
+      }
+      setPendingLabEntry(entry as ExperimentFeatureId);
+    };
+    window.addEventListener("hashchange", onLabHashChange);
+    return () => window.removeEventListener("hashchange", onLabHashChange);
+  }, [onNavigate]);
 
   // Task 147: scope busy to this page and hand its sections a page-bound apply, so
   // a save in flight here no longer freezes the other settings pages.

@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import { create } from "zustand";
-import type { SettingsInitialFocus } from "../components/SettingsPanel";
+import type { SettingsInitialFocus } from "../lib/settingsFocus";
 import type { SettingsTab } from "../lib/types";
 import { applySetState } from "./setState";
 
