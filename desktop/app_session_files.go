@@ -675,6 +675,19 @@ func (a *App) onSessionTitleChanged(dir, sessionPath, title string) error {
 			_ = setTopicTitleWithSource(workspaceRoot, topicID, trimmed, topicTitleSourceManual)
 			a.updateOpenTopicTitle(topicID, trimmed, topicTitleSourceManual)
 		}
+	} else if topicID, workspaceRoot, ok := topicIDForSessionPath(dir, validated); ok {
+		// tl1799: an empty title clears the custom name (RenameSession's
+		// documented contract), so the directory falls back to the shared
+		// derivation over the sidecar (TopicTitle, else stem). Project that
+		// exact value into the topic-level titles store too — the sidebar
+		// otherwise kept the stale manual name while the directory had already
+		// moved on. Source stays auto: the name is derived again, so the
+		// auto-title lifecycle keeps working on it.
+		if meta, found, metaErr := agent.LoadBranchMeta(validated); metaErr == nil {
+			derived := agent.DisplayTitleFromMeta(meta, found, agent.SessionPathStem(validated))
+			_ = setTopicTitleWithSource(workspaceRoot, topicID, derived, topicTitleSourceAuto)
+			a.updateOpenTopicTitle(topicID, derived, topicTitleSourceAuto)
+		}
 	}
 	a.requestSessionCatalogPath("", "", validated)
 	a.invalidatePromptHistoryCache()
