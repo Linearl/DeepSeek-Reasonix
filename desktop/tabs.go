@@ -2709,6 +2709,15 @@ func (a *App) openTopicTabWithActivation(scope, workspaceRoot, topicID, sessionP
 			actualRoot = boundRoot
 		}
 	}
+	// tl1793: 携带 topic 身份、活目录与跨 scope 都找不到会话文件的打开，若
+	// 该 topic 的会话桶躺在回收站里（归档已完成、注册行未清或同族另有活
+	// 行），新建分支会铸出一条 0 字节投影+继承 topic 标题的空壳——用户看到
+	// 的是「原始对话变空壳」（20261124 真机：空壳 .jsonl 0 字节、无事件日
+	// 志、meta 继承原对话名）。此处拒绝新建并明说去向；真新话题在回收站无
+	// 同 topic 证据，新建语义零变化。
+	if strings.TrimSpace(sessionPath) == "" && topicArchivedInTrashDirs(a.knownSessionDirs(), topicID) {
+		return TabMeta{}, errTopicOpenArchived
+	}
 	tr.mark("resolve")
 	releaseAdmission, err := a.beginProjectRuntimeAdmission(scope, actualRoot)
 	if err != nil {
