@@ -6723,6 +6723,7 @@ export default function App() {
               modelLabel={state.meta?.label ?? t("status.connecting")}
               imageInputEnabled={state.meta?.imageInputEnabled !== false}
               audioInputEnabled={state.meta?.audioInputEnabled === true}
+              videoInputEnabled={state.meta?.videoInputEnabled === true}
               imageUnderstandingEnabled={state.meta?.visionFallbackEnabled === true}
               attachmentInputEnabled={!remoteSurfaceActive} pinnedFiles={state.meta?.pinnedFiles}
               capsuleJobs={state.jobs}

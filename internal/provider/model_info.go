@@ -15,6 +15,12 @@ const (
 	// shape (input_audio parts); it must never touch tools or the system
 	// prompt, so capability caches keep prefix bytes stable.
 	ModalityAudio ModelModality = "audio"
+	// ModalityVideo marks models that accept file video input (tl1767). Same
+	// contract as audio: the modality only ever widens the user-turn content
+	// shape (video_url parts on the adapters that declare a video wire); it
+	// must never touch tools or the system prompt, so capability caches keep
+	// prefix bytes stable.
+	ModalityVideo ModelModality = "video"
 )
 
 // ModelInfo is the adapter-owned, model-level capability metadata. A nil

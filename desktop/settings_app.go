@@ -112,6 +112,10 @@ type ProviderModelCapabilityView struct {
 	// e.g. the Anthropic protocol) plus the reason for the block.
 	AudioInputEnableAllowed bool   `json:"audioInputEnableAllowed"`
 	AudioInputBlockReason   string `json:"audioInputBlockReason,omitempty"`
+	// tl1767: protocol-level video gate (false hard-blocks the checkbox, e.g.
+	// the Anthropic protocol) plus the reason for the block.
+	VideoInputEnableAllowed bool   `json:"videoInputEnableAllowed"`
+	VideoInputBlockReason   string `json:"videoInputBlockReason,omitempty"`
 }
 
 type ProviderModelCatalogUpdate struct {
@@ -171,6 +175,7 @@ type ProviderModelOverrideView struct {
 	DefaultEffort     string   `json:"defaultEffort"`
 	Vision            *bool    `json:"vision"`
 	Audio             *bool    `json:"audio"`
+	Video             *bool    `json:"video"`
 	ContextWindow     int      `json:"contextWindow,omitempty"`
 	MaxOutputTokens   int      `json:"maxOutputTokens,omitempty"`
 }
@@ -1200,6 +1205,7 @@ func providerModelOverridesForView(overrides map[string]config.ProviderModelOver
 			DefaultEffort:     ov.DefaultEffort,
 			Vision:            ov.Vision,
 			Audio:             ov.Audio,
+			Video:             ov.Video,
 			ContextWindow:     ov.ContextWindow,
 			MaxOutputTokens:   ov.MaxOutputTokens,
 		})
@@ -1235,10 +1241,11 @@ func providerModelOverridesForSave(overrides []ProviderModelOverrideView, models
 			DefaultEffort:     strings.TrimSpace(item.DefaultEffort),
 			Vision:            item.Vision,
 			Audio:             item.Audio,
+			Video:             item.Video,
 			ContextWindow:     contextWindow,
 			MaxOutputTokens:   maxOutputTokens,
 		}
-		if strings.TrimSpace(ov.ReasoningProtocol) == "" && len(ov.SupportedEfforts) == 0 && strings.TrimSpace(ov.DefaultEffort) == "" && ov.Vision == nil && ov.Audio == nil && ov.ContextWindow == 0 && ov.MaxOutputTokens == 0 {
+		if strings.TrimSpace(ov.ReasoningProtocol) == "" && len(ov.SupportedEfforts) == 0 && strings.TrimSpace(ov.DefaultEffort) == "" && ov.Vision == nil && ov.Audio == nil && ov.Video == nil && ov.ContextWindow == 0 && ov.MaxOutputTokens == 0 {
 			continue
 		}
 		out[model] = ov
@@ -1405,6 +1412,7 @@ func modelCapabilityView(capability config.ResolvedModelCapability) ProviderMode
 		AutomaticState: string(capability.AutomaticState), AutomaticSource: string(capability.AutomaticSource),
 		ImageInputEnableAllowed: capability.ImageInputEnableAllowed, ImageInputBlockReason: capability.ImageInputBlockReason,
 		AudioInputEnableAllowed: capability.AudioInputEnableAllowed, AudioInputBlockReason: capability.AudioInputBlockReason,
+		VideoInputEnableAllowed: capability.VideoInputEnableAllowed, VideoInputBlockReason: capability.VideoInputBlockReason,
 	}
 }
 

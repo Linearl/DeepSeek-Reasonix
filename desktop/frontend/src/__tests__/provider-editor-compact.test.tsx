@@ -37,7 +37,14 @@ assert.equal(numbers[0].value,'','cancel restored inherited context');
 await change(numbers[0],'128000');await change(numbers[1],'4096');
 const image=dialog().querySelector<HTMLInputElement>('aside input:not(:disabled)')!;
 await act(async()=>image.click());
-assert.equal(dialog().querySelectorAll('aside input:disabled').length,4,'text is locked; video and PDF unavailable');
+// tl1767: the video chip joins the editable trio (MODEL gate driven; the
+// capability probe is absent here, so unknown stays editable) — only the
+// text in/out lock and the PDF chip stay disabled.
+const videoLabel = Array.from(dialog().querySelectorAll('aside label')).find((label) => label.textContent?.trim() === 'Video')!;
+const videoToggle = videoLabel.querySelector<HTMLInputElement>('input')!;
+assert.ok(videoToggle, 'tl1767: video input chip present');
+assert.ok(!videoToggle.disabled, 'tl1767: video input checkbox editable');
+assert.equal(dialog().querySelectorAll('aside input:disabled').length,3,'text in/out locked; PDF unavailable (tl1767 unlocked video)');
 await submit();
 assert.equal(save.disabled,false);
 assert.equal(document.querySelector('.provider-context-badge')!.textContent,'128K');

@@ -2863,9 +2863,11 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	bootTime.mark("agent")
 	imageEnabled := modelCapabilities.Resolve(entry).State == config.CapabilitySupported
 	audioEnabled := modelCapabilities.Resolve(entry).AudioInputEnabled
+	videoEnabled := modelCapabilities.Resolve(entry).VideoInputEnabled
 	if infoProvider, ok := execProv.(provider.ModelInfoProvider); ok {
 		imageEnabled = infoProvider.ModelInfo().SupportsInput(provider.ModalityImage)
 		audioEnabled = infoProvider.ModelInfo().SupportsInput(provider.ModalityAudio)
+		videoEnabled = infoProvider.ModelInfo().SupportsInput(provider.ModalityVideo)
 	}
 	imageSnapshot := config.ModelCapabilitySnapshot(cfg, modelCapabilities)
 	ctrlOpts := control.Options{
@@ -2873,6 +2875,7 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		ModelSettingsCurrent:   runtimeModelSettingsReader(root, modelName, modelRef, opts.ModelSettings),
 		FrozenImageInput:       &imageEnabled,
 		FrozenAudioInput:       &audioEnabled,
+		FrozenVideoInput:       &videoEnabled,
 		ImageCapabilityChanged: runtimeImageCapabilityReader(root, modelName, imageSnapshot, opts.ModelSettings),
 		TaskBudget:             taskBudgetFromConfig(cfg),
 		GoalTokenBudget:        cfg.Agent.GoalTokenBudget,

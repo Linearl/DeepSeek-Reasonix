@@ -100,8 +100,10 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	// Task 1008: audio rides the same boot-injected flag. When the resolver
 	// supplied ModelInfo it already folded the user's per-model override into
 	// the modality set, so SupportsInput(audio) is the authority — mirroring
-	// how vision re-derives from SupportsInput(image) below.
+	// how vision re-derives from SupportsInput(image) below. tl1767: video
+	// rides the same channel.
 	audio, _ := cfg.Extra["audio"].(bool)
+	video, _ := cfg.Extra["video"].(bool)
 	officialDeepSeek := IsDeepSeek(cfg.BaseURL)
 	modelInfo := provider.ModelInfo{ID: cfg.Model, InputModalities: []provider.ModelModality{provider.ModalityText}}
 	if cfg.ModelInfo != nil {
@@ -111,20 +113,26 @@ func New(cfg provider.Config) (provider.Provider, error) {
 	if cfg.ModelInfo != nil {
 		vision = modelInfo.SupportsInput(provider.ModalityImage)
 		audio = modelInfo.SupportsInput(provider.ModalityAudio)
+		video = modelInfo.SupportsInput(provider.ModalityVideo)
 	}
 	// Keep known text-only models blocked; unknown models use declared capability.
 	vision = DeepSeekImageInputAllowed(officialDeepSeek, chatURL, cfg.Model, cfg.ModelInfo != nil, vision)
-	// Rebuild the declared modality set from the final gates, preserving audio:
-	// a vision-off model keeps its audio modality (and vice versa). The set is
-	// capability metadata only — it never reaches the wire unless an attached
-	// payload needs it, so request bytes stay stable across capability states.
+	// Rebuild the declared modality set from the final gates, preserving audio
+	// and video: a vision-off model keeps its audio/video modalities (and vice
+	// versa). The set is capability metadata only — it never reaches the wire
+	// unless an attached payload needs it, so request bytes stay stable across
+	// capability states.
 	audioDeclared := modelInfo.SupportsInput(provider.ModalityAudio)
+	videoDeclared := modelInfo.SupportsInput(provider.ModalityVideo)
 	rebuilt := []provider.ModelModality{provider.ModalityText}
 	if vision {
 		rebuilt = append(rebuilt, provider.ModalityImage)
 	}
 	if audioDeclared {
 		rebuilt = append(rebuilt, provider.ModalityAudio)
+	}
+	if videoDeclared {
+		rebuilt = append(rebuilt, provider.ModalityVideo)
 	}
 	modelInfo.InputModalities = rebuilt
 	visionDetail, _ := cfg.Extra["vision_detail"].(string)
@@ -311,6 +319,8 @@ func New(cfg provider.Config) (provider.Provider, error) {
 		thinkingType:    thinkingType,
 		vision:          vision,
 		audio:           audio,
+		video:           video,
+		videoWire:       video && zhipu, // tl1767 ADAPTER gate: only the Zhipu/GLM chat protocol has an evidenced video_url wire; everyone else textifies (fail-closed)
 		modelInfo:       modelInfo,
 		visionDetail:    visionDetail,
 		maxOutputTokens: maxOutputTokens,
@@ -385,6 +395,8 @@ type client struct {
 	thinkingType    string // explicit `thinking` config override (enabled|disabled); "" = no override
 	vision          bool   // model accepts image input — embed attached images as image_url parts
 	audio           bool   // model accepts audio input (task 1008) — embed attached audio as input_audio parts
+	video           bool   // model accepts video input (tl1767) — MODEL gate from the declared modality set
+	videoWire       bool   // tl1767 ADAPTER gate: the endpoint's protocol can carry video (video_url) — off = project video to the fail-closed text placeholder
 	modelInfo       provider.ModelInfo
 	visionDetail    string        // image_url detail hint (low|high); "" = auto/omit
 	maxOutputTokens int           // resolved total output budget; <=0 omits the optional field
@@ -917,9 +929,11 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 		}
 		switch {
 		// Task 1008: audio-bearing user turns get an array part even without
-		// images. The branch fires only when m.Audio is non-empty, so every
-		// audio-free message keeps the exact historical byte shape below.
-		case m.Role == provider.RoleUser && len(m.Audio) > 0:
+		// images; tl1767 extends the same branch to video (the two fields are
+		// independent gates on one user-turn content shape). The branch fires
+		// only when m.Audio or m.Video is non-empty, so every audio-free and
+		// video-free message keeps the exact historical byte shape below.
+		case m.Role == provider.RoleUser && (len(m.Audio) > 0 || len(m.Video) > 0):
 			var parts []chatContentPart
 			if c.vision && len(m.Images) > 0 {
 				parts = imageContentParts(m.Content, m.Images, c.visionDetail)
@@ -927,6 +941,7 @@ func (c *client) buildRequest(req provider.Request) chatRequest {
 				parts = append(parts, chatContentPart{Type: "text", Text: m.Content})
 			}
 			parts = append(parts, audioContentParts(m.Audio)...)
+			parts = append(parts, c.videoContentParts(m.Video)...)
 			cm.Content = parts
 		case c.vision && m.Role == provider.RoleUser && len(m.Images) > 0:
 			cm.Content = imageContentParts(m.Content, m.Images, c.visionDetail)
@@ -1357,6 +1372,17 @@ type chatContentPart struct {
 	// InputAudio carries the task-1008 inline audio part. omitempty keeps the
 	// key out of every non-audio part, so existing request bytes are unchanged.
 	InputAudio *chatInputAudio `json:"input_audio,omitempty"`
+	// VideoURL carries the tl1767 inline video part (Zhipu/GLM video_url wire).
+	// omitempty keeps the key out of every non-video part, so existing request
+	// bytes are unchanged.
+	VideoURL *chatVideoURL `json:"video_url,omitempty"`
+}
+
+// chatVideoURL is the Zhipu/GLM video_url payload. URL carries the full data
+// URL (data:video/mp4;base64,…) or a public http(s) video URL, matching the
+// GLM chat-completions video_url shape.
+type chatVideoURL struct {
+	URL string `json:"url"`
 }
 
 // chatInputAudio is the OpenAI-compatible input_audio payload. Data is the
@@ -1407,6 +1433,27 @@ func audioContentParts(audio []string) []chatContentPart {
 			continue
 		}
 		parts = append(parts, chatContentPart{Type: "input_audio", InputAudio: &chatInputAudio{Data: ref, Format: format}})
+	}
+	return parts
+}
+
+// videoContentParts turns inline video data URLs into wire content parts
+// (tl1767). The double gate decides the shape:
+//   - videoWire on (MODEL gate AND the Zhipu/GLM video_url protocol): one
+//     video_url part per ref.
+//   - videoWire off: the fail-closed projection (zcode transform.ts:242
+//     unsupportedInputMediaText 口径) — one honest text placeholder per ref.
+//     The request never fails; the model is told the bytes are not there.
+func (c *client) videoContentParts(videos []string) []chatContentPart {
+	parts := make([]chatContentPart, 0, len(videos))
+	if c.videoWire {
+		for _, ref := range videos {
+			parts = append(parts, chatContentPart{Type: "video_url", VideoURL: &chatVideoURL{URL: ref}})
+		}
+		return parts
+	}
+	for range videos {
+		parts = append(parts, chatContentPart{Type: "text", Text: provider.VideoWireUnsupportedNote})
 	}
 	return parts
 }

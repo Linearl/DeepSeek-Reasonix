@@ -136,6 +136,40 @@ func SaveAudioAttachmentDataURLIn(base, origName, dataURL string) (string, error
 	return saveAttachmentBytesInRoot(base, ext, raw)
 }
 
+// SaveVideoAttachmentDataURL stores a tl1767 video attachment under
+// base/.reasonix/attachments. Like the audio path it validates the accepted
+// extensions and enforces the provider's 50 MB inline ceiling, so an mp4
+// masquerading as .txt is rejected rather than silently unsendable at the
+// construction layer.
+func SaveVideoAttachmentDataURL(origName, dataURL string) (string, error) {
+	return SaveVideoAttachmentDataURLIn(".", origName, dataURL)
+}
+
+// SaveVideoAttachmentDataURLIn is the root-scoped variant of
+// SaveVideoAttachmentDataURL (same base semantics as SaveAudioAttachmentDataURLIn).
+func SaveVideoAttachmentDataURLIn(base, origName, dataURL string) (string, error) {
+	const marker = ";base64,"
+	if !strings.HasPrefix(dataURL, "data:") || !strings.Contains(dataURL, marker) {
+		return "", fmt.Errorf("unsupported pasted video file")
+	}
+	if !provider.IsVideoAttachmentPath(origName) {
+		return "", fmt.Errorf("video attachment must be one of: %s (got %q)", strings.Join(provider.VideoAttachmentExts, ", "), filepath.Ext(origName))
+	}
+	_, after, ok := strings.Cut(dataURL, marker)
+	if !ok {
+		return "", fmt.Errorf("unsupported pasted video file")
+	}
+	raw, err := base64.StdEncoding.DecodeString(after)
+	if err != nil {
+		return "", fmt.Errorf("decode pasted video file: %w", err)
+	}
+	if len(raw) == 0 || len(raw) > provider.MaxVideoAttachmentBytes {
+		return "", fmt.Errorf("video attachment must be between 1 byte and 50 MB")
+	}
+	ext := strings.ToLower(filepath.Ext(origName))
+	return saveAttachmentBytesInRoot(base, ext, raw)
+}
+
 func SaveImageDataURL(dataURL string) (string, error) {
 	return SaveImageDataURLIn(".", dataURL)
 }
@@ -279,6 +313,31 @@ func SaveAudioAttachmentFileIn(base, path string) (string, error) {
 	}
 	if len(raw) == 0 || len(raw) > provider.MaxAudioAttachmentBytes {
 		return "", fmt.Errorf("audio attachment must be between 1 byte and 50 MB")
+	}
+	return saveAttachmentBytesInRoot(base, strings.ToLower(filepath.Ext(path)), raw)
+}
+
+// SaveVideoAttachmentFileIn stores a tl1767 video file dropped from the OS
+// under base/.reasonix/attachments, with the same 50 MB ceiling and extension
+// whitelist as the pasted-video path (the generic 25 MB file cap does not fit
+// inline video).
+func SaveVideoAttachmentFileIn(base, path string) (string, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("attachment path must not be a symlink")
+	}
+	if info.IsDir() || !provider.IsVideoAttachmentPath(path) {
+		return "", fmt.Errorf("not an accepted video attachment")
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	if len(raw) == 0 || len(raw) > provider.MaxVideoAttachmentBytes {
+		return "", fmt.Errorf("video attachment must be between 1 byte and 50 MB")
 	}
 	return saveAttachmentBytesInRoot(base, strings.ToLower(filepath.Ext(path)), raw)
 }

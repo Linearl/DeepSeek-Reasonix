@@ -1323,6 +1323,8 @@ export interface Meta extends RemoteSessionMetaFields {
   imageInputEnabled?: boolean;
   /** 任务 1008：当前模型接受直接音频输入时才放开 composer 音频附件入口。 */
   audioInputEnabled?: boolean;
+  /** tl1767：当前模型接受直接视频输入时才放开 composer 视频附件入口。 */
+  videoInputEnabled?: boolean;
   visionFallbackEnabled?: boolean;
   autoApproveTools?: boolean;
   bypass?: boolean; // legacy JSON key for YOLO/full-access tool auto-approval
@@ -2253,6 +2255,9 @@ export interface ProviderModelCapabilityView {
   // 任务 1008：音频输入的协议门（false=硬置灰，如 Anthropic 协议）与原因。
   audioInputEnableAllowed?: boolean;
   audioInputBlockReason?: string;
+  // tl1767：视频输入的协议门（false=硬置灰，如 Anthropic 协议）与原因。
+  videoInputEnableAllowed?: boolean;
+  videoInputBlockReason?: string;
   model: string;
   inputModalities: string[];
   state: "supported" | "unsupported" | "unknown" | string;
@@ -2274,6 +2279,8 @@ export interface ProviderModelOverrideView {
   vision?: boolean | null;
   /** 任务 1008：音频输入三态（null=auto，跟随能力探测）。 */
   audio?: boolean | null;
+  /** tl1767：视频输入三态（null=auto，跟随能力探测）。 */
+  video?: boolean | null;
   contextWindow?: number;
   maxOutputTokens?: number;
 }

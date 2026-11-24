@@ -80,7 +80,11 @@ func TestNormalizeInputModalitiesAcceptsAudio(t *testing.T) {
 	if len(got) != 3 || got[0] != provider.ModalityText || got[1] != provider.ModalityAudio || got[2] != provider.ModalityImage {
 		t.Fatalf("normalize = %v, want declaration order [text audio image]", got)
 	}
-	if normalizeInputModalities([]provider.ModelModality{"text", "video"}) != nil {
+	// tl1767: video joins the accepted declaration channel.
+	if normalizeInputModalities([]provider.ModelModality{"text", "video", "video"}) == nil {
+		t.Fatal("video declarations must survive normalization")
+	}
+	if normalizeInputModalities([]provider.ModelModality{"text", "hologram"}) != nil {
 		t.Fatal("unknown modalities must still poison the entry")
 	}
 }

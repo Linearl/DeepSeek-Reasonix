@@ -303,6 +303,11 @@ func (c *client) Stream(ctx context.Context, req provider.Request) (<-chan provi
 	if err := provider.RejectAudioIfPresent(c.name, c.model, "audio input is not built for the Responses protocol yet", req.Messages); err != nil {
 		return nil, err
 	}
+	// tl1767: video takes the fail-closed path — the Responses protocol has no
+	// video content part, so inline video is projected to an honest text
+	// placeholder instead of failing the request (zcode transform.ts:242
+	// unsupportedInputMediaText 口径).
+	req.Messages = provider.TextifyVideoAttachments(req.Messages)
 	requestCtx := provider.WithRequestAttemptCounter(ctx)
 	body, usedPrevious, wireMessages := c.buildRequestBody(req)
 	resp, err := c.send(requestCtx, body)

@@ -5,7 +5,8 @@ import type { ProviderModelOverrideView } from "./types";
 // 取值完全同构，弹窗 apply 直接落这里，避免两套草稿形状互转。
 // Task 1053: `efforts` 是可选的模型级 effort 词表声明；缺省（undefined，来自
 // 尚未认识该字段的调用方）保持已存词表不动。
-export type ModelDraft = { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; efforts?: string[] };
+// tl1767: `video` 加入三态（null=auto），与 audio 同构。
+export type ModelDraft = { model: string; contextWindow: string; maxOutputTokens: number; vision: boolean | null; audio: boolean | null; video?: boolean | null; efforts?: string[] };
 
 /** Validate explicit overrides without turning an inherited value into a guessed limit.
  *  tl 1104: 上区弹窗校验口径收紧——上下文 / 输出上限必须走数字输入（0 = 未设 = 继承，
@@ -33,7 +34,7 @@ export function applyModelDraft(overrides: ProviderModelOverrideView[], draft: M
   const next: ProviderModelOverrideView = {
     reasoningProtocol: "", supportedEfforts: [], defaultEffort: "", ...previous,
     model: draft.model.trim(), contextWindow: Number(draft.contextWindow) || 0, maxOutputTokens: Number(draft.maxOutputTokens) || 0,
-    vision: draft.vision, audio: draft.audio,
+    vision: draft.vision, audio: draft.audio, video: draft.video ?? null,
   };
   // Task 1053: the model dialog now carries a per-model effort vocabulary.
   // An absent `efforts` array (callers that predate the field) keeps the

@@ -21,6 +21,7 @@ func (c *Controller) resolveTurnImages(line string) (userImages, imageCandidates
 func (c *Controller) prepareOrchestratedTurnImages(turn orchestratedTurn) orchestratedTurn {
 	turn.userImages, turn.imageCandidates = c.resolveTurnImages(turn.imageReferenceInput())
 	turn.userAudio = c.resolveTurnAudio(turn.imageReferenceInput())
+	turn.userVideo = c.resolveTurnVideo(turn.imageReferenceInput())
 	turn.imagesResolved = true
 	return turn
 }
@@ -52,10 +53,25 @@ func (c *Controller) audioForOrchestratedTurn(ctx context.Context, turn orchestr
 	return c.resolveTurnAudio(turn.imageReferenceInput())
 }
 
+// videoForOrchestratedTurn mirrors audioForOrchestratedTurn for the tl1767
+// video attachments. A Goal continuation reuses the turn's resolved video
+// (the visible content belongs to that visible turn); a fresh turn resolves
+// from the reference line.
+func (c *Controller) videoForOrchestratedTurn(ctx context.Context, turn orchestratedTurn) []string {
+	if turn.imagesResolved {
+		return turn.userVideo
+	}
+	if turn.goalContinuation != nil {
+		return turn.userVideo
+	}
+	return c.resolveTurnVideo(turn.imageReferenceInput())
+}
+
 func (c *Controller) withTurnImages(ctx context.Context, line string) context.Context {
 	userImages, imageCandidates := c.resolveTurnImages(line)
 	ctx = agent.WithUserImages(ctx, userImages)
 	ctx = agent.WithUserAudio(ctx, c.resolveTurnAudio(line))
+	ctx = agent.WithUserVideo(ctx, c.resolveTurnVideo(line))
 	return agent.WithSubagentImageCandidates(ctx, imageCandidates)
 }
 

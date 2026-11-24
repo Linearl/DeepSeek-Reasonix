@@ -36,6 +36,8 @@ assert.deepEqual(result.supportedEfforts, ["high"]);
 assert.equal(result.contextWindow, 0);
 assert.equal(result.maxOutputTokens, -1);
 assert.equal(result.vision, null);
+// tl1767: an absent video draft field means auto (null) — same three-state shape as audio.
+assert.equal(result.video, null);
 // tl 1104: 音频三态随弹窗应用落地，且不动其它 override 字段。
 const audioApplied = applyModelDraft([{ ...override, audio: false }], { model: "existing", contextWindow: "32768", maxOutputTokens: 4096, vision: null, audio: true }, "existing")[0];
 assert.equal(audioApplied.audio, true);
@@ -107,12 +109,21 @@ const audioToggle = audioLabel!.querySelector<HTMLInputElement>("input")!;
 assert.ok(!audioToggle.disabled, "audio input checkbox editable");
 await act(async () => { audioToggle.click(); });
 assert.equal(audioToggle.checked, true);
+// tl1767: the video chip joins the editable capability trio (MODEL gate
+// driven; no capability preview here, so unknown stays editable).
+const videoLabel = Array.from(dialog()!.querySelectorAll("aside label")).find((label) => label.textContent?.trim() === "Video");
+assert.ok(videoLabel, "tl1767: video input entry present");
+const videoToggle = videoLabel!.querySelector<HTMLInputElement>("input")!;
+assert.ok(!videoToggle.disabled, "tl1767: video input checkbox editable");
+await act(async () => { videoToggle.click(); });
+assert.equal(videoToggle.checked, true);
 assert.equal(dialog()!.querySelector('[data-testid="high-speed-model-toggle"]'), null, "high-speed entry stays hidden (upper zone owns the 318.1 master switch)");
 const contextInput = dialog()!.querySelectorAll<HTMLInputElement>('input[type="number"]')[0];
 await fill(contextInput, "128000");
 await submit();
 assert.equal(provider.modelOverrides?.find((m) => m.model === "existing")?.contextWindow, 128000);
 assert.equal(provider.modelOverrides?.find((m) => m.model === "existing")?.audio, true, "audio override lands with apply");
+assert.equal(provider.modelOverrides?.find((m) => m.model === "existing")?.video, true, "tl1767: video override lands with apply");
 assert.equal(provider.modelOverrides?.find((m) => m.model === "existing")?.reasoningProtocol, "kimi", "unrelated reasoning fields survive the dialog apply");
 
 // Escape 关闭弹窗且不落草稿（ProviderModelDialog 的原生 cancel 语义）。

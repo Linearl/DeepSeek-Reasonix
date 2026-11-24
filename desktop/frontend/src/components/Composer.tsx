@@ -317,6 +317,26 @@ function hasAudioAttachments(items: Attachment[]): boolean {
   return items.some((attachment) => Boolean(audioAttachmentExt(attachmentName(attachment))));
 }
 
+// tl1767：视频附件按路径扩展名识别（与音频同构，MIME 在拖拽/粘贴入口不可靠）。
+const VIDEO_ATTACHMENT_EXTS = ["mp4", "mov", "webm", "mkv", "avi"];
+const VIDEO_ATTACHMENT_MAX_BYTES = 50 * 1024 * 1024;
+// 与音频同口径：>4MiB 软提醒不阻断——视频内嵌随请求走，同阈值提示。
+const VIDEO_SOFT_REMIND_BYTES = 4 * 1024 * 1024;
+
+function videoAttachmentExt(name: string): string {
+  const dot = name.lastIndexOf(".");
+  const ext = dot >= 0 ? name.slice(dot + 1).toLowerCase() : "";
+  return VIDEO_ATTACHMENT_EXTS.includes(ext) ? ext : "";
+}
+
+function isVideoFile(file: File): boolean {
+  return file.type.startsWith("video/") || Boolean(videoAttachmentExt(file.name));
+}
+
+function hasVideoAttachments(items: Attachment[]): boolean {
+  return items.some((attachment) => Boolean(videoAttachmentExt(attachmentName(attachment))));
+}
+
 function displayRefName(name: string): string {
   return name.replace(/[\[\]\(\)\r\n]+/g, " ").replace(/\s+/g, " ").trim() || "attachment";
 }
@@ -628,6 +648,7 @@ export function Composer({
   imageInputEnabled = true,
   imageUnderstandingEnabled = false,
   audioInputEnabled = true,
+  videoInputEnabled = true,
   attachmentInputEnabled = true,
   tabId, turnId,
   effort,
@@ -762,6 +783,8 @@ export function Composer({
   imageInputEnabled?: boolean;
   /** 任务 1008：当前模型接受直接音频输入时才走音频附件保存链。 */
   audioInputEnabled?: boolean;
+  /** tl1767：当前模型接受直接视频输入时才走视频附件保存链。 */
+  videoInputEnabled?: boolean;
   /** True when text-only image turns are preprocessed by a configured vision model. */
   imageUnderstandingEnabled?: boolean;
   /** False for remote sessions because local filesystem paths are not portable to Serve. */
@@ -3129,6 +3152,10 @@ export function Composer({
     if (!audioInputEnabled && hasAudioAttachments(attachmentsRef.current)) {
       showToast(t("composer.audioInputDisabled"), "warn");
     }
+    // tl1767：门未开时视频附件不进请求（后端注记同口径），提交前如实提醒。
+    if (!videoInputEnabled && hasVideoAttachments(attachmentsRef.current)) {
+      showToast(t("composer.videoInputDisabled"), "warn");
+    }
     const currentAttachments = attachmentsRef.current;
     const currentWorkspaceRefs = workspaceRefsRef.current;
     const inlineInvocationCount = trimmedDraft.invocations.filter((invocation) => invocation.command.kind === "skill").length;
@@ -3714,13 +3741,44 @@ export function Composer({
     }
   };
 
+  // tl1767：视频粘贴/拖拽走专用保存链（SavePastedVideo，五格式 + 50MB），
+  // 与音频同构；>4MiB 给软提醒（不阻断）。视频渠道无独立能力时也能附——
+  // 后端注记与 fail-closed 投影保证请求不失败。
+  const attachVideoFiles = async (files: File[], sourceDraftKey: string) => {
+    if (!attachmentInputEnabled) return;
+    if (channelMode) return;
+    const videos = files.filter(isVideoFile);
+    if (videos.length === 0) return;
+    for (const file of videos) {
+      updatePendingPasteForDraft(sourceDraftKey, 1);
+      try {
+        if (file.size > VIDEO_ATTACHMENT_MAX_BYTES) {
+          showToast(t("composer.videoTooLarge"), "warn");
+          continue;
+        }
+        const key = await fileDedupKey(file);
+        if (attachmentSeenInDraft(sourceDraftKey, key)) continue;
+        const dataUrl = await readFileAsDataURL(file);
+        const path = await app.SavePastedVideo(file.name, dataUrl);
+        addAttachmentToDraft(sourceDraftKey, { path, displayName: file.name }, key);
+        if (file.size > VIDEO_SOFT_REMIND_BYTES) showToast(t("composer.videoLargeHint"), "warn");
+      } catch (error) {
+        console.warn("[composer] failed to attach video file", error);
+        showToast(t("composer.attachVideoFailed"), "warn");
+        // non-fatal: a failed video attach must not block normal text input
+      } finally {
+        updatePendingPasteForDraft(sourceDraftKey, -1);
+      }
+    }
+  };
+
   // Non-image pastes (PDFs, docs): the clipboard hands us bytes, not a path, so
   // the kernel stores them and we reference the saved path — attached, not ignored.
   const attachOtherFiles = async (files: File[], sourceDraftKey: string) => {
     if (!attachmentInputEnabled) return;
     // tl1441 ③：普通文件同音频口径——不在群聊六件清单内，群聊态跳过。
     if (channelMode) return;
-    const others = files.filter((f) => !f.type.startsWith("image/") && !isAudioFile(f));
+    const others = files.filter((f) => !f.type.startsWith("image/") && !isAudioFile(f) && !isVideoFile(f));
     if (others.length === 0) return;
     for (const file of others) {
       updatePendingPasteForDraft(sourceDraftKey, 1);
@@ -3745,6 +3803,7 @@ export function Composer({
     const sourceDraftKey = activeDraftKeyRef.current;
     void attachImageFiles(files, sourceDraftKey);
     if (audioInputEnabled) void attachAudioFiles(files, sourceDraftKey);
+    if (videoInputEnabled) void attachVideoFiles(files, sourceDraftKey);
     void attachOtherFiles(files, sourceDraftKey);
   };
 

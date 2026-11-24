@@ -52,6 +52,7 @@ const (
 	refRemoteImage                // an http(s) image URL
 	refFileID                     // a Files API file-api- id
 	refAudio                      // a local audio attachment: @.reasonix/attachments/<file> (task 1008)
+	refVideo                      // a local video attachment: @.reasonix/attachments/<file> (tl1767)
 )
 
 // ref is a resolved @reference found in a submitted line.
@@ -182,6 +183,9 @@ func classifyRef(token string, known map[string]bool, exists func(string) bool) 
 		if isAudioAttachmentRef(token) {
 			return ref{kind: refAudio, path: token, raw: token}, true
 		}
+		if isVideoAttachmentRef(token) {
+			return ref{kind: refVideo, path: token, raw: token}, true
+		}
 		return ref{kind: refFile, path: token, raw: token}, true
 	}
 	if exists(token) {
@@ -206,6 +210,12 @@ func isImageAttachmentRef(token string) bool {
 // (mp3/wav/flac/m4a/ogg) via the shared provider whitelist.
 func isAudioAttachmentRef(token string) bool {
 	return provider.IsAudioAttachmentPath(token)
+}
+
+// isVideoAttachmentRef reports the tl1767 video attachment extensions
+// (mp4/mov/webm/mkv/avi) via the shared provider whitelist.
+func isVideoAttachmentRef(token string) bool {
+	return provider.IsVideoAttachmentPath(token)
 }
 
 // RegisterExternalFolderRef authorizes one dropped directory outside the
@@ -535,6 +545,9 @@ func (c *Controller) detectRefsMode(line string, scopedOnly bool) []ref {
 				}
 				if isAttachmentRef(rel) && isAudioAttachmentRef(rel) {
 					kind = refAudio
+				}
+				if isAttachmentRef(rel) && isVideoAttachmentRef(rel) {
+					kind = refVideo
 				}
 				refs = append(refs, ref{kind: kind, path: rel, raw: tok})
 			}
@@ -882,6 +895,16 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			// workspace) resolves as refFile; reading it as text would inject
 			// binary garbage, so it gets the audio note instead. The actual
 			// bytes reach the provider through resolveInputAudioCandidates.
+			// tl1767: workspace video files take the same honest-note path.
+			if isVideoRef(r) {
+				if err := c.videoRefAvailable(r, baseDir); err != nil {
+					errs = append(errs, "@"+r.raw+" — "+err.Error())
+					appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
+					continue
+				}
+				appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoFileRefNote(r.path, c.videoInputEnabled()))
+				continue
+			}
 			if isAudioRef(r) {
 				if err := c.audioRefAvailable(r, baseDir); err != nil {
 					errs = append(errs, "@"+r.raw+" — "+err.Error())
@@ -926,6 +949,20 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 				continue
 			}
 			appendRefBlock(&b, "audio", `path="`+html.EscapeString(r.path)+`"`, audioAttachmentNote(r.path, c.audioInputEnabled()))
+		case refVideo:
+			// tl1767: the note lands in the user-turn context block only. It
+			// never changes tools or the system prompt, so the video capability
+			// state leaves request prefix bytes untouched.
+			refBaseDir := c.workspaceRoot
+			if r.baseDir != "" {
+				refBaseDir = r.baseDir
+			}
+			if err := c.videoRefAvailable(r, refBaseDir); err != nil {
+				errs = append(errs, "@"+r.raw+" — "+err.Error())
+				appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
+				continue
+			}
+			appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentNote(r.path, c.videoInputEnabled()))
 		case refImage, refRemoteImage, refFileID:
 			// The note has to describe what actually happened. A reference whose
 			// bytes never reach the model must not be announced as "attached as
