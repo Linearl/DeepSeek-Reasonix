@@ -11,6 +11,7 @@ import (
 
 	"reasonix/internal/config"
 	"reasonix/internal/control"
+	"reasonix/internal/event"
 	"reasonix/internal/i18n"
 	"reasonix/internal/repair"
 )
@@ -150,7 +151,18 @@ func (a *App) restorePersistedTabs(ctx context.Context, f desktopTabsFile) []*Wo
 		// Task 49 A2 + 465 (X4 断点 C): the tab entry column and goal-state
 		// sidecar feed the unattended flag, then the task-325 gate has the
 		// final say: a persisted unattended run returns only under yolo.
-		if entry.Autopilot || tabSessionAutopilot(tab.SessionPath) {
+		// tl1795 restore reconcile: the persisted tab entry is the user's last
+		// tier intent — the task-595 switch wrote it when the leave landed. A
+		// goal-state sidecar that still says "unattended" is the earlier run's
+		// marker; resurrecting autopilot from it re-arms the 15s ask
+		// self-answer behind a YOLO composer. The entry (attended) wins; the
+		// stale marker is logged and noticed, not silently obeyed.
+		sidecarAutopilot := tabSessionAutopilot(strings.TrimSpace(entry.SessionPath))
+		restoreReconciledAttended := !entry.Autopilot && sidecarAutopilot
+		if restoreReconciledAttended {
+			slog.Info("[autopilot-restore] reconcile: persisted tab posture is attended; stale unattended sidecar not re-armed",
+				"tab", tab.ID, "session", tab.SessionPath)
+		} else if entry.Autopilot || sidecarAutopilot {
 			if on, maxRuntime, grace, askEnabled, askWait, askAutoContinue := desktopAutopilotDefaults(); on {
 				tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace, tab.autopilotAskTimeoutEnabled, tab.autopilotAskWait, tab.autopilotAskAutoContinue = gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)
 			}
@@ -168,6 +180,11 @@ func (a *App) restorePersistedTabs(ctx context.Context, f desktopTabsFile) []*Wo
 		restoreTabPinnedContext(tab, entry.PinnedFiles)
 		tab.Takeover.Spectator = entry.TakeoverSpectator
 		tab.sink = &tabEventSink{tabID: tab.ID, app: a, ctx: ctx}
+		if restoreReconciledAttended {
+			// tl1795: tell the user why a formerly unattended session came
+			// back attended (best effort — a missing sink drops it).
+			event.EmitEvent(tab.sink, event.Event{Kind: event.Notice, Level: event.LevelInfo, Code: NoticeCodeAutopilotRestoreReconciled, Text: autopilotRestoreReconciledText})
+		}
 		a.publishRestoredTab(tab, releaseAdmission)
 		toBuild = append(toBuild, tab)
 	}

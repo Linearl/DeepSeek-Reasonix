@@ -278,6 +278,10 @@ func (a *App) SetComposerProfileForTab(tabID, collaborationMode, toolApprovalMod
 
 	if autopilotClosed {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
+		// tl1795: the tab-side reverse linkage cleared tab.autopilot; the live
+		// controller must drop its construction-time autopilot posture in the
+		// same switch, or the ask chain keeps the unattended timers armed.
+		dropAutopilotLivePosture(ctrl)
 	}
 	if ctrl != nil {
 		ctrl.SetPlanMode(tabModeHasPlan(mode))
@@ -385,15 +389,22 @@ func (a *App) SetCollaborationModeForTab(tabID, mode string) {
 	slog.Info("[tab-mode] collaboration mode switch", "tab", tabIDForSave, "mode", mode,
 		"autopilot_pre", wasAutopilot, "autopilot_post", autopilotOn, "approval_post", tab.toolApprovalMode)
 	a.mu.Unlock()
-	a.applyCollabModeEffects(tab, tabIDForSave, ctrl, plan, goal, autopilotOn, autopilotRefused, assumedYolo)
+	a.applyCollabModeEffects(tab, tabIDForSave, ctrl, plan, goal, autopilotOn, wasAutopilot, autopilotRefused, assumedYolo)
 }
 
 // applyCollabModeEffects fires the user-visible notices and the controller
 // posture apply for a collaboration-mode switch. Callers have released a.mu.
-func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctrl control.SessionAPI, plan bool, goal string, autopilotOn, autopilotRefused, assumedYolo bool) {
+func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctrl control.SessionAPI, plan bool, goal string, autopilotOn, wasAutopilot, autopilotRefused, assumedYolo bool) {
 	if autopilotRefused {
 		// Task 325: the refusal tells the user exactly which switch to flip.
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotRequiresYolo, autopilotRequiresYoloText)
+	}
+	if wasAutopilot && !autopilotOn {
+		// tl1795: the engagement path can clear tab.autopilot (preference off /
+		// no runtime bound) while a live controller still carries the
+		// construction-time autopilot posture — drop it here too, or the next
+		// ask arms the unattended timers behind an attended tab.
+		dropAutopilotLivePosture(ctrl)
 	}
 	if assumedYolo && autopilotOn {
 		// Task 465 decision record (user-visible half): the tier switch moved
@@ -635,26 +646,33 @@ func (a *App) SetToolApprovalMode(mode string) {
 }
 
 // SetToolApprovalModeForTab returns the pending approval prompt ids the
-// switch auto-allowed (see SetModeForTab).
+// switch auto-allowed (see SetModeForTab). The legacy programmatic writer
+// keeps its silent failure shape (heartbeat callers ignore it); the tier
+// entry below is the fail-fast one (tl1795).
 func (a *App) SetToolApprovalModeForTab(tabID, mode string) []string {
-	return a.setToolApprovalModeForTabInner(tabID, mode, false)
+	drained, _ := a.setToolApprovalModeForTabInner(tabID, mode, false)
+	return drained
 }
 
 // SetApprovalTierForTab is the task-595 four-tier single-select on the
 // approval-posture axis: ask|auto|yolo|autopilot, one click lands the axis
 // exactly on the picked tier. Picking any of the three attended tiers while autopilot holds also leaves autopilot in the same call — on the mode bar the yolo tier is plain yolo, not an autopilot alias — while picking the autopilot tier delegates to the task-465 engagement (auto-assumes yolo). The plan/goal axis rides along untouched. Programmatic writers that must keep (autopilot, yolo) coherent keep using SetToolApprovalModeForTab.
-func (a *App) SetApprovalTierForTab(tabID, tier string) []string {
+// tl1795: the error return is the fail-fast half — a tier switch the backend
+// could not land (tab gone, tab replaced mid-call) must reach the frontend so
+// it rolls its optimistic bare flag back instead of pinning a stale profile
+// against the persisted tab state across the restart window.
+func (a *App) SetApprovalTierForTab(tabID, tier string) ([]string, error) {
 	if strings.ToLower(strings.TrimSpace(tier)) == "autopilot" {
 		a.SetCollaborationModeForTab(tabID, "autopilot")
-		return nil
+		return nil, nil
 	}
 	return a.setToolApprovalModeForTabInner(tabID, tier, true)
 }
 
-func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelect bool) []string {
+func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelect bool) ([]string, error) {
 	tab := a.tabByID(tabID)
 	if tab == nil {
-		return nil
+		return nil, fmt.Errorf("tab is no longer available")
 	}
 	tab.turnStartMu.Lock()
 	defer tab.turnStartMu.Unlock()
@@ -663,7 +681,7 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 	a.mu.Lock()
 	if a.tabs[tab.ID] != tab {
 		a.mu.Unlock()
-		return nil
+		return nil, fmt.Errorf("tab is no longer available")
 	}
 	// Task 806 (P2): capture the before state for the switch log below — the
 	// 2026-10-12 ask 事故的唯一悬案就是"用户从哪条入口把模式切成了什么"无法
@@ -688,6 +706,13 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 	if autopilotClosed && !tierYoloLeave {
 		a.noticeCodeForTab(tabIDForSave, event.LevelWarn, NoticeCodeAutopilotClosedOffYolo, autopilotClosedOffYoloText)
 	}
+	if autopilotClosed {
+		// tl1795: the tab-side leave (595 tier single-select or the 325
+		// off-yolo reverse linkage) must also drop the live controller's
+		// construction-time autopilot posture — the ask chain reads that copy,
+		// and a stale true arms the 15s auto-decide behind an attended tab.
+		dropAutopilotLivePosture(ctrl)
+	}
 	drained := applyTabToolApprovalModeToController(ctrl, mode)
 	a.mu.Lock()
 	if a.tabs[tabIDForSave] == tab {
@@ -705,5 +730,5 @@ func (a *App) setToolApprovalModeForTabInner(tabID, mode string, tierSingleSelec
 		"approval_pre", preApproval, "approval_post", mode,
 		"autopilot_pre", preAutopilot, "autopilot_post", tab.autopilot,
 		"tier_yolo_leave", tierYoloLeave)
-	return drained
+	return drained, nil
 }

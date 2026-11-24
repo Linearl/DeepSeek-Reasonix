@@ -480,6 +480,18 @@ func (g *goalMachine) autopilotDeadlineReached(now time.Time) bool {
 	return g.autopilot && !g.deadline.IsZero() && !now.Before(g.deadline)
 }
 
+// clearAutopilot drops the unattended posture from a live goal machine
+// (tl1795): the desktop tier leave must also stop the goal loop from treating
+// the run as unattended (deadline checks, autopilot pause branches). The goal
+// itself survives — only the unattended semantics clear, same fail direction
+// as the controller flag.
+func (g *goalMachine) clearAutopilot() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.autopilot = false
+	g.deadline = time.Time{}
+}
+
 // stop transitions a running goal to the given terminal status and clears the
 // transient runtime bookkeeping. stopCause is cleared: a host stop is not a
 // safe pause. cause (tl1459) is required and recorded as lastStopCause; left

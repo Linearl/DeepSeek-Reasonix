@@ -643,7 +643,7 @@ func (o *turnOrchestrator) continueGoal(ctx context.Context, expectedContinuatio
 // unattendedRun reports whether nobody can answer a prompt for this run (task
 // 49 A1 autopilot). An unattended run has no next user turn, so a pause only a
 // human could lift is a stop, not a wait (task 109 B5).
-func (c *Controller) unattendedRun() bool { return c != nil && c.autopilot }
+func (c *Controller) unattendedRun() bool { return c != nil && c.autopilot.Load() }
 
 // goalTurnErrorAbsorbable reports whether the Goal FSM owns this turn error.
 func goalTurnErrorAbsorbable(err error) bool {
