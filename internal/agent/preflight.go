@@ -461,6 +461,13 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		a.kickProjectionRebuild("sidecar_missing")
 		return
 	}
+	// tl1785 伴生修复: restore the process-local transcript version trail from
+	// the sidecar's monotonic record BEFORE any validation branch, so every
+	// outcome (restored, dropped, kept-stale) keeps saving a monotonic
+	// transcript_version instead of collapsing to 0 after a restart.
+	if a.sess.conversation != nil {
+		a.sess.conversation.FloorTranscriptVersion(max(st.TranscriptVersion, st.Projection.TranscriptVersion))
+	}
 	var msgs, preRepair []provider.Message
 	if a.sess.conversation != nil {
 		msgs, preRepair = a.sess.conversation.projectionValidationMessages()
@@ -560,6 +567,7 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		failReason = projectionInvalidReason(st, msgs)
 	}
 	valid := failReason == projectionFailNone
+	keptStale := false
 	if !valid && len(st.Projection.Messages) > 0 {
 		// tl1651 打点 a/b: attribute the drop BEFORE the body is discarded —
 		// the diagnosis reads st's stored hashes. hash_mismatch additionally
@@ -592,33 +600,75 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 				"sidecar_updated_at", st.UpdatedAt.UTC().Format(time.RFC3339),
 				"canonical_msgs", len(msgs))
 		}
-		// Keep blocked receipts / telemetry; drop unusable projection body.
-		// tl1203: first-load bodies that fail verification still drop — the
-		// stale-serving branch only trusts folds this process installed. The
-		// kick below re-arms the background rebuild for the gap.
-		//
-		// tl1644: name WHICH criterion failed and the readings behind it. The
-		// 20261116 新14 incident dropped a healthy-applied sidecar here
-		// (restart after a silent on-disk prefix rewrite) and the fallback
-		// episode ended in a 719-message overflow diet; every reading this log
-		// carries had to be reverse-engineered from the pre-repair backup. The
-		// drop itself stays fail-closed — only the visibility is new.
-		mismatch := projectionInvalidReason(st, msgs)
-		n := st.Projection.CoveredCount
-		slog.Warn("agent: projection sidecar body dropped — covered-prefix verification failed",
-			"writer", SessionWriterID(),
-			"mismatch", mismatch,
-			"covered_count", n,
-			"projection_version", st.Projection.ProjectionVersion,
-			"transcript_version", st.TranscriptVersion,
-			"canonical_messages", len(msgs),
-			"stored_prefix_hash", shortHash8(st.Projection.CoveredPrefixHash),
-			"current_prefix_hash", shortHash8(coveredPrefixHash(msgs, n)),
-			"stored_pinned_hash", shortHash8(st.Projection.PinnedContextHash),
-			"current_pinned_hash", shortHash8(pinnedContextCoverageHash(msgs, n)),
-			"schema_version", st.SchemaVersion,
-			"session", filepath.Base(a.sess.path))
-		st.Projection = ContextProjection{}
+		// tl1785 降级保留: a hash_mismatch attributable to the transcript-repair
+		// rewrite family (NormalizeSession repairs accumulated across loads, or
+		// an installer upgrade's normalization rules — the tl1116 recurrence
+		// family) keeps the body marked stale instead of discarding it. The
+		// stored hash is NOT re-anchored and the sidecar is NOT republished
+		// (pure-read load preserved); the body stays content-invalid, so it
+		// serves only through the tl1203 bounded stale splice and the forced
+		// rebuild below replaces it with a fresh, hash-aligned fold. Every
+		// non-attributable shape still drops fail-closed.
+		diverging := []int(nil)
+		if failReason == projectionFailHashMismatch {
+			diverging = projectionRepairDriftKeep(st, msgs)
+		}
+		if len(diverging) > 0 {
+			keptStale = true
+			n := st.Projection.CoveredCount
+			roles := make([]string, 0, len(diverging))
+			for _, i := range diverging {
+				roles = append(roles, string(msgs[i].Role))
+			}
+			slog.Warn("agent: projection sidecar body kept stale — repair-drift covered-prefix mismatch",
+				"writer", SessionWriterID(),
+				"mismatch", failReason,
+				"keep_reason", "repair_drift_family",
+				"covered_count", n,
+				"projection_version", st.Projection.ProjectionVersion,
+				"transcript_version", st.TranscriptVersion,
+				"canonical_messages", len(msgs),
+				"stored_prefix_hash", shortHash8(st.Projection.CoveredPrefixHash),
+				"current_prefix_hash", shortHash8(coveredPrefixHash(msgs, n)),
+				"diverging_slots", len(diverging),
+				"first_diverging_index", diverging[0],
+				"diverging_roles", strings.Join(roles, "+"),
+				"load_repair_transcript", len(preRepair) > 0,
+				"schema_version", st.SchemaVersion,
+				"session", filepath.Base(a.sess.path))
+		} else {
+			// Keep blocked receipts / telemetry; drop unusable projection body.
+			// tl1203: first-load bodies that fail verification still drop — the
+			// stale-serving branch only trusts folds this process installed. The
+			// kick below re-arms the background rebuild for the gap.
+			//
+			// tl1644: name WHICH criterion failed and the readings behind it. The
+			// 20261116 新14 incident dropped a healthy-applied sidecar here
+			// (restart after a silent on-disk prefix rewrite) and the fallback
+			// episode ended in a 719-message overflow diet; every reading this log
+			// carries had to be reverse-engineered from the pre-repair backup. The
+			// drop itself stays fail-closed — only the visibility is new.
+			//
+			// tl1785: the drop remains the default for every shape the new
+			// attribution gates cannot prove — user/system edits, structural
+			// rewrites, missing evidence corpus.
+			mismatch := projectionInvalidReason(st, msgs)
+			n := st.Projection.CoveredCount
+			slog.Warn("agent: projection sidecar body dropped — covered-prefix verification failed",
+				"writer", SessionWriterID(),
+				"mismatch", mismatch,
+				"covered_count", n,
+				"projection_version", st.Projection.ProjectionVersion,
+				"transcript_version", st.TranscriptVersion,
+				"canonical_messages", len(msgs),
+				"stored_prefix_hash", shortHash8(st.Projection.CoveredPrefixHash),
+				"current_prefix_hash", shortHash8(coveredPrefixHash(msgs, n)),
+				"stored_pinned_hash", shortHash8(st.Projection.PinnedContextHash),
+				"current_pinned_hash", shortHash8(pinnedContextCoverageHash(msgs, n)),
+				"schema_version", st.SchemaVersion,
+				"session", filepath.Base(a.sess.path))
+			st.Projection = ContextProjection{}
+		}
 	}
 	a.sess.compactionState = st
 	if valid {
@@ -651,6 +701,14 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 		// tl1651: the kick reason is now the specific fail-path label (the
 		// rebuild episode's log line attributes itself accordingly).
 		a.kickProjectionRebuild(kickReasonFromFail(failReason))
+	}
+	if keptStale {
+		// tl1785: the kept-stale body serves the next view through the tl1203
+		// bounded splice, whose stale branch also forces the rebuild — arming
+		// it here starts the episode one request earlier so the unverified
+		// fold's stale window stays a single episode. staleRebuildArmed's CAS
+		// dedupes against the serve-path kick.
+		a.kickStaleProjectionRebuild()
 	}
 }
 
