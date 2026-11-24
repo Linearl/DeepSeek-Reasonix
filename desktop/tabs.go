@@ -8492,6 +8492,18 @@ func (a *App) updateTopicSessionTitles(topicID, title string) []string {
 				continue
 			}
 			meta.TopicTitle = title
+			// tl1799: the contact directory (agent.scanAddressable /
+			// SessionDirectoryTitle) reads the sidecar with CustomTitle first,
+			// so a session that ever carried a manual title kept showing the
+			// OLD name after a topic rename while the sidebar (registry
+			// authority, task 718) showed the new one — the "通讯录是过时旧名"
+			// report. A topic rename is the latest user intent for the whole
+			// conversation, so converge the custom title instead of leaving a
+			// stale higher-priority value behind. Sessions without one keep
+			// having none (they already follow the topic title).
+			if meta.CustomTitle != "" {
+				meta.CustomTitle = title
+			}
 			err = agent.SaveBranchMetaPreserveUpdatedLocked(match.path, meta)
 			unlock()
 			if err == nil {

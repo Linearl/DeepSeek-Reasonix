@@ -1438,15 +1438,9 @@ func scanAddressable(sessionDir, workspaceRoot string) []sessioncollab.Identity 
 		// 同一 sidecar——err!=nil 已在上面提前返回，此处 found 与
 		// SessionDirectoryTitle 的 err==nil&&found 完全同义，输出逐字节一致。
 		// 实测扫描占收件箱面板冷启动耗时的大头（456 会话 ×2 次 sidecar 读），
-		// 合并后读数减半。
-		title := strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
-		if found {
-			if m.CustomTitle != "" {
-				title = m.CustomTitle
-			} else if m.TopicTitle != "" {
-				title = m.TopicTitle
-			}
-		}
+		// 合并后读数减半。tl1799：派生序收口到 DisplayTitleFromMeta（取名
+		// 约定唯一出处），防止目录各处再各自表述。
+		title := DisplayTitleFromMeta(m, found, sessionPathStem(sessionPath))
 		info := sessioncollab.MetaInfo{
 			Title: title,
 			OK:    true,
@@ -1716,6 +1710,43 @@ func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Iden
 	return sessioncollab.Identity{}, fmt.Errorf("%w: %q is not in the contact directory (use list_addressable_sessions)", sessioncollab.ErrNotFound, ref)
 }
 
+// DisplayTitleFromMeta is THE naming convention for a conversation display
+// name, in one place: the branch-meta custom title, else the topic title, else
+// the file stem. tl1799: the contact directory kept a stale custom title after
+// a topic rename while the sidebar showed the new one, because every surface
+// re-stated the priority (or skipped a field) locally. Every naming site —
+// scanAddressable, SessionDirectoryTitle, get_session_info's self identity,
+// the sidebar's catalog-only derivation — must go through this order.
+//
+// metaFound=false (no sidecar) and a read error both fall through to the stem;
+// the comparison matches the directory's historical byte-for-byte behavior
+// (empty-string checks, no trimming).
+func DisplayTitleFromMeta(meta BranchMeta, metaFound bool, stem string) string {
+	title := stem
+	if metaFound {
+		if meta.CustomTitle != "" {
+			title = meta.CustomTitle
+		} else if meta.TopicTitle != "" {
+			title = meta.TopicTitle
+		}
+	}
+	return title
+}
+
+// SessionPathStem is the transcript file's basename without extension — the
+// naming convention's last fallback. Exported so host-side derivations
+// (tl1799: the desktop clear-custom-title projection) fall back to the exact
+// same bytes the directory would show.
+func SessionPathStem(sessionPath string) string {
+	return sessionPathStem(sessionPath)
+}
+
+// sessionPathStem is the transcript file's basename without extension — the
+// naming convention's last fallback.
+func sessionPathStem(sessionPath string) string {
+	return strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
+}
+
 // SessionDirectoryTitle returns the display title of a session exactly as the
 // contact directory computes it: the branch-meta custom title, else the topic
 // title, else the file stem.
@@ -1725,15 +1756,12 @@ func ResolveTarget(ids []sessioncollab.Identity, ref string) (sessioncollab.Iden
 // Two sources for one title is how a dry run ends up reporting "" for a session
 // the user can see in the sidebar (task 158.D).
 func SessionDirectoryTitle(sessionPath string) string {
-	title := strings.TrimSuffix(filepath.Base(sessionPath), filepath.Ext(sessionPath))
-	if m, found, err := LoadBranchMeta(sessionPath); err == nil && found {
-		if m.CustomTitle != "" {
-			title = m.CustomTitle
-		} else if m.TopicTitle != "" {
-			title = m.TopicTitle
-		}
+	stem := sessionPathStem(sessionPath)
+	m, found, err := LoadBranchMeta(sessionPath)
+	if err != nil {
+		return stem
 	}
-	return title
+	return DisplayTitleFromMeta(m, found, stem)
 }
 
 // SessionTranscriptHasContent reports whether a transcript holds anything
