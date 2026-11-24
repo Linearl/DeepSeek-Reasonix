@@ -277,6 +277,11 @@ func TestEnsureBlankTabConcurrentModelSwitchKeepsLastSelection(t *testing.T) {
 		tab.releaseSessionLease()
 	})
 
+	// tl-prered: the hook fires synchronously inside EnsureBlankTab's default
+	// model switch (guaranteed by the product path), so these waits only need
+	// load tolerance, not a correctness budget. 5s failed under full-package
+	// load (desktop suite wall time ~20min); 30s matches the tl1789 watchdog
+	// precedent (101944ab42) for the same family.
 	firstSwitchReturned := make(chan struct{})
 	releaseFirstSwitch := make(chan struct{})
 	var switchCount atomic.Int32
@@ -295,7 +300,7 @@ func TestEnsureBlankTabConcurrentModelSwitchKeepsLastSelection(t *testing.T) {
 
 	select {
 	case <-firstSwitchReturned:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		close(releaseFirstSwitch)
 		t.Fatal("timed out waiting for default model switch")
 	}
@@ -313,7 +318,7 @@ func TestEnsureBlankTabConcurrentModelSwitchKeepsLastSelection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("EnsureBlankTab: %v", err)
 		}
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("timed out waiting for EnsureBlankTab")
 	}
 
