@@ -3969,6 +3969,8 @@ export const en = {
   "settings.modelCandidatesSelected": "{n} selected",
   "settings.visionModel": "Image input",
   "settings.visionModelAria": "{model} supports image input",
+  "settings.videoModel": "Video input",
+  "settings.audioModel": "Audio input",
   "settings.modelCapabilitiesAria": "Input capabilities for {model}",
   "settings.textInput": "Text",
   "settings.imageInputUnknown": "Image capability unknown",

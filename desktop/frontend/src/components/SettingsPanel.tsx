@@ -48,6 +48,11 @@ import { createLatestRequestGate, installedProviderCatalogDraft, mergedFetchedPr
 import { cachedFetchProviderModelCatalog, cachedFetchProviderModels, invalidateProviderCacheByAPIKeyEnv, providerDiscoveryIdentity, shouldSkipAutoRefresh } from "../lib/providerModelCache";
 import { providerBaseURLForSave, providerEndpointMismatchDetail, providerPathShapeDetail, providerRequestURLForCatalogFormatChange, providerRequestURLFromConfig, trimmedBaseURL } from "../lib/providerEndpoint";
 import { providerModelVisionCapability, providerVisionModelsForView } from "../lib/providerVisionCapability";
+// tl1794：行 badge 与附件链门控同源——复用任务 1008（音频）/tl1767（视频）的
+// 三态判定助手，不另起能力字段。
+import { audioInputModeForModel, audioInputModes, audioInputState } from "../lib/providerAudioInput";
+import { modelCapabilityForModel } from "../lib/providerImageInput";
+import { videoInputModeForModel, videoInputModes, videoInputState } from "../lib/providerVideoInput";
 import { useUpdater } from "../lib/useUpdater";
 import {
   applyTheme,
@@ -120,7 +125,7 @@ import {
   shortcutDefinitions,
   type ShortcutAction,
 } from "../lib/keyboardShortcuts";
-import type { BotAccessView, BotAllowlistView, BotConnectionDiagnostic, BotConnectionView, BotInstallStartResult, BotRouteView, BotSettingsView, HookConfigView, HooksSettingsView, NetworkView, ProviderModelCapabilityView, ProviderModelCatalogUpdate, ProviderPresetView, ProviderView, SettingsTab, SettingsView } from "../lib/types";
+import type { BotAccessView, BotAllowlistView, BotConnectionDiagnostic, BotConnectionView, BotInstallStartResult, BotRouteView, BotSettingsView, HookConfigView, HooksSettingsView, NetworkView, ProviderModelCapabilityView, ProviderModelCatalogUpdate, ProviderModelOverrideView, ProviderPresetView, ProviderView, SettingsTab, SettingsView } from "../lib/types";
 import { AppearanceOverview } from "./AppearanceOverview";
 import { applyConfiguredBaseAppearance, setBaseAppearance } from "../lib/themePack";
 import { InlineConfirmButton } from "./InlineConfirmButton";
@@ -6585,6 +6590,7 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
   visionModelsConfigured,
   highSpeedModels = [],
   modelCapabilities,
+  modelOverrides = [],
   contextWindows,
   inheritedContextWindow,
   disabled,
@@ -6602,6 +6608,10 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
    * checkbox in real time, before the connection save lands. */
   highSpeedModels?: string[];
   modelCapabilities: ProviderModelCapabilityView[];
+  /** tl1794: video/audio row badges resolve through the same helpers the
+   * model dialog (and, mirrored, the backend resolver) uses — override mode
+   * plus detected capability, never a parallel capability field. */
+  modelOverrides?: ProviderModelOverrideView[];
   contextWindows: Record<string, string>;
   inheritedContextWindow?: number;
   disabled: boolean;
@@ -6624,6 +6634,11 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
   const deferredCandidates = useDeferredValue(visibleCandidates);
   const selected = new Set(selectedModels);
   const highSpeedSet = new Set(highSpeedModels);
+  // tl1794: same source of truth as the dialog checkboxes — the resolved
+  // video/audio states come from the tl1767 / task-1008 helpers fed by the
+  // user's overrides plus the detected capability view.
+  const videoModes = videoInputModes(modelOverrides);
+  const audioModes = audioInputModes(modelOverrides);
   return (
     <div className="provider-model-draft provider-model-draft--inline">
       <div className="provider-model-draft__head provider-model-toolbar">
@@ -6658,6 +6673,12 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
             model,
             visionModels,
           );
+          // tl1794: resolved video/audio states — override mode first, then
+          // the detected capability view (protocol blacklist respected), the
+          // same precedence the attachment chain gates on.
+          const meta = modelCapabilityForModel(modelCapabilities, model);
+          const videoState = videoInputState(videoInputModeForModel(videoModes, model), meta);
+          const audioState = audioInputState(audioInputModeForModel(audioModes, model), meta);
           return (
             <div className="provider-model-draft__option" key={model} role="listitem">
               <label className="provider-model-draft__model">
@@ -6672,6 +6693,8 @@ export const ProviderEditorModelPicker = memo(function ProviderEditorModelPicker
               <div className="provider-model-draft__capabilities" aria-label={t("settings.modelCapabilitiesAria", { model })}>
                 {capability === "supported" && <span>{t("settings.visionModel")}</span>}
                 {capability === "unknown" && <span>{t("settings.imageInputUnknown")}</span>}
+                {videoState === "supported" && <span>{t("settings.videoModel")}</span>}
+                {audioState === "supported" && <span>{t("settings.audioModel")}</span>}
                 {highSpeedSet.has(model) && (
                   <span className="provider-model-draft__highspeed-badge" data-testid="high-speed-row-badge" aria-label={t("settings.highSpeedModel")}>
                     ⚡ {t("settings.highSpeedModel")}
@@ -7296,6 +7319,7 @@ export function ProviderEditor({
         modelCapabilities={modelCandidateNames.map(model => { const override = modelOverrides.find(item=>item.model === model); const visionOverride = override?.vision; const audioOverride = override?.audio; const videoOverride = override?.video; const info = modelCapabilities.find(item=>item.model === model); if (visionOverride == null && audioOverride == null && videoOverride == null) return info; const modalities = new Set(info?.inputModalities ?? ["text"]); if (visionOverride != null) { visionOverride ? modalities.add("image") : modalities.delete("image"); } if (audioOverride != null) { audioOverride ? modalities.add("audio") : modalities.delete("audio"); } if (videoOverride != null) { videoOverride ? modalities.add("video") : modalities.delete("video"); } if (modalities.size === 0) modalities.add("text"); return {...info, model, state:visionOverride ? "supported" : visionOverride === false ? "unsupported" : info?.state ?? "unknown", inputModalities:[...modalities], source:"override"}; }).filter((item): item is ProviderModelCapabilityView => Boolean(item))}
         contextWindows={modelContextWindows}
         inheritedContextWindow={Number(ctx) || undefined}
+        modelOverrides={modelOverrides}
         disabled={busy || fetchingModels}
         onToggleModel={toggleEditorModel}
         onEditModel={setModelDialog}
