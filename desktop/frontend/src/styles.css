@@ -28726,6 +28726,44 @@ button.statusbar__mcp:focus-visible {
   transition: opacity var(--dur-base) ease;
 }
 
+/* tl1744: 问号帮助菜单按钮——常驻窗口控件左侧的标题栏入口。尺寸/层级/拖拽豁免
+   全部对齐 .windows-window-controls（right 用同一宽度变量，改控件宽度按钮跟着
+   走）；背景透明融入标题栏，与窗口控件在无面板态的透明规则一致。 */
+.help-menu-button {
+  position: fixed;
+  top: 0;
+  right: var(--windows-window-controls-width, 138px);
+  z-index: var(--z-dock);
+  width: 34px;
+  height: var(--windows-window-controls-height, 48px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+  --wails-draggable: no-drag;
+}
+.help-menu-button:hover,
+.help-menu-button:focus-visible,
+.help-menu-button--open {
+  color: var(--fg);
+  background: color-mix(in srgb, var(--fg) 8%, transparent);
+}
+.help-menu-button:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--fg) 40%, transparent);
+  outline-offset: -3px;
+}
+/* 图片全屏预览独占关闭按钮的时段，问号按钮与窗口控件一起隐藏。 */
+.app--windows-frameless:has(.image-viewer-backdrop) > .help-menu-button {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* Full-window image previews own their close affordance. Management pages
    reserve caption space and retain native window controls. */
 .app--windows-frameless:has(.image-viewer-backdrop) > .windows-window-controls {
