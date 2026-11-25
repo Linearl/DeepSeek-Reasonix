@@ -4935,6 +4935,7 @@ export const zhTW: Record<DictKey, string> = {
   "composer.audioTooLarge": "音訊檔案超過 50 MB 內嵌上限",
   "composer.audioLargeHint": "音訊檔案較大（>4 MiB）：音訊隨請求內嵌傳輸，可能拖慢回應",
   "composer.audioInputDisabled": "目前模型未開啟音訊輸入，音訊附件不會隨訊息傳送",
+  "composer.audioInputDisabledHint": "目前模型未開啟音訊輸入，音訊未新增；可在該模型的 model_overrides 設 audio = true，或改用支援音訊的模型",
   "composer.videoInputDisabled": "目前模型未開啟影片輸入，影片附件不會隨訊息傳送",
   "composer.videoInputDisabledHint": "目前模型未開啟影片輸入，影片未新增；可在該模型的 model_overrides 設 video = true，或改用支援影片的模型",
   "composer.videoTooLarge": "影片檔案超過 50 MB 內嵌上限",
