@@ -130,13 +130,14 @@ export const zhTW: Record<DictKey, string> = {
   "selection.quickAction.failed": "請求失敗，請重試",
   "selection.quickAction.unavailable": "選區已失效，請重新選擇",
   // tl1709：選取文字朗讀（Web Speech API，零後端零網路）。toggle 文案 +
-  // 三種可見失敗提示（環境不支援 / 無語音套件 / 無匹配語種語音套件）——不靜默失敗。
+  // 可見失敗提示（環境不支援 / 無語音套件）——不靜默失敗。tl1815：無匹配語種
+  // 不再硬失敗，降級朗讀 + 裝包指引（speechVoiceMissingHint）。
   "selection.quickAction.speak": "朗讀",
   "selection.quickAction.stop": "停止",
   "selection.quickAction.speaking": "朗讀中…",
   "selection.quickAction.speechUnsupported": "當前環境不支援語音朗讀",
   "selection.quickAction.speechNoVoices": "未偵測到可用的系統語音套件",
-  "selection.quickAction.speechNoVoiceFor": "未找到可朗讀{lang}文字的語音套件",
+  "selection.quickAction.speechVoiceMissingHint": "未找到{lang}語音套件，將用現有語音盡力朗讀；可在 Windows 設定 → 時間和語言 → 語音 中新增語音改善效果",
   "common.cut": "剪下",
   "common.paste": "貼上",
   "common.selectAll": "全選",

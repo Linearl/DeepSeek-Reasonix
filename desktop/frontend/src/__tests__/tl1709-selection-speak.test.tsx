@@ -16,8 +16,10 @@
 //    之外还断言按钮 toggle 文案与卡片 speaking 提示；
 // 3. toggle 钉：朗读中再点 → speechSynthesis.cancel 被调用、卡片消失、文案复位；
 // 4. 无语音包钉：getVoices 返回空 → 卡片提示「No system speech voices were
-//    found」；无匹配语种 → 「No speech voice available for {lang} text」；
-//    无 speechSynthesis → 「not available in this environment」——不静默失败；
+//    found」；无 speechSynthesis → 「not available in this environment」——
+//    不静默失败。tl1815 对表：无匹配语种不再是硬失败——降级用现有语音尽力
+//    朗读 + 卡片给出装包指引（speechVoiceMissingHint），由 tl1815 测试承接
+//    新钉（本文件原「No speech voice available」两块同步改为降级钉）；
 // 5. 截断钉：>MAX_SPEAK_CHARS 的选段 → utterance 文本 ≤ 上限、卡片 truncated
 //    文案在场；
 // 6. 伴生语义钉：朗读完成（onend）→ 卡片自动关、toggle 复位；Escape 关卡片
@@ -234,13 +236,22 @@ async function renderMenu(props: Record<string, unknown> = {}) {
   ok(speechRef.cancelCount() >= 1, "speakSelection: cancels queued speech before speaking");
   speechRef.endLast();
   eq(done, 1, "speakSelection: onend settles the done callback");
+  // tl1815 对表：onDone 恰好结算一次——同一 utterance end 后再 onerror 不再
+  // 双触发（分段队列的结算计数依赖恰好一次语义）。
   speechRef.spoken[0]!.onerror?.();
-  eq(done, 2, "speakSelection: onerror also settles the done callback");
+  eq(done, 1, "speakSelection: onDone settles exactly once (no double-fire after end)");
+  // error 单独也能结算：全新调用只触发 onerror，回调照常落地。
+  let errored = 0;
+  speakSelection("error settles too", "en-US", () => {
+    errored += 1;
+  });
+  speechRef.spoken[speechRef.spoken.length - 1]!.onerror?.();
+  eq(errored, 1, "speakSelection: onerror alone settles the done callback");
 
   // 截断（单元层）：> MAX_SPEAK_CHARS 的文本进 utterance 前被裁齐。
   const longText = "word ".repeat(MAX_SPEAK_CHARS);
   speakSelection(longText, "en-US");
-  eq(speechRef.spoken[1]?.text.length, MAX_SPEAK_CHARS, "speakSelection: oversized text truncates to MAX_SPEAK_CHARS");
+  eq(speechRef.spoken[speechRef.spoken.length - 1]?.text.length, MAX_SPEAK_CHARS, "speakSelection: oversized text truncates to MAX_SPEAK_CHARS");
   ok(longText.length > MAX_SPEAK_CHARS, "fixture sanity: the long text really exceeds the cap");
 
   dom.window.close();
@@ -380,9 +391,10 @@ async function renderMenu(props: Record<string, unknown> = {}) {
 }
 
 {
+  // tl1815 对表：en 包缺失不再是硬错误——降级朗读 + 卡片装包指引（{lang} 插值）。
   const dom = installDom();
   (window as unknown as { runtime: unknown }).runtime = {};
-  installSpeechSynthesis([{ lang: "fr-FR", name: "French" }]);
+  const speech = installSpeechSynthesis([{ lang: "fr-FR", name: "French" }]);
   document.body.insertAdjacentHTML("beforeend", "<div class=\"msg__body\">assistant reply text</div>");
   const msgBody = document.querySelector(".msg__body") as HTMLElement;
   await renderMenu();
@@ -393,27 +405,35 @@ async function renderMenu(props: Record<string, unknown> = {}) {
     readBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     await flushTimers();
   });
-  ok(resultCard()?.textContent?.includes("No speech voice available for English text") === true, "no match: {lang} interpolated into the notice");
+  const card = resultCard();
+  const cardBody = card?.querySelector<HTMLElement>(".transcript-selection-result-card__body");
+  ok(card != null, "en pack missing: the click still lands in a visible card");
+  ok(cardBody?.dataset.state !== "error", "en pack missing: degraded read is not an error card");
+  ok(card?.textContent?.includes("No English voice pack was found") === true, "en pack missing: {lang} interpolated into the install guidance");
+  ok(card?.textContent?.includes("falls back to the current voice") === true, "en pack missing: guidance names the degraded playback");
+  eq(speech.spoken.length, 1, "en pack missing: the utterance still speaks (engine best effort)");
+  eq(speech.spoken[0]?.lang, "en-US", "en pack missing: utterance keeps the lang hint");
 
   dom.window.close();
 }
 
 {
+  // tl1815 对表：zh 包缺失同样降级——指引插值内容语言「中文」且照读不误。
   const dom = installDom();
   (window as unknown as { runtime: unknown }).runtime = {};
-  installSpeechSynthesis([{ lang: "en-US", name: "English" }]);
+  const speech = installSpeechSynthesis([{ lang: "en-US", name: "English" }]);
   document.body.insertAdjacentHTML("beforeend", "<div class=\"msg__body\">这是一段中文的选区内容</div>");
   const msgBody = document.querySelector(".msg__body") as HTMLElement;
   await renderMenu();
 
-  // 中文文本 + 只有英文语音包：插值显示内容语言「中文」。
   await openToolbar(msgBody);
   const readBtn = toolbarButtons().find((button) => button.textContent?.includes("Read aloud"));
   await act(async () => {
     readBtn?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
     await flushTimers();
   });
-  ok(resultCard()?.textContent?.includes("中文") === true, "no match (zh text): the notice names the content language 中文");
+  ok(resultCard()?.textContent?.includes("中文") === true, "zh pack missing: the guidance names the content language 中文");
+  eq(speech.spoken.length, 1, "zh pack missing: the utterance still speaks (engine best effort)");
 
   dom.window.close();
 }
