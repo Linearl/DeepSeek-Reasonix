@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 // tl1367 line 4 acceptance: force archive must actually unlock stale lease

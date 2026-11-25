@@ -1,3 +1,5 @@
+//go:build windows
+
 package agent
 
 // tl1429 回归钉(判定+强放面):终局兜底「outside this process」判定输入。

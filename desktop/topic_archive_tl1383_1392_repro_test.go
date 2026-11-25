@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 // tl1383/tl1392 销案复现钉：按两件正文的最小现场构造，钉「修后绿」——

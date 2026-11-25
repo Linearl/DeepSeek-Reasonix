@@ -1,3 +1,5 @@
+//go:build windows
+
 package agent
 
 // tl1404 终局兜底原语回归钉。常规原语(证据纪律)之外的最后一级:
