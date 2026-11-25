@@ -65,18 +65,21 @@ lint-cross:
 # meaningful while leaving real hangs to the caller's own kill switch.
 GO_TEST_TIMEOUT := 30m
 
-# Desktop package level gets its own 45m budget (tl1807): the desktop package
-# alone has measured at 928s-1758s wall clock on this repo (tl1789 baseline
-# runs 928-1260s / 4558 tests; the preexisting-red sweep final run 1212s,
-# worst observed 1758s under load), so the 30m ceiling sits too close to the
-# measured envelope and the 10m default is a guaranteed false kill: tl1775
-# filed exactly that (603.578s "panic: test timed out after 10m" on a healthy
-# package; goroutine dump families all verified to have stop/Close or be
+# Desktop package level gets its own 60m budget (tl1807). Measured wall clock
+# for a healthy package: 928s-1260s (tl1789 baselines), 1212s (preexisting-red
+# sweep, exclusive machine), 2696.480s (tl1807 verification run, contended
+# machine — 3.5s under the 45m this batch originally pinned, which proved 45m
+# only holds on an exclusive machine). The 10m default is a guaranteed false
+# kill: tl1775 filed exactly that (603.578s "panic: test timed out after 10m";
+# goroutine dump families all verified to have stop/Close or be
 # process-lifetime singletons — pure budget, not a leak). Rationale and
 # verdict: docs/reasonix/issues/reports/预存红集中清零-实施报告-20261124.md
-# #5 + §八.1 (user-approved batch: pin -timeout 45m at package level).
-# 45m still leaves real hangs to the caller's own kill switch.
-DESKTOP_TEST_TIMEOUT := 45m
+# #5 + §八.1 (user-approved batch: pin -timeout 45m at package level; raised
+# to 60m by tl1807's own measured envelope, see its implementation report).
+# Under extreme contention no fixed budget is safe (sweep attempt-1 died at
+# 65min with no reading) — pass a higher -timeout manually for contended
+# runs; 60m still leaves real hangs to the caller's own kill switch.
+DESKTOP_TEST_TIMEOUT := 60m
 
 test:
 	go test -timeout $(GO_TEST_TIMEOUT) ./...
@@ -88,7 +91,7 @@ test:
 test-triage:
 	bash scripts/go-test-triage.sh ./...
 
-# All four desktop targets carry DESKTOP_TEST_TIMEOUT (45m, tl1807) — never
+# All four desktop targets carry DESKTOP_TEST_TIMEOUT (60m, tl1807) — never
 # drop to a bare `go test .` here: go's 10m per-package default is a proven
 # false kill for this package (tl1775, 603.578s panic on a healthy package).
 desktop-test:
