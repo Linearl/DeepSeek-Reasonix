@@ -492,6 +492,22 @@ func (g *goalMachine) clearAutopilot() {
 	g.deadline = time.Time{}
 }
 
+// armAutopilot raises the unattended posture on a live goal machine (tl1804)
+// — the mirror of clearAutopilot. The desktop join direction onto the
+// autopilot tier must also let the goal loop treat the run as unattended
+// (deadline checks, autopilot pause branches) without waiting for a rebuild,
+// exactly as the leave direction must stop treating it as such (tl1795).
+// maxRuntime must be positive: the caller (ArmAutopilotPosture) refuses the
+// unbounded case before reaching here, so the deadline is always real. The
+// goal itself is untouched — only the unattended semantics arm, mirroring the
+// clear's fail direction.
+func (g *goalMachine) armAutopilot(maxRuntime time.Duration) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.autopilot = true
+	g.deadline = autopilotDeadline(true, maxRuntime)
+}
+
 // stop transitions a running goal to the given terminal status and clears the
 // transient runtime bookkeeping. stopCause is cleared: a host stop is not a
 // safe pause. cause (tl1459) is required and recorded as lastStopCause; left
