@@ -571,7 +571,11 @@ func (p Policy) Decide(toolName string, readOnly bool, args json.RawMessage) Dec
   explicit resumable boundaries. The Goal token budget defaults to `0` (off);
   resuming a `budget_spend` pause grants a fresh slice without clearing
   cumulative Goal statistics. `task_time_budget_minutes = 0` (and legacy
-  negative values) disables the time boundary.
+  negative values) disables the time boundary. The single default boundary
+  (tl1312): a heartbeat task's goal-mode turns (goal-loop continuations
+  included) with all three spend axes unconfigured pause at a 2,000,000-token
+  default ceiling through the same `budget_spend` chain; attended Goals and
+  configured budgets behave exactly as before.
   `/goal clear` removes the active goal. Switching into plan/normal mode clears
   the active goal in the desktop UI so the collaboration mode remains one of
   the three choices, while the underlying tool approval posture is preserved.

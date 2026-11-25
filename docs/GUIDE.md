@@ -622,7 +622,7 @@ Mode and display shortcuts:
 | `/theme [auto|light|dark|style]` | Shows or switches the CLI theme | Bare `/theme` lists background modes and named accent palettes. The choice is saved to the user config; `REASONIX_THEME` and `REASONIX_THEME_STYLE` can override it for one run. |
 | `Ctrl+O` | Toggles verbose reasoning display | Also available through `/verbose`. |
 | `Ctrl+B` | Expands or collapses long shell output | Long shell-output hint lines can also be clicked in the transcript; text selection is handled in-app while the full-screen TUI has mouse reporting enabled. |
-| `/goal <objective>`, `/goal status`, `/goal pause`, `/goal resume`, `/goal clear` | Starts, checks, pauses, resumes, or clears Goal | A Goal is unbounded unless `[agent].goal_token_budget` is set. |
+| `/goal <objective>`, `/goal status`, `/goal pause`, `/goal resume`, `/goal clear` | Starts, checks, pauses, resumes, or clears Goal | A Goal is unbounded unless `[agent].goal_token_budget` is set. Exception (tl1312): a heartbeat task's goal-mode run with no budget configured pauses at a 2,000,000-token default ceiling. |
 | `/migrate`, `/migrate --from <legacy-dir>` | Retries legacy migration or imports sessions from a chosen v0.x source | Use `--from` for custom Windows v0.52 install/data directories; it imports sessions only. See [Configuration paths](./CONFIG_PATHS.md). |
 
 Picker and approval shortcuts:
@@ -1123,6 +1123,9 @@ The default is `0` (off). Reaching a positive token budget produces one summary
 and a resumable `budget_spend` pause. `/goal resume` grants a fresh configured
 slice while cumulative Goal statistics remain intact. Explicit positive
 `max_steps`, task time, and task cost budgets remain available as well.
+One default applies without any configuration (tl1312): a heartbeat task's
+goal-mode run pauses at a 2,000,000-token ceiling instead of running
+unbounded; set this budget to change or raise it.
 Progress is goal-scoped and novelty based:
 new read/search results, mutations, verification, todo/signoff changes, and
 reviews advance the goal; an exact tool/argument/result repeat does not.
