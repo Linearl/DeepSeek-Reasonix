@@ -416,6 +416,18 @@ func (a *App) applyCollabModeEffects(tab *WorkspaceTab, tabIDForSave string, ctr
 		// ask arms the unattended timers behind an attended tab.
 		dropAutopilotLivePosture(ctrl)
 	}
+	if !wasAutopilot && autopilotOn {
+		// tl1804: the mirror join direction. The tier switch wrote
+		// tab.autopilot and the five runtime fields above (under turnStartMu),
+		// but the live controller kept its construction-time attended posture
+		// until the next rebuild — the ask chain waited attended waits in a
+		// session the user had just handed to a run with nobody watching. Arm
+		// the unattended posture here so reversible asks auto-decide and
+		// high-risk asks run the autopilot timeout semantics from the next ask
+		// on, without touching the leave direction above (tl1795 semantics
+		// byte-for-byte).
+		armAutopilotLivePosture(ctrl, tab)
+	}
 	if assumedYolo && autopilotOn {
 		// Task 465 decision record (user-visible half): the tier switch moved
 		// approval to yolo by itself; the live controller must carry that

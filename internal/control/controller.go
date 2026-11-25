@@ -7539,6 +7539,55 @@ func (c *Controller) ClearAutopilotPosture() {
 	c.refreshRuntimeState(event.Event{})
 }
 
+// ArmAutopilotPosture raises the unattended-run posture on a live controller
+// (tl1804) — the mirror of ClearAutopilotPosture. The desktop join direction
+// (composer tier switch onto the autopilot tier) writes tab.autopilot and the
+// five runtime fields, but the live controller kept its construction-time
+// attended posture until the next rebuild: the ask chain waited attended
+// waits in a session the user had just handed to a run with nobody watching
+// (the safe-direction half of the same three-layer desync tl1795 closed for
+// the leave direction). With the posture armed, a subsequent ask resolves
+// through the unattended gear again: reversible asks get the interaction-
+// aware auto-decide timer, high-risk asks get the autopilotAskWaitFor
+// timeout semantics, and approvals get the reviewer grace.
+//
+// maxRuntime must be positive: an unbounded unattended run is refused here
+// just as the constructor refuses it (opts.Autopilot &&
+// opts.AutopilotMaxRuntime > 0) and the CLI refuses --autopilot without
+// --max-runtime. A refused arm changes nothing (still attended) and reports
+// false. An already-armed controller is a no-op that also reports false —
+// re-arming must never push the goal machine's wall-clock deadline forward,
+// which would silently extend the unattended bound.
+//
+// Ordering contract (mirror of the clear): the durations are written and the
+// goal machine is armed BEFORE the atomic store, so a reader that observes
+// autopilot==true also observes the armed durations; a reader that still
+// observes false simply keeps the attended semantics. A non-positive grace
+// resolves to DefaultAutopilotApprovalGrace, matching the construction-time
+// resolution (autopilotApprovalGrace(opts)) — the desktop preference leaves
+// it unset (0) by design. The goal machine arms under its own lock.
+func (c *Controller) ArmAutopilotPosture(approvalGrace, askWait time.Duration, askTimeoutEnabled, askAutoContinue bool, maxRuntime time.Duration) bool {
+	if c == nil || maxRuntime <= 0 {
+		return false
+	}
+	if c.autopilot.Load() {
+		return false
+	}
+	if approvalGrace <= 0 {
+		approvalGrace = DefaultAutopilotApprovalGrace
+	}
+	c.autopilotApprovalGrace = approvalGrace
+	c.autopilotAskWait = askWait
+	c.autopilotAskTimeoutEnabled = askTimeoutEnabled
+	c.autopilotAskAutoContinue = askAutoContinue
+	c.goals.armAutopilot(maxRuntime)
+	c.autopilot.Store(true)
+	slog.Info("[autopilot-posture] live posture armed", "session", c.SessionPath(),
+		"max_runtime", maxRuntime.String(), "approval_grace", approvalGrace.String())
+	c.refreshRuntimeState(event.Event{})
+	return true
+}
+
 // SetAutoApproveTools turns YOLO tool auto-approval on or off for the session:
 // while on, every tool approval request is auto-allowed (writers and bash run
 // without asking). Ask requests and plan approval still reach the user. Deny
