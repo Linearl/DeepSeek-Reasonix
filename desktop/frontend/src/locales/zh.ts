@@ -5231,6 +5231,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesShared": "共有",
   "settings.recoveryCopiesUnique": "独有",
   "settings.recoveryCopiesOrphan": "孤立（主线已缺失）",
+  "settings.recoveryCopiesMainMissingNote": "正本已缺失",
   "settings.recoveryCopiesMerge": "合并所选",
   "settings.recoveryCopiesRefresh": "刷新",
   "settings.recoveryCopiesPreviewTitle": "预览分支",

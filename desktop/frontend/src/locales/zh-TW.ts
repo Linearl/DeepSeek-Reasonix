@@ -3672,6 +3672,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesShared": "共有",
   "settings.recoveryCopiesUnique": "獨有",
   "settings.recoveryCopiesOrphan": "孤立（主線已缺失）",
+  "settings.recoveryCopiesMainMissingNote": "正本已缺失",
   "settings.recoveryCopiesMerge": "合併所選",
   "settings.recoveryCopiesRefresh": "重新整理",
   "settings.recoveryCopiesPreviewTitle": "預覽分支",
