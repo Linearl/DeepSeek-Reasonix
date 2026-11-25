@@ -11,7 +11,7 @@ Reasonix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delive
 | 完成自述与对账 | `update_goal` 的 `completion` | `complete` 可附带自述：`verified` 命令逐条与本会话真实 receipt 对账，没跑过 / 跑失败 / 早于最后一次改动都记为 unbacked claim；`unverified` 与 `risks` 是宿主推断不出的声明，只增不减，永远不阻塞完成 |
 | 独立评审 | 无报告时 | 模型未调用 `update_goal` 时，宿主调用一次独立 bounded evaluator 判定；评审不可用/出错/不确定时安全暂停，绝不默认继续 |
 | 连续执行 | 默认 | 不设默认 model rounds、Goal turns、墙钟时长或数字式卡死上限；相同宿主失败、零新增证据和 Todo 停滞只触发重新规划，不暂停 Goal |
-| 显式预算 | `[agent].goal_token_budget` / `--max-steps` / 正数时间或成本预算 | 用户可选的边界耗尽后执行一次无工具总结并暂停当前执行；Goal 与进度保留，可继续。token 预算默认 `0`（关闭） |
+| 显式预算 | `[agent].goal_token_budget` / `--max-steps` / 正数时间或成本预算 | 用户可选的边界耗尽后执行一次无工具总结并暂停当前执行；Goal 与进度保留，可继续。token 预算默认 `0`（关闭）。唯一例外（tl1312）：心跳任务 goalMode 回合在三条预算轴全部未配时，按 2,000,000 token 默认天花板走同一条 `budget_spend` 暂停链，暂停文案会注明这是默认天花板 |
 | 暂停/恢复 | `/goal pause` / `/goal resume` | 暂停保留 Goal、todo、Delivery checkpoint 与累计运行历史；恢复 `budget_spend` 时授予新的显式预算切片，但不清零累计统计 |
 | 立即阻塞 | `blocked` 报告 | 单个 blocked 报告立即结束目标，不再重复三轮确认 |
 | 并行调度 | `parallel_tasks` 工具 | 并发派发多个子 agent，各自独立显示结果 |
@@ -53,7 +53,7 @@ Reasonix 的 Goal 模式（`/goal`）将目标推进（Goal）、验收（Delive
 
 - 未配置 `goal_token_budget` 时 `tokensLimit` 为 `0`；配置正数后只表示用户选择的累计 token 阈值；
 - 没有 provider 请求前的 token 预留/准入；
-- 未配置对应预算时，累计 turn/token/request/work time 再大也不会单独暂停 Goal；
+- 未配置对应预算时，累计 turn/token/request/work time 再大也不会单独暂停 Goal；tl1312 唯一例外：心跳任务驱动的 goalMode 回合（含其 goal 续跑轮）在三条预算轴全部未配时按 2,000,000 token 默认天花板经 `budget_spend` 暂停，无人值守交互式/autopilot Goal 不受影响；
 - `turnsLimit`、`noProgressLimit`、`budgetExtensions` 继续对外保留为 deprecated 兼容字段，固定返回 `0`。
 
 可停止连续执行的条件：完成、模型通过 `update_goal(blocked)` 报告真实用户/外部阻塞、evaluator
