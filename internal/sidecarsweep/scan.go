@@ -1,6 +1,8 @@
 package sidecarsweep
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,8 +10,22 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/pathidentity"
 	"reasonix/internal/store"
 )
+
+// metaLockHashFor 计算会话路径的 meta 保存锁哈希——键形与 agent.save_locks.go
+// sessionMetaLockPath 严格一致：sha256(pathidentity.Canonical(会话路径)) 前 8
+// 字节的 hex。canonical 化用 pathidentity.Canonical 单一来源（含 Windows 小写
+// 折叠与符号链接物理解析），不另造第二份规范化。
+func metaLockHashFor(sessionPath string) (string, error) {
+	canonical := pathidentity.Canonical(sessionPath)
+	if canonical == "" {
+		return "", fmt.Errorf("empty canonical path")
+	}
+	digest := sha256.Sum256([]byte(canonical))
+	return hex.EncodeToString(digest[:8]), nil
+}
 
 // Row 是清单的一行：一个被判定为孤儿（或需复核/defer）的目录条目。
 type Row struct {
@@ -118,11 +134,15 @@ func ScanDir(dir string) (*DirReport, error) {
 	}
 
 	// 第一遍：master 存在性表（plain 与 zst 档案同权）+ cleanup-pending stem
-	// 集 + .trash 桶名表 + 空壳计数。
+	// 集 + .trash 桶名表 + 空壳计数 + meta 保存锁哈希配对表。
 	masterAlive := map[string]bool{}  // stem -> plain/zst 任一存在
 	masterPlain := map[string]bool{}  // stem -> plain .jsonl 存在（titles 键判据）
 	pendingStems := map[string]bool{} // cleanup-pending 标记所在 stem
 	trashBuckets := []string{}        // .trash 顶层条目名（桶目录为主）
+	// metaLockByHash：活主转录的 meta 保存锁哈希 → stem。键形与 save_locks.go
+	// sessionMetaLockPath 一致：sha256(pathidentity.Canonical(会话路径))[:8字节]
+	// 的 hex——键形单一来源复用，不另造规范化。
+	metaLockByHash := map[string]string{}
 	type entryInfo struct {
 		name    string
 		isDir   bool
@@ -145,7 +165,8 @@ func ScanDir(dir string) (*DirReport, error) {
 		}
 		byName[name] = entryInfo{name: name, isDir: info.IsDir(), size: size, modTime: info.ModTime()}
 
-		if c := classifyName(name); c.class == classMaster {
+		c := classifyName(name)
+		if c.class == classMaster {
 			dr.Masters++
 			stem := c.masterStem
 			masterAlive[stem] = true
@@ -155,9 +176,12 @@ func ScanDir(dir string) (*DirReport, error) {
 					dr.EmptyMasters++
 				}
 			}
+			if hash, err := metaLockHashFor(filepath.Join(dir, stem+store.SessionTranscriptSuffix)); err == nil {
+				metaLockByHash[hash] = stem
+			}
 			continue
 		}
-		if c := classifyName(name); c.class == classMechanism {
+		if c.class == classMechanism {
 			if c.masterStem != "" {
 				pendingStems[c.masterStem] = true
 			}
@@ -207,8 +231,31 @@ func ScanDir(dir string) (*DirReport, error) {
 			ModTime: ei.modTime.Format(time.RFC3339),
 			Owner:   c.owner, MasterStem: c.masterStem, IsDir: ei.isDir,
 		}
+		// meta 保存锁：按活主哈希配对（needsHashPair）。配对上=活家族；
+		// 配不上=陈旧锁（会话已不在），runtime 处置面默认不搬。
+		if c.needsHashPair {
+			if stem, hit := metaLockByHash[c.hashKey]; hit {
+				_ = stem
+				continue
+			}
+			row.Class = "runtime"
+			row.Evidence = fmt.Sprintf("meta 跨进程保存锁（哈希 %s）；判据：本目录活主转录的锁哈希均不匹配——持锁会话已不在活目录，属陈旧句柄；运行时句柄默认不搬（--include-runtime 才搬）",
+				c.hashKey)
+			row.Action = "runtime"
+			dr.Orphans = append(dr.Orphans, row)
+			continue
+		}
 		if masterAlive[c.masterStem] {
 			continue // 活家族成员（含未知新形态：stem 前缀天然配对）
+		}
+		if c.masterStem == "" {
+			// 无归属键的运行时瞬态（保存临时文件等）：只进 runtime 面，永不
+			// 冒充数据孤儿。
+			row.Class = "runtime"
+			row.Evidence = fmt.Sprintf("运行时瞬态 %s（保存临时文件形态）；判据：无归属键（CreateTemp 随机后缀），进程中断残留；默认不搬（--include-runtime 才搬）", c.kind)
+			row.Action = "runtime"
+			dr.Orphans = append(dr.Orphans, row)
+			continue
 		}
 		row.Class = className(c.class)
 		row.MasterInTrash = trashEvidence(c.masterStem, trashBuckets)

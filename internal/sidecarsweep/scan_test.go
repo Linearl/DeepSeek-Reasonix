@@ -402,3 +402,122 @@ func TestTrashLooseFiles(t *testing.T) {
 		t.Fatalf("trash loose = %v", dr.TrashLoose)
 	}
 }
+
+// ── 目录级机制状态 / 包装形态 / meta 保存锁（20261125 真机复核定性）────────
+
+// TestDirLevelStateStructural 目录级机制状态（display/planner-display/迁移
+// 标记/subagents/runjournal 等）一律结构工件：不进孤儿也不进不明。
+func TestDirLevelStateStructural(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, otherName), "live")
+	for _, name := range []string{
+		".display.json", ".display.json.lock",
+		".planner-display.json", ".planner-display.json.lock",
+		".titles.json.lock", ".session-titles.json",
+		".topics-migrated", ".topics-migrated-v2",
+		".topic-indexes-repaired", ".topic-indexes-repaired-v2",
+		"pending-handoff.md", "runjournal.db",
+	} {
+		writeFile(t, filepath.Join(dir, name), "state")
+	}
+	writeDir(t, filepath.Join(dir, "subagents"), 1)
+	dr, err := ScanDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dr.Orphans) != 0 || len(dr.Unknown) != 0 {
+		t.Fatalf("目录级状态误入孤儿/不明: orphans=%+v unknown=%+v", dr.Orphans, dr.Unknown)
+	}
+}
+
+// TestWrapperMarkersAttribution 换位中转/修复救援包装形态：归属继承内层，
+// master 活→活家族；master 不在→数据孤儿（判据带标记链）。
+func TestWrapperMarkersAttribution(t *testing.T) {
+	dir := t.TempDir()
+	// 活会话 + 其 promote-staging 中转（活家族，不判孤儿）。
+	writeFile(t, filepath.Join(dir, otherName), "live")
+	writeFile(t, filepath.Join(dir, otherStem+".inbox.promote-staging"), "staging-of-live")
+	// 孤儿包装形态四款。
+	for _, name := range []string{
+		masterName + ".promote-staging",                     // 换位中转的转录副本
+		masterStem + ".jsonl.meta.bak-20261105-fixdiverged", // meta 的修复副本
+		masterName + ".bak-20261103-1859",                   // 转录的外部修复副本
+		masterStem + ".jsonl.meta.quarantine-20261104",      // repair 隔离
+	} {
+		writeFile(t, filepath.Join(dir, name), "wrapped")
+	}
+	dr, err := ScanDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, hit := findRow(dr.Orphans, otherStem+".inbox.promote-staging"); hit {
+		t.Error("活会话的 promote-staging 被误判孤儿")
+	}
+	for _, name := range []string{
+		masterName + ".promote-staging",
+		masterStem + ".jsonl.meta.bak-20261105-fixdiverged",
+		masterName + ".bak-20261103-1859",
+		masterStem + ".jsonl.meta.quarantine-20261104",
+	} {
+		r, hit := findRow(dr.Orphans, name)
+		if !hit {
+			t.Errorf("漏判孤儿: %s", name)
+			continue
+		}
+		if r.Action != "recycle" || !strings.Contains(r.Kind, "wrapped") {
+			t.Errorf("%s: action=%s kind=%s, want recycle/wrapped-*", name, r.Action, r.Kind)
+		}
+	}
+}
+
+// TestMetaLockPairing meta 保存锁按活主哈希配对：活主→不判；无主→runtime
+// 孤儿默认不搬。哈希键形与 save_locks.go 一致（pathidentity.Canonical）。
+func TestMetaLockPairing(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, otherName), "live")
+	liveHash, err := metaLockHashFor(filepath.Join(dir, otherStem+".jsonl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, "."+liveHash+".meta.lock"), "")
+	writeFile(t, filepath.Join(dir, ".0000000000000000.meta.lock"), "")
+	// 无主 meta.lock（哈希不配任何活主）。
+	dr, err := ScanDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dr.Unknown) != 0 {
+		t.Fatalf("meta.lock 不得落不明: %+v", dr.Unknown)
+	}
+	r, hit := findRow(dr.Orphans, ".0000000000000000.meta.lock")
+	if !hit {
+		t.Fatal("无主 meta.lock 未入清单")
+	}
+	if r.Action != "runtime" || !strings.Contains(r.Evidence, "0000000000000000") {
+		t.Errorf("meta.lock 判据不对: %+v", r)
+	}
+	if _, hit := findRow(dr.Orphans, "."+liveHash+".meta.lock"); hit {
+		t.Error("活主的 meta.lock 被误判孤儿")
+	}
+}
+
+// TestSaveTempsRuntime 保存临时文件（.atomic-*.tmp / .session.*.tmp）为无归属
+// 运行时瞬态：runtime 面、默认不搬、不落不明。
+func TestSaveTempsRuntime(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, ".atomic-1879521797.tmp"), "tmp")
+	writeFile(t, filepath.Join(dir, ".session.341194432.tmp"), "tmp")
+	dr, err := ScanDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dr.Unknown) != 0 {
+		t.Fatalf("save temp 落不明: %+v", dr.Unknown)
+	}
+	for _, name := range []string{".atomic-1879521797.tmp", ".session.341194432.tmp"} {
+		r, hit := findRow(dr.Orphans, name)
+		if !hit || r.Action != "runtime" {
+			t.Errorf("%s: hit=%v action=%v, want runtime", name, hit, r.Action)
+		}
+	}
+}
