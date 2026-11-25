@@ -5303,6 +5303,54 @@ export default function App() {
     closeTransientOverlays("lab shortcut");
     setSettingsTarget("experimental");
   }, [closeTransientOverlays]);
+  // tl1809：命令面板可达主要子面板的快捷键接线。默认键位与三语清单见
+  // keyboardShortcuts.ts（SHORTCUT_DEFINITIONS tl1809 块）——注册即自动进
+  // 设置「键盘快捷键」列表（可改绑），零新增配置面。幂等约定：
+  //   - 页面类（回收站/自动化/设置页签）：已在目标页时早退，不走 openPage
+  //     （其 generation 自增会触发页面级重取）；
+  //   - 面板类（资源管理器/任务面板/协作中心）：setXxxOpen(true) 天然幂等。
+  // tasklist 随命令面板入口同一 lab 门控（开关关 = 快捷键不注册，tl1275
+  // 「switch off → never opens」同款契约）。
+  useGlobalShortcut("panel.automation", () => {
+    if (useAppNavigationStore.getState().page.kind === "automation") return;
+    closeTransientOverlays("panel shortcut");
+    openPage({ kind: "automation" });
+  }, [closeTransientOverlays, openPage]);
+  useGlobalShortcut("panel.trash", () => {
+    if (useAppNavigationStore.getState().page.kind === "trash") return;
+    void openTrash();
+  }, [openTrash]);
+  useGlobalShortcut("panel.appearance", () => {
+    const page = useAppNavigationStore.getState().page;
+    if (page.kind === "settings" && page.tab === "appearance") return;
+    closeTransientOverlays("panel shortcut");
+    setSettingsTarget("appearance");
+  }, [closeTransientOverlays, setSettingsTarget]);
+  useGlobalShortcut("panel.memory", () => {
+    const page = useAppNavigationStore.getState().page;
+    if (page.kind === "settings" && page.tab === "memory") return;
+    closeTransientOverlays("panel shortcut");
+    setSettingsTarget("memory");
+  }, [closeTransientOverlays, setSettingsTarget]);
+  useGlobalShortcut("panel.models", () => {
+    const page = useAppNavigationStore.getState().page;
+    if (page.kind === "settings" && page.tab === "models") return;
+    closeTransientOverlays("panel shortcut");
+    setSettingsTarget("models");
+  }, [closeTransientOverlays, setSettingsTarget]);
+  useGlobalShortcut("panel.usageStats", () => {
+    const page = useAppNavigationStore.getState().page;
+    if (page.kind === "settings" && page.tab === "models") return;
+    setSettingsFocus((current) => ({
+      target: "model-stats",
+      requestId: settingsFocusRequestId(current) + 1,
+    }));
+    closeTransientOverlays("panel shortcut");
+    setSettingsTarget("models");
+  }, [closeTransientOverlays, setSettingsFocus, setSettingsTarget]);
+  useGlobalShortcut("panel.resourceManager", () => setResourcePanelOpen(true));
+  useGlobalShortcut("panel.tasklist", () => setTasklistPanelOpen(true), [], tasklistPanelEntryEnabled);
+  useGlobalShortcut("panel.collabHub", () => setCollabHubOpen(true));
   useGlobalShortcut("view.rightDock", () => toggleWorkspacePanel(), [toggleWorkspacePanel]);
   useGlobalShortcut("app.newSession", () => void handleNewTab(), [handleNewTab]);
   useGlobalShortcut("settings.open", () => {
@@ -5400,6 +5448,7 @@ export default function App() {
         title: t("heartbeat.scheduler"),
         icon: <AlarmClock size={15} />,
         compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.automation", desktopPlatform), desktopPlatform),
         keywords: ["automation", "定时", "自动化", "调度"],
         run: () => openPage({ kind: "automation" }),
       },
@@ -5407,9 +5456,9 @@ export default function App() {
     // 设置与偏好组：设置 / 外观 / 记忆 / 模型 / 实验室 / 恢复默认。
     const settingsCmds: PaletteItem[] = [
       { id: "cmd-settings", group: t("palette.group.settings"), title: t("palette.cmd.settings"), icon: <SettingsIcon size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("settings.open", desktopPlatform), desktopPlatform), keywords: ["settings", "设置"], run: () => setSettingsTarget(useAppNavigationStore.getState().lastSettingsTarget) },
-      { id: "cmd-appearance", group: t("palette.group.settings"), title: t("palette.cmd.appearance"), icon: <Palette size={15} />, compact: true, keywords: ["theme", "appearance", "外观", "主题"], run: () => setSettingsTarget("appearance") },
-      { id: "cmd-memory", group: t("palette.group.settings"), title: t("palette.cmd.memory"), icon: <Brain size={15} />, compact: true, keywords: ["memory", "记忆"], run: () => setSettingsTarget("memory") },
-      { id: "cmd-models", group: t("palette.group.settings"), title: t("palette.cmd.models"), icon: <Cpu size={15} />, compact: true, keywords: ["model", "模型"], run: () => setSettingsTarget("models") },
+      { id: "cmd-appearance", group: t("palette.group.settings"), title: t("palette.cmd.appearance"), icon: <Palette size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.appearance", desktopPlatform), desktopPlatform), keywords: ["theme", "appearance", "外观", "主题"], run: () => setSettingsTarget("appearance") },
+      { id: "cmd-memory", group: t("palette.group.settings"), title: t("palette.cmd.memory"), icon: <Brain size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.memory", desktopPlatform), desktopPlatform), keywords: ["memory", "记忆"], run: () => setSettingsTarget("memory") },
+      { id: "cmd-models", group: t("palette.group.settings"), title: t("palette.cmd.models"), icon: <Cpu size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.models", desktopPlatform), desktopPlatform), keywords: ["model", "模型"], run: () => setSettingsTarget("models") },
       {
         id: "cmd-lab",
         group: t("palette.group.settings"),
@@ -5445,6 +5494,7 @@ export default function App() {
         title: t("palette.cmd.usageStats"),
         icon: <BarChart3 size={15} />,
         compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.usageStats", desktopPlatform), desktopPlatform),
         keywords: ["usage", "stats", "statistics", "用量", "统计"],
         run: () => {
           // tl1791：focus 联合新增 lab 变体（无 requestId 字段）——判重读数改
@@ -5474,7 +5524,7 @@ export default function App() {
           void app.ReloadRuntime(tabID).catch((err) => showToast(formatActionError("palette.cmd.reloadRuntime", err), "error"));
         },
       },
-      { id: "cmd-trash", group: t("palette.group.tools"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, keywords: ["trash", "回收站"], run: () => void openTrash() },
+      { id: "cmd-trash", group: t("palette.group.tools"), title: t("palette.cmd.trash"), icon: <Trash2 size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.trash", desktopPlatform), desktopPlatform), keywords: ["trash", "回收站"], run: () => void openTrash() },
       // tl1456：资源管理器（内存总览 + 本产品形态进程表）。追加式注册，
       // 不动既有项顺序。
       {
@@ -5483,6 +5533,7 @@ export default function App() {
         title: t("palette.cmd.resourceManager"),
         icon: <Cpu size={15} />,
         compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.resourceManager", desktopPlatform), desktopPlatform),
         keywords: ["resource", "manager", "memory", "process", "资源", "管理器", "内存", "进程"],
         run: () => setResourcePanelOpen(true),
       },
@@ -5517,6 +5568,7 @@ export default function App() {
               title: t("palette.cmd.tasklistPanel"),
               icon: <Activity size={15} />,
               compact: true,
+              shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.tasklist", desktopPlatform), desktopPlatform),
               keywords: ["tasklist", "panel", "tasks", "task", "任务", "任务面板", "面板", "看板"],
               run: () => setTasklistPanelOpen(true),
             } satisfies PaletteItem,
@@ -5528,6 +5580,7 @@ export default function App() {
         title: t("palette.cmd.collabHub"),
         icon: <MessagesSquare size={15} />,
         compact: true,
+        shortcutLabel: formatShortcutCombo(defaultShortcutCombo("panel.collabHub", desktopPlatform), desktopPlatform),
         keywords: ["collab", "hub", "collaboration", "mail", "letter", "chat", "group", "notification", "协作", "协作中心", "信件", "聊天", "群聊", "通知", "通知中心"],
         run: () => setCollabHubOpen(true),
       } satisfies PaletteItem,

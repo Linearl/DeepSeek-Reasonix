@@ -40,7 +40,18 @@ export type ShortcutAction =
   | "topic.goto.6"
   | "topic.goto.7"
   | "topic.goto.8"
-  | "topic.goto.9";
+  | "topic.goto.9"
+  // tl1809：命令面板可达的主要子面板批量默认快捷键（与 tl1101 入口键同一条
+  // useGlobalShortcut + 注册表体系，注册即自动进设置「键盘快捷键」清单）。
+  | "panel.automation"
+  | "panel.trash"
+  | "panel.appearance"
+  | "panel.memory"
+  | "panel.models"
+  | "panel.usageStats"
+  | "panel.resourceManager"
+  | "panel.tasklist"
+  | "panel.collabHub";
 
 type KeyboardShortcutEvent = Pick<globalThis.KeyboardEvent, "key"> &
   Partial<Pick<globalThis.KeyboardEvent, "ctrlKey" | "metaKey" | "altKey" | "shiftKey" | "target">>;
@@ -309,6 +320,122 @@ export const SHORTCUT_DEFINITIONS: readonly ShortcutDefinition[] = [
       darwin: { key: "l", meta: true, shift: true },
       windows: { key: "l", ctrl: true, shift: true },
       linux: { key: "l", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  // tl1809：命令面板可达主要子面板的批量默认键。键位判据：
+  //   1) 统一取 Ctrl/Cmd+Shift+键 层级（palette.openLab 同层），该层已被
+  //      T/F/L/B/Z 占用，以下 9 键在本注册表全表（含 aliases）校验无冲突；
+  //   2) 避让系统级全局键（截屏/输入法/任务管理器类）与浏览器保留组合里
+  //      语义重叠的键：Ctrl+Shift+N(隐身)/O(书签)/Q(退出)/R(强刷)/S/V 不占；
+  //   3) 字母取语义锚：A=Automation、P=Palette(外观图标)、M=Memory、
+  //      C=Cpu(模型图标)、U=Usage、Delete=回收站(删除语义)、E=Explorer
+  //      (资源管理器)、K=Kanban(任务看板)、H=Hub(协作中心)。
+  {
+    action: "panel.automation",
+    section: "global",
+    labelKey: "shortcuts.action.panelAutomation",
+    descriptionKey: "shortcuts.desc.panelAutomation",
+    defaults: {
+      darwin: { key: "a", meta: true, shift: true },
+      windows: { key: "a", ctrl: true, shift: true },
+      linux: { key: "a", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.trash",
+    section: "global",
+    labelKey: "shortcuts.action.panelTrash",
+    descriptionKey: "shortcuts.desc.panelTrash",
+    defaults: {
+      darwin: { key: "Delete", meta: true, shift: true },
+      windows: { key: "Delete", ctrl: true, shift: true },
+      linux: { key: "Delete", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.appearance",
+    section: "global",
+    labelKey: "shortcuts.action.panelAppearance",
+    descriptionKey: "shortcuts.desc.panelAppearance",
+    defaults: {
+      darwin: { key: "p", meta: true, shift: true },
+      windows: { key: "p", ctrl: true, shift: true },
+      linux: { key: "p", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.memory",
+    section: "global",
+    labelKey: "shortcuts.action.panelMemory",
+    descriptionKey: "shortcuts.desc.panelMemory",
+    defaults: {
+      darwin: { key: "m", meta: true, shift: true },
+      windows: { key: "m", ctrl: true, shift: true },
+      linux: { key: "m", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.models",
+    section: "global",
+    labelKey: "shortcuts.action.panelModels",
+    descriptionKey: "shortcuts.desc.panelModels",
+    defaults: {
+      darwin: { key: "c", meta: true, shift: true },
+      windows: { key: "c", ctrl: true, shift: true },
+      linux: { key: "c", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.usageStats",
+    section: "global",
+    labelKey: "shortcuts.action.panelUsageStats",
+    descriptionKey: "shortcuts.desc.panelUsageStats",
+    defaults: {
+      darwin: { key: "u", meta: true, shift: true },
+      windows: { key: "u", ctrl: true, shift: true },
+      linux: { key: "u", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.resourceManager",
+    section: "view",
+    labelKey: "shortcuts.action.panelResourceManager",
+    descriptionKey: "shortcuts.desc.panelResourceManager",
+    defaults: {
+      darwin: { key: "e", meta: true, shift: true },
+      windows: { key: "e", ctrl: true, shift: true },
+      linux: { key: "e", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.tasklist",
+    section: "view",
+    labelKey: "shortcuts.action.panelTasklist",
+    descriptionKey: "shortcuts.desc.panelTasklist",
+    defaults: {
+      darwin: { key: "k", meta: true, shift: true },
+      windows: { key: "k", ctrl: true, shift: true },
+      linux: { key: "k", ctrl: true, shift: true },
+    },
+    preventDefault: true,
+  },
+  {
+    action: "panel.collabHub",
+    section: "view",
+    labelKey: "shortcuts.action.panelCollabHub",
+    descriptionKey: "shortcuts.desc.panelCollabHub",
+    defaults: {
+      darwin: { key: "h", meta: true, shift: true },
+      windows: { key: "h", ctrl: true, shift: true },
+      linux: { key: "h", ctrl: true, shift: true },
     },
     preventDefault: true,
   },
@@ -601,6 +728,30 @@ export function shortcutAcceptsCombo(action: ShortcutAction, combo: ShortcutComb
   return allowedKeys.some((allowedKey) => normalizeKey(allowedKey) === key);
 }
 
+// tl1809：非工作台页（设置/回收站/自动化）仍可触发的快捷键白名单。原先内联
+// 在 useGlobalShortcut 里；panel.* 导航键与 palette 面板条目行为对齐（命令
+// 面板本身在这些页面可达，其面板条目也能开面板），故并入白名单。
+const NON_WORKSPACE_ALLOWED_ACTIONS: readonly ShortcutAction[] = [
+  "commandPalette.open",
+  "settings.open",
+  "app.newSession",
+  "tab.close",
+  "shortcuts.show",
+  "textSize.increase",
+  "textSize.decrease",
+  "textSize.reset",
+  "help.docs.open",
+  "panel.automation",
+  "panel.trash",
+  "panel.appearance",
+  "panel.memory",
+  "panel.models",
+  "panel.usageStats",
+  "panel.resourceManager",
+  "panel.tasklist",
+  "panel.collabHub",
+];
+
 export function useGlobalShortcut(
   action: ShortcutAction,
   handler: (event: globalThis.KeyboardEvent) => void,
@@ -614,7 +765,7 @@ export function useGlobalShortcut(
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (isShortcutRecorderTarget(event.target)) return;
       if (useAppNavigationStore.getState().page.kind !== "workspace") {
-        if (!["commandPalette.open", "settings.open", "app.newSession", "tab.close", "shortcuts.show", "textSize.increase", "textSize.decrease", "textSize.reset", "help.docs.open"].includes(action)) return;
+        if (!NON_WORKSPACE_ALLOWED_ACTIONS.includes(action)) return;
         if (document.querySelector('[aria-modal="true"]') && !action.startsWith("textSize.")) return;
       }
       const editableTarget = isEditableTarget(event.target);
