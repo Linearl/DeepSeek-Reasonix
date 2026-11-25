@@ -61,11 +61,20 @@ test("registered baseline is structurally valid and self-consistent", () => {
   assert.ok(files.length > 0);
 });
 
-test("baseline meta records the registration commit this debt was seeded from", () => {
+test("baseline meta records the current batch seed with full refresh lineage", () => {
   const baseline = loadBaseline();
   assert.match(baseline._meta.commit, /^[0-9a-f]{9,40}$/);
-  assert.equal(baseline._meta.generated, "2026-10-10");
-  // 报告引用：登记时的诊断总数（472）与快照对账，防止登记与快照脱节。
+  // 批次依据（tl1807 换代）：基线由 tl1807 于 2026-11-25 全量 tsc 实跑重建立账
+  // （任务 745 2026-10-10 初账之后的测试面漂移一次性收口）。任何后续批次刷新
+  // 必须同步换代本断言并续写 history——断言钉的是「当前批次」而非初版日期。
+  assert.equal(baseline._meta.generated, "2026-11-25");
+  // 批次谱系不可静默抹掉：history 必须保留任务 745 初账记录。
+  assert.ok(
+    Array.isArray(baseline._meta.history)
+      && baseline._meta.history.some(h => h.generated === "2026-10-10" && String(h.note ?? "").includes("任务 745")),
+    "history keeps the 2026-10-10 task-745 seed",
+  );
+  // 报告引用：登记时的诊断总数与快照对账，防止登记与快照脱节。
   const recorded = Number(baseline._meta.diagnostics);
   assert.ok(recorded > 0 && recorded >= baseline._meta.pairs);
 });

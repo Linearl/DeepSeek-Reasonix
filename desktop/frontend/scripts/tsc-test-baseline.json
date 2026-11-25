@@ -1,18 +1,44 @@
 {
   "_meta": {
-    "note": "任务 745：tsconfig.test.json 补 **/*.tsx 后的存量类型诊断一次性登记（含 .ts 面 71 条，即 desktop-frontend CI 既有失败原因）。本文件由 scripts/tsc-test-gate.mjs 比对：名单外新诊断即红；无自动刷新通道，条目只减不增——还清后人工删除对应 file+code 行。已知盲区：同文件同错误码的新增诊断会被基线吸收（以层级换低噪声）。",
-    "generated": "2026-10-10",
-    "commit": "c04c3fa53",
-    "pairs": 226,
-    "diagnostics": 472
+    "note": "tl1807 批次刷新（2026-11-25，基点 edd56a7ab5，全量 tsc 实跑重建）：登记 tsconfig.test.json 面（src/__tests__ + bench/transcript-layout.tsx）的全部存量类型诊断。本批构成=1061 条诊断 / 578 对 file+错误码，分布 385 个文件；Top 错误码 TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22。批次依据：2026-10-10 任务 745 立账（226 对/472 条）后测试面持续新增换代，基线未跟，多轮会话申报「基线外 N 条=预存漂移面」无批次依据（预存红集中清零-实施报告-20261124.md §五.5 实录 574/572 条、§八.3 候拍板；本批用户拍板五件批落地）。自本批起名单外新诊断即红（tsc-test-gate.mjs 比对，无自动刷新通道，条目只减不增——还清后人工核对删除对应行）。已知盲区（刻意取舍）：同文件同错误码的新增诊断会被基线吸收，换取行号/文案变化不产生假红。",
+    "generated": "2026-11-25",
+    "commit": "5cee2b49b",
+    "pairs": 578,
+    "diagnostics": 1061,
+    "files": 385,
+    "topCodes": "TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22",
+    "history": [
+      {
+        "generated": "2026-10-10",
+        "commit": "c04c3fa53",
+        "pairs": 226,
+        "diagnostics": 472,
+        "note": "任务 745 初始立账（含 .ts 面 71 条=desktop-frontend CI 既有失败）"
+      },
+      {
+        "generated": "2026-11-25",
+        "commit": "5cee2b49b",
+        "pairs": 578,
+        "diagnostics": 1061,
+        "note": "tl1807 批次刷新：两月漂移一次性立账（1061 条全量），新增即红"
+      }
+    ]
   },
   "entries": {
     "bench/transcript-layout.tsx": [
       "TS2307",
+      "TS2353",
       "TS2739"
     ],
     "src/__tests__/activate-topic-stale.test.tsx": [
       "TS18048"
+    ],
+    "src/__tests__/agent-import-panel.test.tsx": [
+      "TS18047",
+      "TS6133"
+    ],
+    "src/__tests__/app-chrome-tabs.test.ts": [
+      "TS6133"
     ],
     "src/__tests__/approval-modal-file-reference.test.tsx": [
       "TS6133"
@@ -20,20 +46,47 @@
     "src/__tests__/automation-regions.test.tsx": [
       "TS2739"
     ],
+    "src/__tests__/bash-job-output-detail.test.tsx": [
+      "TS18047",
+      "TS2349"
+    ],
     "src/__tests__/capsule-panel.test.tsx": [
       "TS2322"
     ],
+    "src/__tests__/channel-chat-panel.test.tsx": [
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/collab-chat-view.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/collab-contact-names.test.tsx": [
-      "TS2300"
+      "TS2300",
+      "TS6133"
+    ],
+    "src/__tests__/collab-group-panel.test.tsx": [
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/collab-hub-interactions.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/collab-hub-panel.test.tsx": [
+      "TS2353",
+      "TS6133"
     ],
     "src/__tests__/collab-inbox-degraded.test.tsx": [
-      "TS2741"
+      "TS2739"
+    ],
+    "src/__tests__/collab-inbox-delete.test.tsx": [
+      "TS6133"
     ],
     "src/__tests__/collab-inbox-failure.test.tsx": [
-      "TS2741"
+      "TS2739"
     ],
     "src/__tests__/collab-inbox-panel.test.tsx": [
-      "TS2741"
+      "TS2739",
+      "TS6133"
     ],
     "src/__tests__/completion-summary-ui.test.tsx": [
       "TS1360",
@@ -41,13 +94,26 @@
     ],
     "src/__tests__/composer-content-menu-running.test.tsx": [
       "TS2322",
-      "TS2345"
+      "TS2345",
+      "TS2538"
     ],
     "src/__tests__/composer-context-menu-clipboard.test.tsx": [
       "TS2322"
     ],
     "src/__tests__/composer-draft-persistence.test.ts": [
       "TS2339"
+    ],
+    "src/__tests__/composer-draft-rewrite.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/composer-effort-applying.test.tsx": [
+      "TS2322",
+      "TS2741",
+      "TS6133"
+    ],
+    "src/__tests__/composer-effort-menu-domain.test.tsx": [
+      "TS2322"
     ],
     "src/__tests__/composer-effort-menu.test.tsx": [
       "TS2322",
@@ -58,7 +124,8 @@
     ],
     "src/__tests__/composer-goal-toggle.test.tsx": [
       "TS18047",
-      "TS2322"
+      "TS2322",
+      "TS6133"
     ],
     "src/__tests__/composer-guidance-batch.test.ts": [
       "TS6133"
@@ -73,7 +140,9 @@
       "TS2300"
     ],
     "src/__tests__/composer-image-capability.test.tsx": [
-      "TS2322"
+      "TS2322",
+      "TS2353",
+      "TS6133"
     ],
     "src/__tests__/composer-ime-probe.test.tsx": [
       "TS2322"
@@ -93,23 +162,61 @@
     "src/__tests__/composer-insert-owner.test.tsx": [
       "TS2339"
     ],
+    "src/__tests__/composer-meta-wrap.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-model-applying.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-nav-restore.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/composer-parked-startup-draft.test.tsx": [
+      "TS2322"
+    ],
     "src/__tests__/composer-quick-command-bang.test.tsx": [
       "TS2322"
     ],
+    "src/__tests__/composer-run-strip-fold.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-run-strip-oneline.test.tsx": [
+      "TS2322"
+    ],
     "src/__tests__/composer-run-strip.test.tsx": [
+      "TS2322",
+      "TS2353"
+    ],
+    "src/__tests__/composer-screenshot.test.tsx": [
       "TS2322"
     ],
     "src/__tests__/composer-session-draft.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-shell-mode-bang-bang.test.tsx": [
       "TS2322"
     ],
     "src/__tests__/composer-source-operations.test.tsx": [
       "TS2345",
       "TS7053"
     ],
+    "src/__tests__/composer-startup-draft-race.test.tsx": [
+      "TS2322"
+    ],
     "src/__tests__/composer-stop-unknown.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/composer-tools-default-fold.test.tsx": [
       "TS2322",
-      "TS6133",
-      "TS6192"
+      "TS6133"
+    ],
+    "src/__tests__/composer-video-gate-toast.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/composer-width-remeasure.test.tsx": [
+      "TS2322",
+      "TS6133"
     ],
     "src/__tests__/composerInboxHarness.tsx": [
       "TS2322"
@@ -122,8 +229,14 @@
       "TS2353",
       "TS2741"
     ],
+    "src/__tests__/context-session-metrics-fold.test.tsx": [
+      "TS18047"
+    ],
     "src/__tests__/context-window-ring.test.tsx": [
       "TS2741"
+    ],
+    "src/__tests__/conversation-projection.test.ts": [
+      "TS2769"
     ],
     "src/__tests__/crash-collapse.test.ts": [
       "TS2345"
@@ -132,6 +245,10 @@
       "TS2459"
     ],
     "src/__tests__/crash-mock.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/dag-batch-cleanup-tl1573.test.tsx": [
+      "TS2352",
       "TS6133"
     ],
     "src/__tests__/decision-footer-lifecycle.test.tsx": [
@@ -154,18 +271,28 @@
       "TS2532",
       "TS2769"
     ],
+    "src/__tests__/docs-site-entry.test.ts": [
+      "TS6133"
+    ],
     "src/__tests__/effort-switcher.test.tsx": [
       "TS2352"
     ],
-    "src/__tests__/external-opener.test.tsx": [
+    "src/__tests__/effort-tiers-fold.test.ts": [
       "TS6133"
     ],
     "src/__tests__/fold-toggle-button.test.tsx": [
       "TS2322",
       "TS2769"
     ],
+    "src/__tests__/gc21-pending-store.test.ts": [
+      "TS6133"
+    ],
     "src/__tests__/goal-activation-tab-routing.test.tsx": [
-      "TS18048"
+      "TS18048",
+      "TS2322"
+    ],
+    "src/__tests__/guidance-hover-preview.test.tsx": [
+      "TS6133"
     ],
     "src/__tests__/heartbeat-editor.test.tsx": [
       "TS2339"
@@ -176,6 +303,9 @@
     "src/__tests__/heartbeat-reuse-session.test.tsx": [
       "TS2339",
       "TS6133"
+    ],
+    "src/__tests__/heartbeat-topic-binding.test.tsx": [
+      "TS2339"
     ],
     "src/__tests__/helpers/RemoteNavigationHarness.tsx": [
       "TS2322"
@@ -192,6 +322,12 @@
     "src/__tests__/history-older-exhausted.test.ts": [
       "TS6133"
     ],
+    "src/__tests__/history-performance-benchmark.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/history-tool-status.test.ts": [
+      "TS2353"
+    ],
     "src/__tests__/hydrate-resident-snapshot.test.ts": [
       "TS6133"
     ],
@@ -207,7 +343,9 @@
       "TS2349"
     ],
     "src/__tests__/local-path-click-e2e.test.tsx": [
-      "TS2769"
+      "TS2322",
+      "TS2769",
+      "TS6133"
     ],
     "src/__tests__/markdown-history.test.tsx": [
       "TS18047",
@@ -216,11 +354,18 @@
     "src/__tests__/markdown-idle-highlight.test.tsx": [
       "TS18047"
     ],
+    "src/__tests__/markdown-table-export.test.tsx": [
+      "TS18047",
+      "TS2345"
+    ],
     "src/__tests__/mcp-interaction.test.tsx": [
       "TS6133"
     ],
     "src/__tests__/mermaid-rendering.test.tsx": [
       "TS2349"
+    ],
+    "src/__tests__/mode-css-split.test.ts": [
+      "TS2322"
     ],
     "src/__tests__/model-switcher-refresh.test.tsx": [
       "TS2367"
@@ -234,12 +379,26 @@
       "TS2352"
     ],
     "src/__tests__/pinned-files.test.tsx": [
-      "TS2322"
+      "TS2322",
+      "TS2739"
     ],
     "src/__tests__/plan-usage-card.test.tsx": [
       "TS6133"
     ],
     "src/__tests__/plan-usage.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/poll-bound-sameface.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/pre-repair-cleanup-tl1603.test.tsx": [
+      "TS2322",
+      "TS2353"
+    ],
+    "src/__tests__/pre-repair-merge-tl1787.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/project-group-four-optimizations.test.tsx": [
       "TS6133"
     ],
     "src/__tests__/project-tree-group-activity.test.tsx": [
@@ -254,8 +413,17 @@
     "src/__tests__/project-tree-group-hierarchy.test.tsx": [
       "TS2345"
     ],
-    "src/__tests__/project-tree-organization-races.test.tsx": [
-      "TS2339"
+    "src/__tests__/project-tree-group-topic-drag.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/project-tree-manage-sessions-consumption.test.tsx": [
+      "TS2322",
+      "TS2339",
+      "TS2722",
+      "TS6133"
+    ],
+    "src/__tests__/project-tree-subgroup-create.test.tsx": [
+      "TS6133"
     ],
     "src/__tests__/prompt-history-picker.test.tsx": [
       "TS2322",
@@ -274,7 +442,6 @@
       "TS18048"
     ],
     "src/__tests__/provider-editor-model-picker.test.tsx": [
-      "TS2304",
       "TS2322",
       "TS6133"
     ],
@@ -282,14 +449,54 @@
       "TS2352"
     ],
     "src/__tests__/provider-image-input.test.tsx": [
-      "TS2322",
       "TS2741"
+    ],
+    "src/__tests__/provider-model-effort-draft.test.ts": [
+      "TS2352"
     ],
     "src/__tests__/provider-onboarding.test.tsx": [
       "TS2352"
     ],
+    "src/__tests__/q2-transcript-measurement-benchmark.ts": [
+      "TS2353"
+    ],
     "src/__tests__/ready-meta-reconcile.test.tsx": [
       "TS6133"
+    ],
+    "src/__tests__/recovery-copies-degraded-1039.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/recovery-delete-feedback-tl1647.test.tsx": [
+      "TS2352",
+      "TS6133"
+    ],
+    "src/__tests__/recovery-demoted-row-ops-tl1415f.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/recovery-expanded-persistence-tl1415d9.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/recovery-null-arrays-1039r2.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/recovery-panel-headers-tl1415.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/recovery-same-stem-binding-tl1448.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/recovery-selected-follow-tl1430b.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/recovery-synthesize-feedback-tl1402.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/recovery-synthesize-refresh-1146.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/recovery-v3-only-row-1085.test.tsx": [
+      "TS2322"
     ],
     "src/__tests__/recovery-wait-banner.test.tsx": [
       "TS2322"
@@ -316,16 +523,36 @@
     "src/__tests__/resource-governance.test.ts": [
       "TS6133"
     ],
+    "src/__tests__/rewind-preflight-classification.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/rewind-preflight-dialog.test.tsx": [
+      "TS2741"
+    ],
     "src/__tests__/rich-composer-selection.test.tsx": [
       "TS2339",
       "TS2741",
       "TS6133"
     ],
+    "src/__tests__/screenshot-annotation.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/screenshot-overlay-follow.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/send-failed.test.ts": [
       "TS2339"
     ],
+    "src/__tests__/session-metrics-snapshot.test.tsx": [
+      "TS2339",
+      "TS2349"
+    ],
     "src/__tests__/session-monitor.test.ts": [
       "TS6133"
+    ],
+    "src/__tests__/session-purpose-938.test.tsx": [
+      "TS2345",
+      "TS2769"
     ],
     "src/__tests__/session-recovery-version-host-lifecycle.test.tsx": [
       "TS2367",
@@ -338,15 +565,28 @@
     "src/__tests__/session-takeover-ui.test.tsx": [
       "TS2352"
     ],
+    "src/__tests__/session-title-contract.test.ts": [
+      "TS2554"
+    ],
     "src/__tests__/session-undo-lifecycle.test.tsx": [
       "TS2339",
       "TS2345",
       "TS2459"
     ],
+    "src/__tests__/session-versions-degraded-1039r.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/session-versions-flat-session-1173s2.test.tsx": [
+      "TS18048",
+      "TS2740"
+    ],
     "src/__tests__/session-wall.test.tsx": [
       "TS6133"
     ],
     "src/__tests__/settings-cdp-debug-port.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/settings-lifecycle-noise-gate.test.ts": [
       "TS6133"
     ],
     "src/__tests__/settings-refresh-snapshot.test.tsx": [
@@ -358,10 +598,14 @@
       "TS2741",
       "TS6196"
     ],
+    "src/__tests__/settings-select-flip.test.tsx": [
+      "TS2345"
+    ],
     "src/__tests__/shell-support-install.test.tsx": [
       "TS2741"
     ],
     "src/__tests__/side-files-dock.test.tsx": [
+      "TS2353",
       "TS2769"
     ],
     "src/__tests__/sound.test.ts": [
@@ -373,8 +617,12 @@
     "src/__tests__/stop-button.test.ts": [
       "TS6133"
     ],
+    "src/__tests__/subagent-effort-domain.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/subagent-panel-dock.test.tsx": [
       "TS2345",
+      "TS2353",
       "TS6133"
     ],
     "src/__tests__/tab-close-policy.test.tsx": [
@@ -385,6 +633,9 @@
       "TS2339",
       "TS6196"
     ],
+    "src/__tests__/tab-runtime-reconcile.test.ts": [
+      "TS6133"
+    ],
     "src/__tests__/tab-switch-hydration.test.tsx": [
       "TS18048",
       "TS2322"
@@ -392,6 +643,29 @@
     "src/__tests__/tab-switch-session-rebind.test.tsx": [
       "TS18048",
       "TS2322"
+    ],
+    "src/__tests__/task1005-stable-tier.test.ts": [
+      "TS2367",
+      "TS6133"
+    ],
+    "src/__tests__/task1006-lab-bulk-toggle.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task1099-lab-family-cards.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task1112-trajectory-enrichment.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task1131-trajectory-row-layout.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task1131-trajectory-span-width.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task1147-compaction-window-status.test.tsx": [
+      "TS2345",
+      "TS6133"
     ],
     "src/__tests__/task152-todo-tree.test.ts": [
       "TS2345"
@@ -432,17 +706,25 @@
       "TS2339"
     ],
     "src/__tests__/task603-tool-optimizations.test.ts": [
-      "TS2305",
       "TS6133"
     ],
     "src/__tests__/task604-lab-picks-settings-path.test.ts": [
       "TS6133"
     ],
     "src/__tests__/task621-lab-tier-badges.test.ts": [
+      "TS2367",
       "TS6133"
     ],
     "src/__tests__/task670-fork-notice-dialog.test.tsx": [
       "TS2322"
+    ],
+    "src/__tests__/task686-workflow-panel.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/task701-web-shell.test.ts": [
+      "TS2614",
+      "TS6133"
     ],
     "src/__tests__/task704-trajectory-ledger.test.ts": [
       "TS6133"
@@ -457,6 +739,47 @@
       "TS18047",
       "TS2339"
     ],
+    "src/__tests__/task765-reasoning-fold-intent.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/task775-lab-param-cards.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/task783-usage-monitoring.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task811-collab-fold-unify.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task826-sidebar-hover.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/task842-sidebar-hover-zone.test.tsx": [
+      "TS2322",
+      "TS2352",
+      "TS6133"
+    ],
+    "src/__tests__/task932-overview-events-size.test.tsx": [
+      "TS2741",
+      "TS6133"
+    ],
+    "src/__tests__/task934-workflow-live-feed.test.tsx": [
+      "TS2322",
+      "TS2367",
+      "TS6133"
+    ],
+    "src/__tests__/task940-approval-select.test.tsx": [
+      "TS2300",
+      "TS2322",
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/task991-ask-background-toast.test.tsx": [
+      "TS2531"
+    ],
+    "src/__tests__/task997-overview-events-card.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/terminal-panel-commands.test.tsx": [
       "TS2739"
     ],
@@ -464,20 +787,475 @@
       "TS2740"
     ],
     "src/__tests__/theme-pack.test.ts": [
+      "TS2345",
+      "TS2724",
+      "TS6133"
+    ],
+    "src/__tests__/tl1012-message-timestamp.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1066-steer-image.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1092-collab-card-time-copy.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/tl1121-1122-message-layout.test.tsx": [
+      "TS2300",
+      "TS2353"
+    ],
+    "src/__tests__/tl1128-guidance-select-row-grid.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/tl1137-turn-tail-info.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/tl1141-concise-live-status.test.tsx": [
+      "TS2352",
+      "TS6133"
+    ],
+    "src/__tests__/tl1142-heartbeat-approval-default.test.tsx": [
+      "TS2339",
+      "TS7006"
+    ],
+    "src/__tests__/tl1149-group-menus.test.tsx": [
       "TS2345"
     ],
+    "src/__tests__/tl1149b-topic-grouping-flat.test.tsx": [
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/tl1155-turn-tail-tally.test.tsx": [
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/tl1160-concise-live-restore.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1165-smooth-scroll-follow.test.tsx": [
+      "TS2540",
+      "TS2740"
+    ],
+    "src/__tests__/tl1166-reasoning-only-continuation.test.ts": [
+      "TS7006"
+    ],
+    "src/__tests__/tl1168-topic-grouping-flyout.test.tsx": [
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/tl1170-filter-panel-order.test.tsx": [
+      "TS2322",
+      "TS2790",
+      "TS6133"
+    ],
+    "src/__tests__/tl1179-lab-switch-first-click.test.tsx": [
+      "TS2578",
+      "TS6133"
+    ],
+    "src/__tests__/tl1198-group-move-deep-targets.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1204-scroll-ssot-authority.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1216-invite-directory.test.tsx": [
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/tl1217-dissolve.test.tsx": [
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/tl1224-context-three-section.test.tsx": [
+      "TS2322",
+      "TS2741"
+    ],
+    "src/__tests__/tl1225b-external-drop-hints.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1235-steer-icon-inline.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1239-detail-rework.test.tsx": [
+      "TS2322",
+      "TS2741"
+    ],
+    "src/__tests__/tl1240-topic-batch.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1241-bottom-landing-fix.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1243-sidebar-resize-bottom-anchor.test.tsx": [
+      "TS18047"
+    ],
+    "src/__tests__/tl1246-group-delete-with-sessions.test.tsx": [
+      "TS2300"
+    ],
+    "src/__tests__/tl1249-projecttree-force-confirm-dialog.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/tl1255-sidebar-transition-frame-sync.test.tsx": [
+      "TS18047",
+      "TS2440"
+    ],
+    "src/__tests__/tl1260-session-group-drop-hints.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1284-stale-prefetch-start.test.tsx": [
+      "TS2554",
+      "TS2578",
+      "TS6133"
+    ],
+    "src/__tests__/tl1289-image-viewer-navigation.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1300-workflow-definitions.test.tsx": [
+      "TS2345",
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/tl1307-settings-load-retry.test.tsx": [
+      "TS2531",
+      "TS2578",
+      "TS6133"
+    ],
+    "src/__tests__/tl1341-tab-switch-tail-landing.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1342-resend-feedback.test.ts": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1363-reload-session-list.test.tsx": [
+      "TS2322",
+      "TS2739"
+    ],
+    "src/__tests__/tl1367-session-busy-holder.test.tsx": [
+      "TS2322",
+      "TS2345"
+    ],
+    "src/__tests__/tl1387-detail-running.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/tl1387-session-model-hover.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1387-subagent-registry.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/tl1401-consolidate-toast.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/tl1403-watchdog-move-exemption.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1406-deputyless-hint.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/tl1411-image-viewer-blank-click.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1411-image-viewer-save-local.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1412-image-annotation.test.tsx": [
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/tl1414-delete-toast.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/tl1426-subagent-split-layout.test.ts": [
+      "TS18048"
+    ],
+    "src/__tests__/tl1427-draft-rewrite-cancel.test.tsx": [
+      "TS2322",
+      "TS2339",
+      "TS6133"
+    ],
+    "src/__tests__/tl1433-four-gaps.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/tl1433-workflow-run-in-tasks.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1434-workflow-node-trace.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1435-subagent-persisted-running.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1437-side-files-interactions.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/tl1439-collab-chat-memory.test.tsx": [
+      "TS2739",
+      "TS6133"
+    ],
+    "src/__tests__/tl1441-channel-capabilities.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1441-channel-tab.test.tsx": [
+      "TS2322",
+      "TS2769",
+      "TS6133"
+    ],
+    "src/__tests__/tl1441-composer-channel-mode.test.tsx": [
+      "TS2353",
+      "TS6133",
+      "TS6196"
+    ],
+    "src/__tests__/tl1445-reference-interactions.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/tl1447-subagent-heartbeat.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1454-workflow-templates.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1458-notify-archive.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1462-collab-hub-palette.test.tsx": [
+      "TS18048",
+      "TS2345"
+    ],
+    "src/__tests__/tl1464-notify-unification.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/tl1465-channel-guidance-filter.test.tsx": [
+      "TS2300",
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/tl1465-channel-image-render.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1465-hub-paste-attachment.test.tsx": [
+      "TS2300",
+      "TS2322",
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1468-side-files-display.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/tl1468b-side-files-menu-alignment.test.tsx": [
+      "TS2769",
+      "TS6133"
+    ],
+    "src/__tests__/tl1478-trajectory-interaction.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/tl1512-width-blank-block.test.tsx": [
+      "TS2322",
+      "TS2440"
+    ],
+    "src/__tests__/tl1528-events-card-retry.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1536-serve-qr.test.tsx": [
+      "TS2339",
+      "TS2352",
+      "TS2532",
+      "TS6133"
+    ],
+    "src/__tests__/tl1543-startup-degrade-ux.test.tsx": [
+      "TS18047"
+    ],
+    "src/__tests__/tl1560-group-migrate.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1564-dispatch-card.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1565-attachment-interactions.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1568-md-image-width.test.tsx": [
+      "TS2339"
+    ],
+    "src/__tests__/tl1578-input-overflow-tri.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1611-steer-render.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1613-tool-description.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1639-guide-meta-same-row.test.tsx": [
+      "TS2300",
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/tl1641-side-files-menu-filetype.test.tsx": [
+      "TS2769"
+    ],
+    "src/__tests__/tl1648-compaction-queue-facts.test.tsx": [
+      "TS2345",
+      "TS2769"
+    ],
+    "src/__tests__/tl1653x-session-changed-dedupe.test.ts": [
+      "TS2322",
+      "TS2345"
+    ],
+    "src/__tests__/tl1654-deleted-provider-picker.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1654-install-model-autofetch.test.tsx": [
+      "TS18047",
+      "TS6133"
+    ],
+    "src/__tests__/tl1654r2-model-list-sync.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/tl1671-reasoning-metrics-card.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/tl1674b-pre-repair-manual-splice.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/tl1693-update-surface.test.tsx": [
+      "TS2345"
+    ],
+    "src/__tests__/tl1699-sidebar-width-reflow-anchor.test.tsx": [
+      "TS18047",
+      "TS2440"
+    ],
+    "src/__tests__/tl1699r2-firstline-keep.test.tsx": [
+      "TS18047",
+      "TS2339",
+      "TS2440",
+      "TS6133"
+    ],
+    "src/__tests__/tl1701-compaction-anchor-below-stats.test.ts": [
+      "TS2459"
+    ],
+    "src/__tests__/tl1703-startup-splash-first-frame.test.ts": [
+      "TS2307",
+      "TS2345"
+    ],
+    "src/__tests__/tl1704-question-jump-rail-visibility.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1709-selection-speak.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1711-topic-move.test.tsx": [
+      "TS2339",
+      "TS2345",
+      "TS2739",
+      "TS6133",
+      "TS7006"
+    ],
+    "src/__tests__/tl1712-host-inject-render-dedup.test.ts": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1729-session-cost-single-source.test.tsx": [
+      "TS2352"
+    ],
+    "src/__tests__/tl1730-ring-cache-single-source.test.tsx": [
+      "TS2741"
+    ],
+    "src/__tests__/tl1734-memory-settings-empty-scope.test.tsx": [
+      "TS18047",
+      "TS6133"
+    ],
+    "src/__tests__/tl1736-ring-open-leave-guard.test.tsx": [
+      "TS2322",
+      "TS2741",
+      "TS6133"
+    ],
+    "src/__tests__/tl1740-reflow-wheel-intent.test.tsx": [
+      "TS18047",
+      "TS2440"
+    ],
+    "src/__tests__/tl1746-tasklist-panel.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1765-diverged-watchdog.test.tsx": [
+      "TS2345",
+      "TS6133"
+    ],
+    "src/__tests__/tl1775-tasklist-board-open.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/tl1776-stream-append-tail-bounce.test.tsx": [
+      "TS18047",
+      "TS2440",
+      "TS6133"
+    ],
+    "src/__tests__/tl1777-context-strip-budget.test.tsx": [
+      "TS2322",
+      "TS2353"
+    ],
+    "src/__tests__/tl1777r2-resize-settle.test.tsx": [
+      "TS2322",
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/tl1791-lab-anchors-deeplink.test.tsx": [
+      "TS2578",
+      "TS6133"
+    ],
+    "src/__tests__/tl1797-tab-hover-card.test.tsx": [
+      "TS2352",
+      "TS2353"
+    ],
+    "src/__tests__/tl1798-motion-tokens.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/tl933-workflow-viewport.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl998-notice-timestamps.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/todo-sidebar-dock.test.tsx": [
+      "TS2353",
+      "TS6133"
+    ],
+    "src/__tests__/tool-recovery-panel-readonly-grading.test.tsx": [
       "TS6133"
     ],
     "src/__tests__/tool-recovery-panel-turn-end-cleanup.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/tooltip-wrap-command.test.tsx": [
+      "TS2739"
+    ],
+    "src/__tests__/topicbar-more-menu.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/topicbar-region.test.tsx": [
       "TS2353"
     ],
     "src/__tests__/transcript-find-bar.test.tsx": [
       "TS17001",
       "TS2339"
     ],
+    "src/__tests__/transcript-find-highlight.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/transcript-find.test.ts": [
       "TS2339"
+    ],
+    "src/__tests__/transcript-geometry-read-cache.test.ts": [
+      "TS6133",
+      "TS7022"
+    ],
+    "src/__tests__/transcript-kernel-races.test.ts": [
+      "TS2322"
     ],
     "src/__tests__/transcript-kernel.test.ts": [
       "TS6133"
@@ -486,11 +1264,24 @@
       "TS2339",
       "TS2454"
     ],
+    "src/__tests__/transcript-measurement-revision.test.tsx": [
+      "TS6133"
+    ],
     "src/__tests__/transcript-residency.test.ts": [
       "TS6133"
     ],
+    "src/__tests__/transcript-row-render-storm.test.tsx": [
+      "TS2322",
+      "TS6133"
+    ],
     "src/__tests__/transcript-rows.test.ts": [
-      "TS2304"
+      "TS2304",
+      "TS2339",
+      "TS2353"
+    ],
+    "src/__tests__/transcript-selection-path-actions.test.tsx": [
+      "TS2322",
+      "TS6133"
     ],
     "src/__tests__/transcript-selection-retention.test.tsx": [
       "TS2322",
@@ -503,8 +1294,11 @@
     "src/__tests__/transcript-store-resident-policy.test.ts": [
       "TS6133"
     ],
-    "src/__tests__/transcript-viewport.test.tsx": [
-      "TS2304"
+    "src/__tests__/transcript-timeline.test.ts": [
+      "TS2353"
+    ],
+    "src/__tests__/turn-actions-rendering.test.ts": [
+      "TS6133"
     ],
     "src/__tests__/turn-result-notice-collapse.test.tsx": [
       "TS2741"
@@ -514,8 +1308,14 @@
       "TS2459",
       "TS2724"
     ],
+    "src/__tests__/turn-tool-tally.test.ts": [
+      "TS2339"
+    ],
     "src/__tests__/turn-verification-commands.test.tsx": [
       "TS2339"
+    ],
+    "src/__tests__/unfiled-inputs.test.tsx": [
+      "TS6133"
     ],
     "src/__tests__/updater-shared-state.test.tsx": [
       "TS18048",
@@ -534,6 +1334,7 @@
       "TS6196"
     ],
     "src/__tests__/use-controller-live-context.test.tsx": [
+      "TS2322",
       "TS2722"
     ],
     "src/__tests__/use-controller-send-fallback.test.tsx": [
@@ -544,13 +1345,26 @@
       "TS2345"
     ],
     "src/__tests__/user-message-fold.test.tsx": [
-      "TS2339"
+      "TS2339",
+      "TS6133"
     ],
     "src/__tests__/web-search-model-settings.test.tsx": [
       "TS2741"
     ],
     "src/__tests__/work-status-running-duration.test.tsx": [
       "TS6133"
+    ],
+    "src/__tests__/workspace-file-ops.test.tsx": [
+      "TS2459"
+    ],
+    "src/__tests__/workspace-panel-commands.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/workspace-panel-revive.test.tsx": [
+      "TS2353"
+    ],
+    "src/__tests__/workspace-panel-test-harness.tsx": [
+      "TS2322"
     ],
     "src/__tests__/workspace-path-copy.test.tsx": [
       "TS2339"
