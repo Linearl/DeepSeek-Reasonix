@@ -2972,6 +2972,12 @@ export const zh: Record<DictKey, string> = {
   "tasklist.overview.prioDist": "未完成按优先级",
   "tasklist.overview.unlabeled": "（未标）",
   "tasklist.overview.emptyOpen": "当前没有未完成任务。",
+  // tl1810 — 优先级标签 hover 定义（20261125 草案；面板 tooltip 单一文案源，
+  // 合法口径 = tl.py _norm_prio 的 P0-P3）。
+  "tasklist.prio.p0": "阻断级：立即处理",
+  "tasklist.prio.p1": "高优：本批必排",
+  "tasklist.prio.p2": "常规：计划内",
+  "tasklist.prio.p3": "低优：可缓",
   "tasklist.status.pending": "待做",
   "tasklist.status.in_progress": "进行中",
   "tasklist.status.partial": "部分完成",

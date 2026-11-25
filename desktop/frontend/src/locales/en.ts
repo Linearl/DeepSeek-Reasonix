@@ -2992,6 +2992,12 @@ export const en = {
   "tasklist.overview.prioDist": "Open tasks by priority",
   "tasklist.overview.unlabeled": "(unlabeled)",
   "tasklist.overview.emptyOpen": "No open tasks right now.",
+  // tl1810 — priority label hover definitions (draft 20261125; single source
+  // for the panel tooltip, keyed off prio_mark legality = tl.py _norm_prio).
+  "tasklist.prio.p0": "Blocker: handle immediately",
+  "tasklist.prio.p1": "High: must land this batch",
+  "tasklist.prio.p2": "Regular: planned work",
+  "tasklist.prio.p3": "Low: can wait",
   "tasklist.status.pending": "Pending",
   "tasklist.status.in_progress": "In progress",
   "tasklist.status.partial": "Partial",

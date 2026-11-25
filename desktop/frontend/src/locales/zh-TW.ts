@@ -2288,6 +2288,12 @@ export const zhTW: Record<DictKey, string> = {
   "tasklist.overview.prioDist": "未完成按優先級",
   "tasklist.overview.unlabeled": "（未標）",
   "tasklist.overview.emptyOpen": "目前沒有未完成任務。",
+  // tl1810 — 優先級標籤 hover 定義（20261125 草案；面板 tooltip 單一文案源，
+  // 合法口徑 = tl.py _norm_prio 的 P0-P3）。
+  "tasklist.prio.p0": "阻斷級：立即處理",
+  "tasklist.prio.p1": "高優先：本批必排",
+  "tasklist.prio.p2": "常規：計劃內",
+  "tasklist.prio.p3": "低優先：可緩",
   "tasklist.status.pending": "待做",
   "tasklist.status.in_progress": "進行中",
   "tasklist.status.partial": "部分完成",
