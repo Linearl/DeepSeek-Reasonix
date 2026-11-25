@@ -71,7 +71,10 @@ console.log("\ntask 603 tool-optimizations (edit readBack + gate linkage)");
     && ["editEvidenceRelaxed", "multiEditInjection", "capabilityGroups", "multiEditErrorDetail", "multiEditEvidenceNarrow", "multiEditSkipFailed"]
       .every((id) => layoutDefault.includes(`{ id: "${id}", labelKey: "settings.${id}", tier: "recommended" }`)),
     "rail entry reads its three switches and hosts the 789/943/979/1218 member rows at recommended (81/123 lost-save rule; tl1487 七组②)");
-  ok(panel.includes("on: labEntryLightOn(entry, s)"), "panel derives each rail light from its own onKeys (81/123 lost-save rule)");
+  // tl1805 搭车收口（预存红）：tl1741 alwaysOn 折叠把 rail 灯表达式改为
+  // Boolean(entry.alwaysOn) || labEntryLightOn(entry, s)（task561 ④ 已钉新形），
+  // 本 pin 漏跟——随 tl1805 补同步（tip edd56a7ab5 基线实跑即红，非本件引入）。
+  ok(panel.includes("Boolean(entry.alwaysOn) || labEntryLightOn(entry, s)"), "panel derives each rail light from alwaysOn fold + its own onKeys (81/123 lost-save rule; tl1741 form, tl1805 pin sync)");
   ok(panel.includes('{selected === "toolOptimizations" && ('), "pane card located");
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "card writes through its own setter");
   ok(panel.includes('labLabel("toolOptimizations"'), "card label carries the tier badge");

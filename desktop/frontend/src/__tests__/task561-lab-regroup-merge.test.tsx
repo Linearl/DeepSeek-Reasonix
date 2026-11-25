@@ -229,8 +229,10 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
   // tl1309 卡②：monitoring pane 退役并入「运行可观测」合并卡——endMarker
   // 再随迁到 runtimeObservability。
   { id: "updateFeedback", endMarker: '{selected === "runtimeObservability" && (', members: [
-    // 任务 971：restartUpdate 迁至工具优化聚合页（toolOptimizations pane）——
-    // 本卡不再含该行（键/setter 零变化，仅 UI 落点迁移）。
+    // 任务 971 曾迁 restartUpdate 至工具优化聚合页；任务 992（用户 1018
+    // 21:34）裁定归位回本卡，tl1805（20261125）补齐渲染面——本卡重新承载
+    // 该行（键/setter 零变化，仅 UI 落点归位）。
+    { label: "M6 restartUpdate", field: "s.experimentalRestartUpdate", setter: "app.SetExperimentalRestartUpdate(on)" },
     { label: "M6 feedback", field: "s.experimentalFeedback", setter: "app.SetExperimentalFeedback(on)" },
     // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
     { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },

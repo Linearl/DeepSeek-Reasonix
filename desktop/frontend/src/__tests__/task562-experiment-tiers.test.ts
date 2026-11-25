@@ -414,7 +414,8 @@ console.log("\ntask 562 lab three-tier badges");
   // 窗口一并补同步，992 落地时本 pin 漏跟）。
   ok(agg("updateFeedback") === "recommended", `updateFeedback aggregates to 推荐 after the 992 move-back (got ${String(agg("updateFeedback"))})`);
   // 任务 971：toolOptimizations 聚合页（readBack 推荐 + 证据门未稳定 + multi_edit
-  // 直注可选 + restart_update 推荐）——卡头聚合单枚 推荐。
+  // 直注可选）——卡头聚合单枚 推荐。（restart_update 曾入聚合输入，992 归位
+  // updateFeedback 卡后不再是本卡成员；tl1805 渲染面补同步，聚合输入不变。）
   ok(agg("toolOptimizations") === "recommended", `toolOptimizations hub aggregates to 推荐 (got ${String(agg("toolOptimizations"))})`);
   // tl1309 卡②：eventsRotation 迁出 sessionStore——仅余未稳定成员，聚合终值
   // 可选→未稳定。tl1338：唯一成员 sessionStorage 未稳定→稳定（用户 2026-11-01
