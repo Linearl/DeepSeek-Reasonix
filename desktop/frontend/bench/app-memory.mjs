@@ -147,11 +147,29 @@ async function runProcess(index) {
     await selectFixture(page, fixtures.full);
     await enterSafety(page);
     await selectFixture(page, fixtures.full);
-    for (const [label, className] of [["Creation", "app--creation"], ["Workbench", "app--workbench"]]) {
+    // tl1450 retired the creation layout (three layouts -> classic|workbench);
+    // the churn pair follows the surviving seg options (SettingsPanel
+    // settings.desktopLayoutStyle.classic|workbench).
+    for (const [label, className] of [["Classic", "app--classic"], ["Workbench", "app--workbench"]]) {
       await chooseAppLayout(page, label, className);
       await page.mouse.move(0, 0);
       await settleFrames(page);
     }
+    // Per-fixture resting state (expanded transcripts, the safety projection)
+    // still warms on a fixture's SECOND visit: probe evidence 20261125 shows a
+    // one-time +4,996 renderer-node rise across the first post-baseline
+    // windowed/geometry visits that then stays flat for 10 straight rounds
+    // while the in-page census (2433 elements / 5125 nodes) never moves —
+    // warm-up, not per-navigation retention. Tour every fixture once more
+    // before the baseline so the floor the drift classifier judges against is
+    // already warm; otherwise phase traffic re-warms caches above the baseline
+    // and reads as persistent drift.
+    await selectFixture(page, fixtures.windowed);
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
+    await enterSafety(page);
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
     // Baseline and checkpoints share a post-navigation resting state. Layout
     // controls can still own transient listeners immediately after closing, so
     // one early reading can sit above the resting value and make every later
@@ -196,6 +214,14 @@ async function runProcess(index) {
     // measured at rest: mid-cleanup listener blips (614 vs the 512 baseline)
     // resolve a few tasks after the last navigation. Settle, GC, and take the
     // quiescent confirmation sample the verdict actually judges.
+    // The tail also has to END IN THE SAME RESTING CONTEXT the baseline used
+    // (geometry -> full): mixed's last round can be a non-safety round ending
+    // on a windowed -> full swap whose renderer footprint sits one fixture
+    // below the floor (shard evidence 20261125: settled 24,973/1,195 vs
+    // baseline 27,515/1,445 after a clean 512-round run = persistent-drift
+    // false positive). Re-walk the baseline path before settling.
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
     await settleFrames(page, 12);
     const settled = { phase: "settled", roundTrips: MIXED_CYCLES, ...await forceGc(cdp, page) };
     samples.push(settled);

@@ -108,7 +108,8 @@ try {
       page.on("pageerror", error => errors.push(error.message));
       await page.goto(`http://127.0.0.1:${port}/?mock=deepseek_upgrade&bench=1&platform=${platform}`, { waitUntil: "domcontentloaded" });
       await page.locator("textarea.composer__input:not([aria-hidden=true])").waitFor();
-      for (const layout of [["Creation", "app--creation"], ["Workbench", "app--workbench"]]) {
+      // tl1450 retired the creation layout; iterate the two survivors.
+      for (const layout of [["Classic", "app--classic"], ["Workbench", "app--workbench"]]) {
         await page.setViewportSize({ width: 1600, height: 1100 });
         await page.evaluate(() => { document.documentElement.style.zoom = "1"; });
         await chooseAppLayout(page, ...layout);
