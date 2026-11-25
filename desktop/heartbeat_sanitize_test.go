@@ -139,9 +139,9 @@ func TestHeartbeatSanitizeFieldRepairsNormalizeSafeDefaults(t *testing.T) {
 // title/prompt 空、project 缺 workspaceRoot、maxRuns 负数 → 内存禁用 + note。
 func TestHeartbeatSanitizeDisableWithoutSafeDefault(t *testing.T) {
 	cases := []struct {
-		name      string
-		taskJSON  string
-		wantNote  string
+		name     string
+		taskJSON string
+		wantNote string
 	}{
 		{"empty title", `{"id":"t","title":"","prompt":"p","interval":"1h","enabled":true}`, "empty title"},
 		{"empty prompt", `{"id":"t","title":"x","prompt":"  ","interval":"1h","enabled":true}`, "empty prompt"},
