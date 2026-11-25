@@ -101,7 +101,9 @@ const locales = { zh: locale("zh"), "zh-TW": locale("zh-TW"), en: locale("en") }
   // a8b79f079(1101,2026-10-24)命令面板升级后 palette item 改多行对象字面量;
   // 「cmd-automation 标题=heartbeat.scheduler 且 run 打开 automation」单行正则
   // 过期,改跨行匹配同一 cmd-automation 块内两行齐备。
-  ok(/id: "cmd-automation"[\s\S]{0,200}?title: t\("heartbeat\.scheduler"\)[\s\S]{0,200}?run: \(\) => openPage\(\{ kind: "automation" \}\)/.test(appSrc), "#8 palette command (cmd-automation) uses heartbeat.scheduler as its title");
+  // tl1809(2026-11-25):该行补 shortcutLabel 键位徽标(~110 字符),title→run
+  // 间距超 200,窗口 200→320;pin 语义不变(标题与 run 打开目标仍逐字钉死)。
+  ok(/id: "cmd-automation"[\s\S]{0,320}?title: t\("heartbeat\.scheduler"\)[\s\S]{0,320}?run: \(\) => openPage\(\{ kind: "automation" \}\)/.test(appSrc), "#8 palette command (cmd-automation) uses heartbeat.scheduler as its title");
   ok(/label=\{t\("heartbeat\.scheduler"\)\} onClick=\{props\.onOpenAutomation\}/.test(paletteSrc) || /t\("heartbeat\.scheduler"\)/.test(paletteSrc), "#8 palette source (unmounted composition half) stays on heartbeat.scheduler");
 }
 
