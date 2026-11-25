@@ -1,3 +1,5 @@
+//go:build windows
+
 package agent
 
 // tl1429b 回归钉:orphan sweep 的登记句柄撤除分支(正常路径 self_lock 清场)。
