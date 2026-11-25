@@ -725,6 +725,12 @@ func (o *turnOrchestrator) advanceGoalAfterTurn(ctx context.Context, expectedCon
 	var readiness agent.ReadinessResult
 	var readinessErr *agent.FinalReadinessError
 	pauseCause, pauseReason, runPaused := goalPauseFromRunError(turnErr)
+	// tl1312: with no spend axis configured, the only budget that can pause a
+	// Goal run is the default heartbeat continuation ceiling — say so and name
+	// the knob, instead of a bare "budget reached" that reads like a misfire.
+	if pauseCause == stopCauseBudgetSpend && !c.goalSpendBudgetConfigured() {
+		pauseReason += " (continuation hit the default heartbeat goal ceiling; set [agent].goal_token_budget to configure or raise it)"
+	}
 	// Unattended RecoveryPause (task 109 B5): absorb into the FSM so autopilot
 	// ends as Failed instead of a fake-Running goal. Interactive keeps the old
 	// contract of returning the pause to the caller.
