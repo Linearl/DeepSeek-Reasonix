@@ -1,9 +1,9 @@
 # 包116 release notes — v1.38.3-20261125-2259
 
 > 基线：包115（v1.38.3-20261125-1322，构建点 `e2dd61b997`）
-> 构建点：随棘轮 commit 后 tip（本 notes commit 后现查校准）
-> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
-> 执行线：zcode 开发线（6 支 merge 全量本包，zcode 滚合）
+> 构建点：`5efd3ebd91`（main-v2-stable，含棘轮三线+两门禁拦补两 commit；其后 053362eeb3 docs commit 不在构建点内）
+> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`（74,254,029 B）
+> 执行线：zcode 开发线（6 支 merge 全量本包，zcode 滚合；二轮构建=一轮双门禁拦（class-contract+bridge-json-tags）→修→二轮 rc=0）
 > <!-- claims: feat-tl1793r3,feat-tl1810-1812,feat-tl1674c,feat-tl1815,feat-tl1809,feat-tl-appmem -->
 
 ## 一、返修（装机验证打回件）
