@@ -1347,6 +1347,7 @@ export const en = {
   "composer.audioTooLarge": "Audio file exceeds the 50 MB inline limit",
   "composer.audioLargeHint": "Large audio file (>4 MiB): audio rides the request inline, which can slow the response",
   "composer.audioInputDisabled": "Audio input is not enabled for this model; the audio attachment will not be sent",
+  "composer.audioInputDisabledHint": "Audio input is not enabled for this model; the audio was not attached. Set audio = true in the model's model_overrides, or switch to an audio-capable model",
    "composer.videoInputDisabled": "Video input is not enabled for this model; the video attachment will not be sent",
   "composer.videoInputDisabledHint": "Video input is not enabled for this model; the video was not attached. Set video = true in the model's model_overrides, or switch to a video-capable model",
   "composer.videoTooLarge": "Video file exceeds the 50 MB inline limit",

@@ -3736,6 +3736,17 @@ export function Composer({
     if (channelMode) return;
     const audios = files.filter(isAudioFile);
     if (audios.length === 0) return;
+    // tl1803：门控关（audioInputEnabled=false）时本函数此前在 attachFiles
+    // 调用点被整个跳过，attachOtherFiles 的过滤器又明确排除音频——音频四路
+    // 全不收、零提示静默丢弃（tl1767r3 报告申报的同类）。此处补 toast 如实
+    // 提示。channelMode 静默跳过是 tl1441 ③ 有意设计（群聊六件能力清单无
+    // 音频，提示去开 audio 不可兑现），保持不变。>50MB 文件同走本提示而非
+    // audioTooLarge：门控关时文件不会被添加，尺寸检查无意义，「超 50MB 上
+    // 限」会误导用户以为瘦身即可用（实际模型根本收不了音频）。
+    if (!audioInputEnabled) {
+      showToast(t("composer.audioInputDisabledHint"), "warn");
+      return;
+    }
     for (const file of audios) {
       updatePendingPasteForDraft(sourceDraftKey, 1);
       try {
@@ -3831,7 +3842,9 @@ export function Composer({
     if (!attachmentInputEnabled) return;
     const sourceDraftKey = activeDraftKeyRef.current;
     void attachImageFiles(files, sourceDraftKey);
-    if (audioInputEnabled) void attachAudioFiles(files, sourceDraftKey);
+    // tl1803：audio 无条件进本路，门控判定在 attachAudioFiles 内——门控关
+    // 时出「未开启音频输入」提示而非静默；门控开时行为与旧守卫逐字节一致。
+    void attachAudioFiles(files, sourceDraftKey);
     // tl1767r3：video 无条件进本路，门控判定在 attachVideoFiles 内——门控关
     // 时出「未开启视频输入」提示而非静默；门控开时行为与旧守卫逐字节一致。
     void attachVideoFiles(files, sourceDraftKey);
