@@ -557,6 +557,8 @@ export interface PreRepairSplicePreviewView {
   ownerHealthy: boolean;
   healthCodes?: string[];
   alreadyRegistered?: boolean;
+  /** tl1674c: 降级读侧说明（折叠正本 dirty 降级时非空；空=两侧严格快照） */
+  degraded?: string;
   ownerPath: string;
   backupDir: string;
 }
@@ -569,6 +571,8 @@ export interface PreRepairSpliceReceiptView {
   registered: boolean;
   reason?: string;
   kind?: string;
+  /** tl1674c: 降级读侧说明（与判据同口径，登记如实带同值） */
+  degraded?: string;
   source?: string;
   splicePoint?: number;
   segmentMessages?: number;
