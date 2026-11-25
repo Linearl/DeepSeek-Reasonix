@@ -1152,8 +1152,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
-              {/* 任务 971：restartUpdate 行迁至「工具优化」聚合页（toolOptimizations
-                  pane）——键/setter 零变化，仅 UI 落点迁移。 */}
+              {/* 任务 971 曾把本行迁至「工具优化」聚合页；任务 992（用户 1018
+                  21:34）裁定归位回本卡——配置面随 1005 补同步，渲染面由
+                  tl1805（20261125）补齐：行回到 971 迁出前的原位（forkNotice
+                  之后、stagingDir 之前），键/setter/testId 零变化。
+                  testId=tl1791 lab-toggle-restartUpdate 锚点（跟 id 不跟卡）。 */}
+              <SettingsField testId="lab-toggle-restartUpdate" label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
+                    >
+                      {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <>
                 {/*
                  * Task 381: the fast-switch staging directory. Empty = the
@@ -3884,22 +3901,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
               <p className="approval-mode-hint">{t("settings.multiEditInjection.risk")}</p>
             </SettingsField>
-            {/* 任务 971：restart_update 自界面组「更新与反馈」卡迁入（键/setter
-                零变化，仅 UI 落点迁移）。 */}
-            <SettingsField testId="lab-toggle-restartUpdate" label={labLabel("restartUpdate", t("settings.restartUpdate"))} hint={t("settings.restartUpdateHint")} icon={<RefreshCw size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalRestartUpdate) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalRestartUpdate(on))}
-                  >
-                    {t(on ? "settings.restartUpdate.on" : "settings.restartUpdate.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
+            {/* tl1805（20261125）：restart_update 行归位回界面组「更新与反馈」卡
+                （992 裁定的渲染面补同步）——本聚合页不再承载该行；键/setter
+                零变化，testId 随行迁走（锚点跟 id 不跟卡）。 */}
             {/* 任务 979：能力组披露+session_hub 聚合件真开关——替换 971 的
                 占位键位（954/955 已合入 149491604，占位从未挂接）。一键覆盖
                 953（use_capability 组行/组卡/体积闸/call_hint）、954（session_hub
