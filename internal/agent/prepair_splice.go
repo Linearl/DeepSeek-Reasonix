@@ -31,6 +31,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"reasonix/internal/fileutil"
@@ -80,6 +82,11 @@ type PreRepairSplicePlan struct {
 	// 的对屏读数：面板按它展示「主线 N 条 / 备份 M 条」的分段结构）。
 	OwnerMessages  int `json:"ownerMessages,omitempty"`
 	BackupMessages int `json:"backupMessages,omitempty"`
+	// Degraded 报告本判据的降级读侧（tl1674c 折叠态降级）：空=两侧严格快照
+	// （历史形态不变）；非空=有侧跑在 load 时修复后的视图上（"owner"/"backup"
+	// /"owner backup"）。放行不是无声的：判定依据随判据结果一路带进档案袋与
+	// 面板读数（audit 有据）。
+	Degraded string `json:"degraded,omitempty"`
 	// Reason 是不可拼接时的人话原因（可拼接时为空）。
 	Reason string `json:"reason,omitempty"`
 }
@@ -122,6 +129,9 @@ type PreRepairSpliceEntry struct {
 	BoundaryNextHash string `json:"boundaryNextHash,omitempty"`
 	OwnerMessages    int    `json:"ownerMessages"`
 	BackupDigest     string `json:"backupDigest"`
+	// Degraded 与判据同口径（tl1674c）：判据若有降级读侧，登记如实带同值
+	// （历史档案袋无此字段=当时的登记全是严格读，语义自洽）。
+	Degraded string `json:"degraded,omitempty"`
 }
 
 // preRepairSpliceLedgerDoc 是档案袋文件的文档形态。
@@ -166,6 +176,148 @@ func HasPreRepairSplice(sessionPath, backupDir string) bool {
 	return false
 }
 
+// ---- tl1674c 折叠态降级读侧 ----
+//
+// 排查结论（20261125 用户现场 调研员3 实测钉）：diet 折叠改写正本时旧链进
+// pre-repair 备份，改写瞬间的在飞轮次会以「assistant 带 tool_calls 而结果
+// 未落」的形态留在备份尾部——LoadSession 读备份时补占位结果（确定性 load
+// 时修复），normalizedDirty=true，LoadSessionContentSnapshot 按 tl1315 纪律
+// fail-closed，拼接判据整体拒（「content snapshot unavailable」）。正本本身
+// 往往可读——拒的是被换掉的旧链。
+//
+// 降级判据（tl1802 闸哲学同源：判定用既有键收拢，不要求完美快照）：备份是
+// 「只被当数据读」的死数据，它的 normalizedDirty 不是「脏到不可信」——修复
+// 形态是确定性的（补占位结果/补 tool 名/闭合参数），修复后视图正是下一次
+// Save 会持久化、查询面重放会用的同一形态。判据与校验值跑在修复后视图上，
+// Plan/Entry 带 Degraded 标记（放行不是无声的）。
+//
+// fail-closed 保留为最后防线（tl1795 教训）：读不了（load error）、事件日
+// 志损坏（消息链不可信）、摘要算不出——仍然拒绝，且人话点名哪一侧缺什么。
+// 严格快照语义（LoadSessionContentSnapshot）一字不动：GC/catalog 的清理授权
+// 判定继续 fail-closed，本面只在自己的读侧收窄「可判」的边界。
+
+type prepairSpliceRead int
+
+const (
+	// spliceReadStrict 严格快照读（历史未修复，与 LoadSessionContentSnapshot
+	// 同一形态）。
+	spliceReadStrict prepairSpliceRead = iota
+	// spliceReadDegraded 降级读：load 时修复后的确定性视图。
+	spliceReadDegraded
+	// spliceReadRefused 不可判：fail-closed（附人话缺什么）。
+	spliceReadRefused
+)
+
+// prepairSpliceDegradedMemo 记住降级读的成品（键=转录+事件日志的 size:mtime，
+// 任何写入都会移动键值重新读）。自动 pass 每 tick 重跑未登记备份：没有这层
+// memo，一个不可登记的脏备份会在每个 tick 重复全量解析（严格读有 refusal
+// 缓存兜成本，降级读必须自带同款）。快照值不可变（消息字段不导出），拼接
+// 层私有、与严格缓存不同键空间，互不污染。
+var prepairSpliceDegradedMemo = struct {
+	sync.Mutex
+	order   []string
+	entries map[string]SessionContentSnapshot
+}{entries: map[string]SessionContentSnapshot{}}
+
+const prepairSpliceDegradedMemoLimit = 8
+
+func prepairSpliceFileStamp(path string) string {
+	info, err := os.Stat(path)
+	if err != nil {
+		return "-"
+	}
+	return fmt.Sprintf("%d:%d", info.Size(), info.ModTime().UnixNano())
+}
+
+func prepairSpliceMemoKey(path string) string {
+	return path + "|" + prepairSpliceFileStamp(path) + "|" + prepairSpliceFileStamp(SessionEventLogPath(path))
+}
+
+func prepairSpliceMemoGet(key string) (SessionContentSnapshot, bool) {
+	prepairSpliceDegradedMemo.Lock()
+	defer prepairSpliceDegradedMemo.Unlock()
+	snap, ok := prepairSpliceDegradedMemo.entries[key]
+	return snap, ok
+}
+
+func prepairSpliceMemoPut(key string, snap SessionContentSnapshot) {
+	prepairSpliceDegradedMemo.Lock()
+	defer prepairSpliceDegradedMemo.Unlock()
+	if _, ok := prepairSpliceDegradedMemo.entries[key]; !ok {
+		prepairSpliceDegradedMemo.order = append(prepairSpliceDegradedMemo.order, key)
+		for len(prepairSpliceDegradedMemo.order) > prepairSpliceDegradedMemoLimit {
+			oldest := prepairSpliceDegradedMemo.order[0]
+			prepairSpliceDegradedMemo.order = prepairSpliceDegradedMemo.order[1:]
+			delete(prepairSpliceDegradedMemo.entries, oldest)
+		}
+	}
+	prepairSpliceDegradedMemo.entries[key] = snap
+}
+
+// spliceSnapshotFrom builds a splice-side snapshot from an already-loaded
+// session view (the repaired view for a dirty load).
+func spliceSnapshotFrom(msgs []provider.Message) (SessionContentSnapshot, error) {
+	digest, err := digestSessionMessages(msgs)
+	if err != nil {
+		return SessionContentSnapshot{}, err
+	}
+	return SessionContentSnapshot{messages: msgs, digest: digestString(digest)}, nil
+}
+
+// readPrepairSpliceSide 读拼接判据的一侧：先走严格快照（ok=strict，历史形态
+// 不变）；严格拒了再区分「确定性 load 时修复」（降级可判）与真不可读（拒，
+// 人话附缺什么）。
+func readPrepairSpliceSide(path string) (SessionContentSnapshot, prepairSpliceRead, string) {
+	if snap, ok := LoadSessionContentSnapshot(path); ok {
+		return snap, spliceReadStrict, ""
+	}
+	key := prepairSpliceMemoKey(path)
+	if snap, ok := prepairSpliceMemoGet(key); ok {
+		return snap, spliceReadDegraded, ""
+	}
+	sess, err := LoadSession(path)
+	if err != nil || sess == nil {
+		return SessionContentSnapshot{}, spliceReadRefused, fmt.Sprintf("transcript unreadable (%v)", err)
+	}
+	if sess.eventLogDamaged {
+		return SessionContentSnapshot{}, spliceReadRefused, "event log damaged; the message chain cannot be trusted"
+	}
+	snap, derr := spliceSnapshotFrom(sess.Messages)
+	if derr != nil {
+		return SessionContentSnapshot{}, spliceReadRefused, fmt.Sprintf("content digest failed (%v)", derr)
+	}
+	if !sess.normalizedDirty {
+		// 干净历史但严格面拒了（digest 竞态等瞬态）：按严格形态放行。
+		return snap, spliceReadStrict, ""
+	}
+	prepairSpliceMemoPut(key, snap)
+	return snap, spliceReadDegraded, ""
+}
+
+// spliceRefusalReason 把两侧的拒绝读数收拢成一条人话（点名哪一侧缺什么）。
+func spliceRefusalReason(ownerRefusal, backupRefusal string) string {
+	parts := make([]string, 0, 2)
+	if ownerRefusal != "" {
+		parts = append(parts, "main line: "+ownerRefusal)
+	}
+	if backupRefusal != "" {
+		parts = append(parts, "backup: "+backupRefusal)
+	}
+	return "content snapshot unavailable (fail-closed; " + strings.Join(parts, "; ") + ")"
+}
+
+// spliceDegradedSides 把降级读侧收拢成 Plan/Entry 的 Degraded 标记值。
+func spliceDegradedSides(ownerRead, backupRead prepairSpliceRead) string {
+	sides := make([]string, 0, 2)
+	if ownerRead == spliceReadDegraded {
+		sides = append(sides, "owner")
+	}
+	if backupRead == spliceReadDegraded {
+		sides = append(sides, "backup")
+	}
+	return strings.Join(sides, " ")
+}
+
 // CheckPreRepairSplice 是拼接判据的纯读数层（两侧快照+内容连续性；零写入
 // 零模型）。repairAt 是调用方从 repairlog 命中的改写锚点（unix 秒；0=无）。
 //
@@ -174,18 +326,26 @@ func HasPreRepairSplice(sessionPath, backupDir string) bool {
 // 段在后）独有前缀恰为空，但丢失段真实存在（tl1787 实测）。分叉段的边界
 // 取消息级公共前缀并回退到最近的轮起点（接缝永不劈轮——孤儿工具结果会被
 // provider 拒绝，promote 前缀对齐同一纪律）。
+//
+// tl1674c 降级：任一侧因 load 时修复不可严格读时，判据跑在修复后视图上并
+// 带 Degraded 标记；真不可读（load error / 事件日志损坏 / 摘要失败）仍然
+// fail-closed，Reason 点名哪一侧缺什么。
 func CheckPreRepairSplice(ownerPath, backupTranscript string, repairAt int64) (PreRepairSplicePlan, error) {
-	canonical, ownerOK := LoadSessionContentSnapshot(ownerPath)
-	copied, backupOK := LoadSessionContentSnapshot(backupTranscript)
-	if !ownerOK || !backupOK {
-		return PreRepairSplicePlan{Reason: "content snapshot unavailable (fail-closed)"}, fmt.Errorf("content snapshot unavailable; the splice verdict needs both sides readable")
+	ownerSnap, ownerRead, ownerRefusal := readPrepairSpliceSide(ownerPath)
+	backupSnap, backupRead, backupRefusal := readPrepairSpliceSide(backupTranscript)
+	if ownerRead == spliceReadRefused || backupRead == spliceReadRefused {
+		reason := spliceRefusalReason(ownerRefusal, backupRefusal)
+		return PreRepairSplicePlan{Reason: reason}, fmt.Errorf("content snapshot unavailable; the splice verdict needs both sides readable: %s", reason)
 	}
-	ownerMsgs := trimLeadingSystemMessages(canonical.messages)
-	backupMsgs := trimLeadingSystemMessages(copied.messages)
-	// 链预览的对屏读数（tl1674b）：两侧 trim 后总条数，随每个判据出口带出。
+	ownerMsgs := trimLeadingSystemMessages(ownerSnap.messages)
+	backupMsgs := trimLeadingSystemMessages(backupSnap.messages)
+	// 链预览的对屏读数（tl1674b）：两侧 trim 后总条数，随每个判据出口带出；
+	// tl1674c：降级读侧标记随每个出口带出（Plan 与登记档案袋同口径）。
+	degraded := spliceDegradedSides(ownerRead, backupRead)
 	sides := func(plan PreRepairSplicePlan) PreRepairSplicePlan {
 		plan.OwnerMessages = len(ownerMsgs)
 		plan.BackupMessages = len(backupMsgs)
+		plan.Degraded = degraded
 		return plan
 	}
 
@@ -304,13 +464,16 @@ func RegisterPreRepairSplice(ownerPath string, req PreRepairSpliceRequest) (PreR
 	if HasPreRepairSplice(ownerPath, entry.BackupDir) {
 		return entry, fmt.Errorf("this backup is already registered in the splice ledger (idempotent)")
 	}
-	canonical, ownerOK := LoadSessionContentSnapshot(ownerPath)
-	copied, backupOK := LoadSessionContentSnapshot(req.BackupTranscript)
-	if !ownerOK || !backupOK {
-		return entry, fmt.Errorf("content snapshot unavailable at registration (fail-closed; nothing written)")
+	// 登记读数与判据同一读侧（tl1674c）：同样的降级语义——校验值重算跑在与
+	// 判据一致的视图上（修复后视图正是查询面重放要用的形态）；真不可读仍然
+	// 拒（fail-closed，nothing written）。
+	ownerSnap, ownerRead, ownerRefusal := readPrepairSpliceSide(ownerPath)
+	backupSnap, backupRead, backupRefusal := readPrepairSpliceSide(req.BackupTranscript)
+	if ownerRead == spliceReadRefused || backupRead == spliceReadRefused {
+		return entry, fmt.Errorf("content snapshot unavailable at registration (fail-closed; nothing written): %s", spliceRefusalReason(ownerRefusal, backupRefusal))
 	}
-	ownerMsgs := trimLeadingSystemMessages(canonical.messages)
-	backupMsgs := trimLeadingSystemMessages(copied.messages)
+	ownerMsgs := trimLeadingSystemMessages(ownerSnap.messages)
+	backupMsgs := trimLeadingSystemMessages(backupSnap.messages)
 	if req.Plan.SegmentStart < 0 || req.Plan.SegmentEnd > len(backupMsgs) || req.Plan.SegmentStart >= req.Plan.SegmentEnd {
 		return entry, fmt.Errorf("splice segment bounds out of range: [%d,%d) of %d", req.Plan.SegmentStart, req.Plan.SegmentEnd, len(backupMsgs))
 	}
@@ -332,7 +495,10 @@ func RegisterPreRepairSplice(ownerPath string, req PreRepairSpliceRequest) (PreR
 		entry.BoundaryNextHash = messageFingerprint(ownerMsgs[req.Plan.SplicePoint])
 	}
 	entry.OwnerMessages = len(ownerMsgs)
-	entry.BackupDigest = copied.digest
+	entry.BackupDigest = backupSnap.digest
+	// 降级标记与判据同口径：登记面如实复读实际读侧（判据与登记之间字节未动
+	// 时两者一致；历史档案袋无此字段=严格读时代的登记）。
+	entry.Degraded = spliceDegradedSides(ownerRead, backupRead)
 	entry.RegisteredAt = time.Now().UTC().Format(time.RFC3339)
 
 	entries, err := ReadPreRepairSpliceLedger(ownerPath)
