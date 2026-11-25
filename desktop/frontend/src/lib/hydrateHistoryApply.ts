@@ -1,3 +1,6 @@
+// tl1802: 行 id 集合派生消费 surfaceAdmission SSOT 访问器（装配层消费者形态）。
+import { stableItemIdSet } from "./surfaceAdmission";
+
 /** Live-turn markers that a lagging history snapshot must not replace. */
 export type HydrateLiveState = {
   running?: boolean;
@@ -438,12 +441,6 @@ export function duplicateLiveItemIds(
 // without ids keep the signature fallback — transient injections
 // (session-context etc.) carry distinct ids by design and are never touched.
 
-function stableIdSet(items: readonly { id?: string }[]): Set<string> {
-  const ids = new Set<string>();
-  for (const item of items) if (item.id) ids.add(item.id);
-  return ids;
-}
-
 // retainedLiveTail computes the live rows that survive a rebase against the
 // incoming page. Two keys, strictly ranked (task 316):
 //   - rows WITH a stable id are judged by the id union alone — the patch
@@ -453,8 +450,10 @@ function stableIdSet(items: readonly { id?: string }[]): Set<string> {
 //   - rows WITHOUT an id fall back to the signature suffix match over the
 //     id-less subset only, addressed by object identity (every id-less row
 //     shares "" as an id, so ids cannot tell them apart).
+// tl1802: 行 id 集合派生改读 surfaceAdmission 的 SSOT 访问器（消费者形态）——
+// 装配层不再本地派生行 id 集合（唯一断言门禁守卫）。
 export function retainedLiveTail<T extends { id?: string }>(liveTail: readonly T[], pageItems: readonly T[]): T[] {
-  const pageIds = stableIdSet(pageItems);
+  const pageIds = stableItemIdSet(pageItems);
   const idLessPage = pageItems.filter((item) => !item.id);
   const idLessLive = liveTail.filter((item) => !item.id);
   const idLessOverlap = longestSuffixHeadMatch(idLessPage, idLessLive);
@@ -489,7 +488,7 @@ export function prependRestAfterMerge<T extends { id?: string }>(
   removeIds: readonly string[],
 ): T[] {
   const drop = new Set(removeIds);
-  for (const id of stableIdSet(pageItems)) drop.add(id);
+  for (const id of stableItemIdSet(pageItems)) drop.add(id);
   return existing.filter((item) => !item.id || !drop.has(item.id));
 }
 

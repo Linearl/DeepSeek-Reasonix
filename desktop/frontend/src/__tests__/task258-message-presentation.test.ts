@@ -192,7 +192,10 @@ function noticeItems(state: typeof initialState) {
   ok(/onMergeNext\(item\)/.test(shelf), "merge-next button is untouched");
 
   // The steer event dedupe lives in the reducer, not the caller.
-  ok(/case "steer": if \(isHostRecoveryGuidance\(e\.text \?\? ""\)\) return s;[\s\S]*?if \(e\.itemId && s\.items\.some/.test(controller),
+  // tl1802: the check itself moved into the surfaceAdmission gate (single
+  // admission entry); the pin re-points at the gate call — same intent
+  // (consume-time steer checks the receipt bubble before appending).
+  ok(/case "steer": if \(isHostRecoveryGuidance\(e\.text \?\? ""\)\) return s;[\s\S]*?if \(!judgeSteerNoticeArrival\(s, e\.itemId\)\.admit\) return s;/.test(controller),
     "the consume-time steer event checks the receipt bubble before appending");
 }
 

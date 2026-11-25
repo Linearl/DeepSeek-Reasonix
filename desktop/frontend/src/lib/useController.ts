@@ -35,7 +35,9 @@ import { foregroundRunningFromRuntimeMeta, type RuntimeMetaSnapshot } from "./ru
 import { aliasActivationRequest, noteActivationRequested, noteActivationSettled, noteActivationStarted } from "./sessionDiagnostics";
 import { currentSwitchSeq, noteBeginSwitch, noteEviction, noteHydrateDecision, noteStageTiming, reportStageSummary } from "./sessionMonitor";
 import { applyLiveSegments, coalesceStreamDeltas, completeLiveReasoning, type StreamDeltaEntry, type StreamSegment } from "./streamDeltaBatch";
-import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems, replayDuplicatesRenderedTurn } from "./assistantItems";
+import { assistantHasContent, ensureActiveAssistant, ensureAssistant, removeEmptyAssistantItems } from "./assistantItems";
+// tl1802: 消息渲染通道归一化单一准入闸——七 case 准入判定与行身份 SSOT 的唯一入口。
+import { historyRevisionIsOlder, isHostAnnouncedTwin, judgeEventSeq, judgeGuidanceBubble, judgeHistoryRevision, judgeOptimisticUser, judgeSteerNoticeArrival, judgeStreamSegments, pageUserTextSet, replayDuplicatesRenderedTurn, userInputRowWithItemIdRendered } from "./surfaceAdmission";
 import { getTranscriptStore } from "./transcriptStore";
 import { recordFrontendDiagnostic } from "./frontendDiagnosticBridge";
 import { setDraftRewriteTraceSink } from "./draftRewriteTraceBridge";
@@ -1015,11 +1017,9 @@ export function isReadOnlyTool(name: string): boolean {
 
 export { isBatchedReadOnlyTool } from "./searchTranscript";
 
-function historyRevisionIsOlder(current: number | undefined, incoming: number | undefined): boolean {
-  return typeof current === "number" && current > 0
-    && typeof incoming === "number" && incoming > 0
-    && incoming < current;
-}
+// tl1802: historyRevisionIsOlder 判定内迁 surfaceAdmission（K4 revisionBand
+// 单一入口）；本文件的预检日志调用点（loadSessionDataForTab）改读闸的导出。
+
 /**
  * tl1342②: how a submitted turn actually settled, resolved when the backend
  * admission receipt (or the refusal) arrives. `sendToTab` used to be
@@ -2543,7 +2543,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       if (isHostRecoveryGuidance(e.text ?? "")) return s;
       // Task 258: the receipt-time guidance_bubble already rendered this item;
       // the consume-time event must not double it.
-      if (e.itemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === e.itemId)) return s;
+      // tl1802: K7 幂等判定收拢到 surfaceAdmission（O(1) 查表，语义逐字节沿现状）。
+      if (!judgeSteerNoticeArrival(s, e.itemId).admit) return s;
       // tl 1152: prefer the event's durable domain time when the backend
       // stamps one (same field user_input uses); steer emitters don't set it
       // yet, so emittedAt (backend emit clock) stays the live fallback — both
@@ -2561,7 +2562,8 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
       // (running/timing) is turn_started's job, arriving right after.
       const text = e.text ?? "";
       if (!text.trim()) return s;
-      if (e.itemId && s.items.some((item) => item.kind === "user" && item.inboxItemId === e.itemId)) return s;
+      // tl1802: K7 user 行幂等收拢到 surfaceAdmission（O(1) 查表，语义沿现状）。
+      if (userInputRowWithItemIdRendered(s, e.itemId)) return s;
       if (s.pendingUser !== undefined && s.pendingUser === text) return s;
       // tl1712 (form-1): a no-itemId user_input event is ALWAYS a backend
       // direct-submission announce — the composer renders its row optimistically
@@ -2896,6 +2898,10 @@ function applyEvent(s: State, e: WireEvent, preserveToolPayloads = false): State
 export function reducer(s: State, a: Action): State {
   switch (a.type) {
     case "user": {
+      // tl1802 W5×W5 空白格收口：乐观写入准入最小门（K8 submissionId 幂等）——
+      // 同一 submission 的重复派发拒收；不同 submissionId 的同文连续打字合法
+      // （tl1712 族钉 580 case 5）不受影响。判定单一入口 surfaceAdmission。
+      if (!judgeOptimisticUser(s, a.submissionId).admit) return s;
       const seq = a.seq !== undefined ? a.seq : s.seq;
       const userItemId = `u${seq}`;
       return {
@@ -3193,7 +3199,7 @@ export function reducer(s: State, a: Action): State {
       return { ...s, items: a.remote ? items : compactArchivedToolItems(items), historyPrefixCount: items.length, pendingSubmissionId: undefined, seq, hydrateHistoryLoaded: true, hydratePlaceholderItems: undefined, historyStartTurn: 0, historyTotalTurns: 0, historyHasOlder: false, historyOlderLoading: false, historyOlderError: undefined, historyRevision: undefined, historyDigest: undefined, historyMutation: { seq: s.historyMutation.seq + 1, kind: "replace" } };
     }
     case "history_page": {
-      if (historyRevisionIsOlder(s.historyRevision, a.page.revision)) return s;
+      if (!judgeHistoryRevision(s, a.page.revision).admit) return s;
       const { items, seq, firstTurn } = historyPageItems(a.page);
       const nextItems = a.mode === "prepend" ? [...items, ...s.items] : items;
       return {
@@ -3218,7 +3224,8 @@ export function reducer(s: State, a: Action): State {
     case "history_older_error": return { ...s, historyOlderLoading: false, historyOlderError: a.error };
     case "history_older_exhausted": return { ...s, historyOlderLoading: false, historyOlderError: undefined, historyOlderExhausted: true, historyHasOlder: false };
     case "history_replace":
-      if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
+      // tl1802: 准入判定走单一闸口（K4 revisionBand，语义逐字节沿现状）。
+      if (!judgeHistoryRevision(s, a.revision).admit) return s;
       return {
         ...s,
         items: compactArchivedToolItems(a.items),
@@ -3236,7 +3243,8 @@ export function reducer(s: State, a: Action): State {
         historyMutation: { seq: s.historyMutation.seq + 1, kind: "replace" },
       };
     case "history_rebase": {
-      if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
+      // tl1802: 准入判定走单一闸口（K4 revisionBand，语义逐字节沿现状）。
+      if (!judgeHistoryRevision(s, a.revision).admit) return s;
       const liveTail = s.items.slice(Math.min(s.historyPrefixCount, s.items.length));
       // Task 316: stable-id union replaces the signature-only filter — the
       // suffix matcher missed same-id rows whose text changed under a
@@ -3250,8 +3258,10 @@ export function reducer(s: State, a: Action): State {
       // 包2016 double-render). Drop live host-announced rows whose exact text
       // the page already carries; composer rows carry no marker, so typed
       // duplicates on the tail are untouched.
-      const rebasePageUserTexts = new Set(a.items.filter((item): item is Extract<Item, { kind: "user" }> => item.kind === "user").map((item) => item.text));
-      const retainedTail = retainedLiveTail(liveTail, a.items).filter((item) => !(item.kind === "user" && item.hostAnnounced && rebasePageUserTexts.has(item.text)));
+      // tl1802: 折叠「判定」内迁 surfaceAdmission（isHostAnnouncedTwin），
+      // 过滤动作留在本 case（方案 §6.1 只收判定）。
+      const rebasePageUserTexts = pageUserTextSet(a.items);
+      const retainedTail = retainedLiveTail(liveTail, a.items).filter((item) => !isHostAnnouncedTwin(item, rebasePageUserTexts));
       return {
         ...s,
         items: compactArchivedToolItems([...a.items, ...retainedTail]),
@@ -3270,19 +3280,20 @@ export function reducer(s: State, a: Action): State {
       };
     }
     case "history_prepend": {
-      if (historyRevisionIsOlder(s.historyRevision, a.revision)) return s;
+      // tl1802: 准入判定走单一闸口（K4 revisionBand，语义逐字节沿现状）。
+      if (!judgeHistoryRevision(s, a.revision).admit) return s;
       // Task 316: the drop set is caller removeIds (signature path) UNION the
       // stable-id overlap with the incoming page, so both keys agree inside
       // the reducer regardless of what the call site managed to compute.
       // tl1712: same host-announce collapse as history_rebase — a live announce
       // row's `u<seq>` id never collides with the page's `h<turn>-<n>` ids, so
       // the id union alone would keep both faces of one persisted message.
+      // tl1802: 折叠「判定」内迁 surfaceAdmission（isHostAnnouncedTwin）。
       const drop = new Set(a.removeIds);
       for (const item of a.items) if (item.id) drop.add(item.id);
       const keep = (item: { id?: string }) => !item.id || !drop.has(item.id);
-      const prependPageUserTexts = new Set(a.items.filter((item): item is Extract<Item, { kind: "user" }> => item.kind === "user").map((item) => item.text));
-      const hostTwin = (item: Item) => item.kind === "user" && Boolean(item.hostAnnounced) && prependPageUserTexts.has(item.text);
-      const rest = (drop.size > 0 ? s.items.filter(keep) : s.items).filter((item) => !hostTwin(item));
+      const prependPageUserTexts = pageUserTextSet(a.items);
+      const rest = (drop.size > 0 ? s.items.filter(keep) : s.items).filter((item) => !isHostAnnouncedTwin(item, prependPageUserTexts));
       const prefix = s.items.slice(0, Math.min(s.historyPrefixCount, s.items.length));
       const retainedPrefix = drop.size > 0 ? prefix.filter(keep) : prefix;
       return {
@@ -3330,7 +3341,9 @@ export function reducer(s: State, a: Action): State {
     }
     case "guidance_bubble": {
       // Receipt first, event later: the same inboxItemId keeps a single bubble.
-      if (a.inboxItemId && s.items.some((item) => item.kind === "notice" && item.inboxItemId === a.inboxItemId)) return s;
+      // tl1802: K7 幂等走闸（O(1) 查表）+ W4 无 id 同文折叠（空白格收口，P17
+      // 重注入不受影响——replace 擦除气泡后表面无同文行，判定放行）。
+      if (!judgeGuidanceBubble(s, a.inboxItemId, `${STEER_NOTICE_PREFIX}${a.text}`).admit) return s;
       // Append-only — this bubble rides an already-active turn, so it must
       // never touch running/turnActive/live the way local_notice does.
       // 任务998：气泡补入队时刻（inbox CreatedAt）；无入参时用渲染时刻兜底。
@@ -3432,8 +3445,9 @@ export function reducer(s: State, a: Action): State {
       // reset) and non-projector sources re-deliver envelopes with seqs this
       // state already folded in; re-applying them re-enqueues ghost segments.
       // A valid seq at or below the watermark is adjudicated here as a no-op.
+      // tl1802: 判定收拢到 surfaceAdmission 单一入口（语义逐字节沿现状）。
+      if (!judgeEventSeq(s, a.e.seq).admit) return s;
       const seq = a.e.seq;
-      if (typeof seq === "number" && seq > 0 && seq <= s.appliedEventSeq) return s;
       const next = applyEvent(s, a.e, a.remote);
       const applied = typeof seq === "number" && seq > 0 ? { ...next, appliedEventSeq: seq } : next;
       return applied.items.length > s.items.length
@@ -3446,7 +3460,8 @@ export function reducer(s: State, a: Action): State {
       // (ledger re-projection while live deltas interleave in one rAF frame)
       // must not re-stream into the live bubble. Seq-less segments always
       // apply: they bypass the projector by design.
-      const fresh = a.segments.filter((segment) => typeof segment.seq !== "number" || segment.seq <= 0 || segment.seq > s.appliedEventSeq);
+      // tl1802: 逐段判定收拢到 surfaceAdmission 单一入口（语义逐字节沿现状）。
+      const fresh = judgeStreamSegments(s, a.segments);
       if (fresh.length === 0) return s;
       const next = applyStreamBatch(s, fresh);
       let appliedEventSeq = s.appliedEventSeq;

@@ -1,5 +1,9 @@
 import type { Item, LiveStream, State } from "./useController";
 
+// tl1802: turn-id 渲染行判定实现内迁 surfaceAdmission（行身份 SSOT 单一入口，
+// O(1) 查表）；本模块保留兼容 re-export——族钉（tl1739r2 等）零改动。
+export { hasRenderedTurnRows, replayDuplicatesRenderedTurn } from "./surfaceAdmission";
+
 type AssistantItem = Extract<Item, { kind: "assistant" }>;
 
 export function assistantHasContent(item: AssistantItem | undefined, live?: LiveStream): boolean {
@@ -34,32 +38,4 @@ export function ensureActiveAssistant(s: State): State {
   const active = ensureAssistant(s);
   const id = active.currentAssistant!;
   return active.live?.id === id ? active : { ...active, live: { id, text: "", reasoning: "", reasoningComplete: false } };
-}
-
-// tl1739r2: the surface's rendered-row fingerprint for one backend turn. The
-// live path names every assistant segment `a:<turnId>:<ordinal>` (ensureAssistant),
-// so "this turn already rendered here" is decidable from items alone — no
-// separate ledger needed.
-export function hasRenderedTurnRows(items: Item[], turnId: string): boolean {
-  if (!turnId) return false;
-  const prefix = `a:${turnId}:`;
-  return items.some((item) => item.id.startsWith(prefix));
-}
-
-// tl1739r2: render-entry turn-id dedupe for the reconcile replay channel
-// (reconcile 重放不重复 append). A replayed event whose turn is NOT the
-// surface's active turn but already has rendered rows is a display-layer
-// double-write: the seq watermark usually adjudicates it, but a restarted
-// ledger (backend_status ledgerRestarted → appliedEventSeq reset, the tl1739
-// tightening) re-arms small seqs and the whole settled turn re-pours onto the
-// intact surface — the 20261120/20261121/20261123 duplicate-render recurrence
-// (数据层无重复、display 层双写). The active-turn back-fill (fence-swallowed
-// deltas, tl1444/tl1739 main shape) is preserved: equal activeTurnId passes.
-export function replayDuplicatesRenderedTurn(
-  state: Pick<State, "items" | "activeTurnId"> | undefined,
-  turnId: string | undefined,
-): boolean {
-  if (!state || !turnId) return false;
-  if (state.activeTurnId === turnId) return false;
-  return hasRenderedTurnRows(state.items, turnId);
 }
