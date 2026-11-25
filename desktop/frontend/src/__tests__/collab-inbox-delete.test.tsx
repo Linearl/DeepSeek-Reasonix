@@ -10,6 +10,7 @@
 
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
+import { en } from "../locales/en";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
 Object.assign(globalThis, {
@@ -146,7 +147,7 @@ assert.match(panel!.querySelector(".collab-inbox-panel__batchbar")!.textContent 
 let allChecked = Array.from(checkboxes()).every((c) => c.checked);
 assert.ok(allChecked, "select-all checks every checkbox");
 
-const deleteBtn = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__batchbar button")).find((b) => b.textContent === "Delete");
+const deleteBtn = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__batchbar button")).find((b) => b.textContent === en["collabInbox.deleteSelected"]);
 assert.ok(deleteBtn, "the batch bar offers delete");
 await act(async () => { deleteBtn!.click(); });
 await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
@@ -155,7 +156,7 @@ assert.ok(dialog, "deleting asks for confirmation first");
 const dialogText = document.body.textContent ?? "";
 assert.match(dialogText, /archive/i, "the confirm names the archive semantics");
 assert.match(dialogText, /never touches what a conversation already received|does not affect/i, "the confirm carries the「删除留档不影响已注入内容」semantic line");
-const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button")).find((b) => b.textContent === "Delete");
+const confirmBtn = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button")).find((b) => b.textContent === en["collabInbox.deleteSelected"]);
 await act(async () => { confirmBtn!.click(); });
 await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const del = calls.find((c) => c.name === "DeleteCollabMail");
@@ -180,10 +181,10 @@ await act(async () => {
   (panel!.querySelector<HTMLInputElement>(".collab-inbox-panel__check input") as HTMLInputElement).click();
 });
 await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-const chainDelete = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__batchbar button")).find((b) => b.textContent === "Delete");
+const chainDelete = Array.from(panel!.querySelectorAll<HTMLButtonElement>(".collab-inbox-panel__batchbar button")).find((b) => b.textContent === en["collabInbox.deleteSelected"]);
 await act(async () => { chainDelete!.click(); });
 await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
-const confirmBtn2 = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button")).find((b) => b.textContent === "Delete");
+const confirmBtn2 = Array.from(document.querySelectorAll<HTMLButtonElement>(".reasonix-confirm-dialog button")).find((b) => b.textContent === en["collabInbox.deleteSelected"]);
 await act(async () => { confirmBtn2!.click(); });
 await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 const del2 = calls.find((c) => c.name === "DeleteCollabMail");
