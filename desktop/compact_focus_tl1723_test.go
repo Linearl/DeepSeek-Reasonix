@@ -28,15 +28,15 @@ type tl1723FocusCapture struct {
 func (c *tl1723FocusCapture) RuntimeStatus() control.RuntimeStatus {
 	return control.RuntimeStatus{}
 }
-func (c *tl1723FocusCapture) SubagentPolicy() string          { return "" }
-func (c *tl1723FocusCapture) PlanMode() bool                  { return false }
-func (c *tl1723FocusCapture) AutoApproveTools() bool          { return false }
-func (c *tl1723FocusCapture) Goal() string                    { return "" }
-func (c *tl1723FocusCapture) ToolApprovalMode() string        { return control.ToolApprovalAsk }
-func (c *tl1723FocusCapture) WorkspaceRoot() string           { return "" }
-func (c *tl1723FocusCapture) SessionDir() string              { return "" }
-func (c *tl1723FocusCapture) SessionPath() string             { return "" }
-func (c *tl1723FocusCapture) Snapshot() error                 { return nil }
+func (c *tl1723FocusCapture) SubagentPolicy() string   { return "" }
+func (c *tl1723FocusCapture) PlanMode() bool           { return false }
+func (c *tl1723FocusCapture) AutoApproveTools() bool   { return false }
+func (c *tl1723FocusCapture) Goal() string             { return "" }
+func (c *tl1723FocusCapture) ToolApprovalMode() string { return control.ToolApprovalAsk }
+func (c *tl1723FocusCapture) WorkspaceRoot() string    { return "" }
+func (c *tl1723FocusCapture) SessionDir() string       { return "" }
+func (c *tl1723FocusCapture) SessionPath() string      { return "" }
+func (c *tl1723FocusCapture) Snapshot() error          { return nil }
 
 func (c *tl1723FocusCapture) CompactForTrigger(_ context.Context, instructions, trigger string) error {
 	c.instructions = append(c.instructions, instructions)

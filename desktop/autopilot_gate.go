@@ -55,9 +55,9 @@ const (
 const (
 	// autopilotRequiresYoloText is the English fallback; frontends localize by
 	// the notice code above and fall back to this text.
-	autopilotRequiresYoloText  = "Autopilot requires the YOLO approval mode (需要 yolo 审批模式); switch approval to YOLO first."
-	autopilotClosedOffYoloText = "Approval mode left YOLO, so autopilot was switched off (审批离开 yolo，autopilot 已自动关闭)."
-	autopilotAssumedYoloText   = "Autopilot on: approval switched to YOLO automatically (decision recorded) (无人值守开启，审批已自动切到 yolo，决策已记录)."
+	autopilotRequiresYoloText      = "Autopilot requires the YOLO approval mode (需要 yolo 审批模式); switch approval to YOLO first."
+	autopilotClosedOffYoloText     = "Approval mode left YOLO, so autopilot was switched off (审批离开 yolo，autopilot 已自动关闭)."
+	autopilotAssumedYoloText       = "Autopilot on: approval switched to YOLO automatically (decision recorded) (无人值守开启，审批已自动切到 yolo，决策已记录)."
 	autopilotRestoreReconciledText = "Restored as attended: this session's saved approval posture outranks the stale unattended marker from a previous run (按会话保存的审批档恢复为有人值守；之前无人值守标记已过时，autopilot 不再自动续挂)."
 )
 

@@ -426,7 +426,7 @@ type SettingsView struct {
 	TasklistDBPath            string `json:"tasklistDbPath"`
 	// tl1796 r2：ExperimentalAutopilotComposer 读回字段随撤开关退役——
 	// autopilot 档恒显，无键可读（tl1741 撤 Autopilot 镜像同款收场）。
-	SessionStorage                string `json:"sessionStorage"`
+	SessionStorage string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -820,7 +820,7 @@ type DesktopStartupSettingsView struct {
 	TasklistDBPath            string `json:"tasklistDbPath"`
 	// tl1796 r2：ExperimentalAutopilotComposer 读回字段随撤开关退役——
 	// autopilot 档恒显，无键可读（tl1741 撤 Autopilot 镜像同款收场）。
-	SessionStorage                string `json:"sessionStorage"`
+	SessionStorage string `json:"sessionStorage"`
 	// Task 155: the four-mode conversation store switch. sessionStorage is the
 	// configured mode, sessionStorageEffective the mode this process started
 	// with, and sessionStorageRestartPending flags a change that still needs a
@@ -2034,15 +2034,15 @@ func (a *App) Settings() SettingsView {
 		ForkNotice:                cfg.DesktopForkNoticeEnabled(),
 		StagingDir:                strings.TrimSpace(cfg.Desktop.StagingDir),
 
-		ExperimentalAutonomousUpdate:  cfg.Desktop.ExperimentalAutonomousUpdate,
-		AutonomousUpdateResume:        cfg.AutonomousUpdateResumeMode(),
-		UpdateChime:                   cfg.Desktop.UpdateChime,
-		UpdateChimeTune:               cfg.UpdateChimeTuneMode(),
-		ExperimentalSessionMonitor:    cfg.Desktop.ExperimentalSessionMonitor,
-		ExperimentalSplitView:         cfg.Desktop.ExperimentalSplitView,
-		ExperimentalTasklistPanel:     cfg.Desktop.ExperimentalTasklistPanel,     // tl1746 tasklist panel switch
-		TasklistDBPath:                cfg.Desktop.TasklistDBPath,                // tl1746 db-path family key
-		ExperimentalTrajectoryView:    cfg.Desktop.ExperimentalTrajectoryView,    // task 704 trajectory view switch
+		ExperimentalAutonomousUpdate: cfg.Desktop.ExperimentalAutonomousUpdate,
+		AutonomousUpdateResume:       cfg.AutonomousUpdateResumeMode(),
+		UpdateChime:                  cfg.Desktop.UpdateChime,
+		UpdateChimeTune:              cfg.UpdateChimeTuneMode(),
+		ExperimentalSessionMonitor:   cfg.Desktop.ExperimentalSessionMonitor,
+		ExperimentalSplitView:        cfg.Desktop.ExperimentalSplitView,
+		ExperimentalTasklistPanel:    cfg.Desktop.ExperimentalTasklistPanel,  // tl1746 tasklist panel switch
+		TasklistDBPath:               cfg.Desktop.TasklistDBPath,             // tl1746 db-path family key
+		ExperimentalTrajectoryView:   cfg.Desktop.ExperimentalTrajectoryView, // task 704 trajectory view switch
 		// Task 705, readback fixed by 759: the field was mapped only in
 		// DesktopStartupSettings, so the panel read the Go zero value and the
 		// switch rendered "off" even with the feature running (the 81/123

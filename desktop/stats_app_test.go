@@ -158,7 +158,7 @@ func TestResolveStatsRange(t *testing.T) {
 			// Span invariant (DST-safe day diff): inclusive day count.
 			fromDay := time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
 			toDay := time.Date(to.Year(), to.Month(), to.Day(), 0, 0, 0, 0, to.Location())
-			if got := int(math.Round(toDay.Sub(fromDay).Hours() / 24)) + 1; got != tt.span {
+			if got := int(math.Round(toDay.Sub(fromDay).Hours()/24)) + 1; got != tt.span {
 				t.Fatalf("span: want %d days, got %d", tt.span, got)
 			}
 		})
