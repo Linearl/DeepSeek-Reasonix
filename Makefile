@@ -65,6 +65,22 @@ lint-cross:
 # meaningful while leaving real hangs to the caller's own kill switch.
 GO_TEST_TIMEOUT := 30m
 
+# Desktop package level gets its own 60m budget (tl1807). Measured wall clock
+# for a healthy package: 928s-1260s (tl1789 baselines), 1212s (preexisting-red
+# sweep, exclusive machine), 2696.480s (tl1807 verification run, contended
+# machine — 3.5s under the 45m this batch originally pinned, which proved 45m
+# only holds on an exclusive machine). The 10m default is a guaranteed false
+# kill: tl1775 filed exactly that (603.578s "panic: test timed out after 10m";
+# goroutine dump families all verified to have stop/Close or be
+# process-lifetime singletons — pure budget, not a leak). Rationale and
+# verdict: docs/reasonix/issues/reports/预存红集中清零-实施报告-20261124.md
+# #5 + §八.1 (user-approved batch: pin -timeout 45m at package level; raised
+# to 60m by tl1807's own measured envelope, see its implementation report).
+# Under extreme contention no fixed budget is safe (sweep attempt-1 died at
+# 65min with no reading) — pass a higher -timeout manually for contended
+# runs; 60m still leaves real hangs to the caller's own kill switch.
+DESKTOP_TEST_TIMEOUT := 60m
+
 test:
 	go test -timeout $(GO_TEST_TIMEOUT) ./...
 
@@ -75,17 +91,20 @@ test:
 test-triage:
 	bash scripts/go-test-triage.sh ./...
 
+# All four desktop targets carry DESKTOP_TEST_TIMEOUT (60m, tl1807) — never
+# drop to a bare `go test .` here: go's 10m per-package default is a proven
+# false kill for this package (tl1775, 603.578s panic on a healthy package).
 desktop-test:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) .
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) .
 
 desktop-test-short:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) -short .
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) -short .
 
 desktop-test-times:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) -count=1 -json . | python3 ../scripts/desktop-test-times.py
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) -count=1 -json . | python3 ../scripts/desktop-test-times.py
 
 desktop-test-triage:
-	cd desktop && bash ../scripts/go-test-triage.sh .
+	cd desktop && bash ../scripts/go-test-triage.sh -timeout $(DESKTOP_TEST_TIMEOUT) .
 
 sdk-test:
 	cd sdk/go && go test -timeout $(GO_TEST_TIMEOUT) ./...

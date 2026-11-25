@@ -1,5 +1,38 @@
 # Desktop agent notes
 
+## Go test budget (package-level 60m, tl1807)
+
+This module's Go package (`.`) has a measured wall clock of 928s-2696s for a
+full `-count=1` run: tl1789 baselines 928-1260s / 4558 tests; preexisting-red
+sweep final run 1212.243s (exclusive machine); tl1807 verification run
+2696.480s (contended machine, 3.5s under the 45m that batch originally
+pinned — 45m only holds on an exclusive machine, hence 60m). Go's per-package
+default is **10m**, so a bare `go test .` is a proven false kill: tl1775 filed
+exactly that — `panic: test timed out after 10m` at 603.578s on a healthy
+package (goroutine dump families all verified: stop channel / Close /
+process-lifetime singleton; pure budget, not a leak — verdict and user-approved
+remedy in `docs/reasonix/issues/reports/预存红集中清零-实施报告-20261124.md`,
+item #5 and §八.1).
+
+Rules:
+
+- Run the package through `make desktop-test` / `desktop-test-short` /
+  `desktop-test-times` / `desktop-test-triage` from the repo root; they carry
+  `DESKTOP_TEST_TIMEOUT := 60m`.
+- Any direct `go test` on this package must pass `-timeout 60m` (or higher
+  when the machine is contended — 90m was used for the sweep final run; under
+  extreme contention no fixed budget is safe, sweep attempt-1 died at 65min
+  with no reading).
+  Background long runs follow the workspace rule (`.cmd` wrapper + WMI
+  `Win32_Process.Create` or a detached background shell, never a foreground
+  bash call).
+- A timeout panic is budget evidence first, leak evidence second: before
+  filing a red, check whether the wall clock fits the measured envelope.
+- Package-level load sensitivity is real: tl1807's contended full run saw
+  TestStartTopicActivationFailureDetachesPreviousAndReattaches fail its event
+  wait under load and pass 3/3 isolated (27.469s) — before filing, re-run the
+  failing test alone with `-count=3`.
+
 ## UI design system
 
 When generating or editing any UI in `frontend/`, read
