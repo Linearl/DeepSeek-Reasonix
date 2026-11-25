@@ -72,6 +72,16 @@ func (s *Session) prepareRecoveryBranchMetaLocked(path string, opts RecoveryBran
 	if strings.TrimSpace(meta.ContactID) == "" && strings.TrimSpace(opts.OriginalPath) != "" {
 		meta.ContactID = SessionContactID(opts.OriginalPath)
 	}
+	// tl1793r2 写面：副本出生即继承原对话标题。桌面回调（tabSessionRecoveryMeta）
+	// 通常已带 tab 标题，但它为空（旧包产物、tab 无题）时副本 meta 两级标题全空，
+	// 版本管理/恢复链只剩 stem 兜底——20261125 现场：回收站恢复的副本在版本管理
+	// 显示文件字符串而回收站族渲染出中文名。这里按显示链同序（custom_title 先、
+	// topic_title 后）从原对话 meta 补继承；只填空位不覆盖（副本自己已有的标题、
+	// 回调已带的标题都原样保留），原 meta 读不到（缺失/损坏/并发写裂）就放弃，
+	// 副本标题留给读面兜底（版本管理 registry/父链两级），不阻塞救援写本身。
+	if custom, topic, changed := recoveryInheritedTitles(opts.OriginalPath, meta.CustomTitle, meta.TopicTitle); changed {
+		meta.CustomTitle, meta.TopicTitle = custom, topic
+	}
 	stampSessionListingProjection(&meta)
 	if !ledgerCurrent || strings.TrimSpace(meta.WriterID) == "" {
 		meta.WriterID = SessionWriterID()
@@ -88,4 +98,36 @@ func (s *Session) saveRecoveryBranchMetaLocked(path string, opts RecoveryBranchO
 		return BranchMeta{}, err
 	}
 	return meta, nil
+}
+
+// recoveryInheritedTitles reads the original conversation's two title fields
+// (display-chain order: custom_title first, then topic_title) and fills only
+// the ones the recovery copy is missing. ok is false when there is nothing to
+// inherit: no original path, both fields already set, or an original meta
+// sidecar that is missing, corrupt, or mid-write (plain unlocked read on
+// purpose — the recovery write must not depend on, or wait for, the parent's
+// meta lock).
+func recoveryInheritedTitles(originalPath, customTitle, topicTitle string) (custom, topic string, ok bool) {
+	if strings.TrimSpace(originalPath) == "" {
+		return customTitle, topicTitle, false
+	}
+	if strings.TrimSpace(customTitle) != "" && strings.TrimSpace(topicTitle) != "" {
+		return customTitle, topicTitle, false
+	}
+	parent, _, err := LoadBranchMeta(originalPath)
+	if err != nil ||
+		(strings.TrimSpace(parent.CustomTitle) == "" && strings.TrimSpace(parent.TopicTitle) == "") {
+		return customTitle, topicTitle, false
+	}
+	if strings.TrimSpace(customTitle) == "" {
+		custom = parent.CustomTitle
+	} else {
+		custom = customTitle
+	}
+	if strings.TrimSpace(topicTitle) == "" {
+		topic = parent.TopicTitle
+	} else {
+		topic = topicTitle
+	}
+	return custom, topic, custom != customTitle || topic != topicTitle
 }

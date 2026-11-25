@@ -292,12 +292,33 @@ func recoveryDisplayName(transcriptPath string) string {
 	return recoveryDisplayNameFor(transcriptPath, nil)
 }
 
+// recoveryInheritDepthCap bounds the tl1793r2 inheritance walk. Nested copies
+// are rare (stableRecoverySessionPath roots every lane at the peeled root
+// stem), so 4 hops is far above the real depth; the cap only closes cycles and
+// pathological chains.
+const recoveryInheritDepthCap = 4
+
 // recoveryDisplayNameFor is recoveryDisplayName with a caller-supplied
 // session-titles map. The group scans read one directory's titles once and
 // pass it down (a hundreds-of-conversations titles file read per row would
 // multiply the panel's open cost); single-path callers pass nil and the map
 // is loaded here.
 func recoveryDisplayNameFor(transcriptPath string, titles map[string]string) string {
+	return recoveryDisplayNameInherited(transcriptPath, titles, 0)
+}
+
+// recoveryDisplayNameInherited is the depth-carrying form of the display chain.
+// tl1793r2 adds two inherited sources below the phase-1 chain (sidecar
+// custom_title → topic_title → titles sidecar) and above the stem fallback:
+// the copy's own meta.topic_id resolved against the topic registry (the same
+// titles the sidebar and the trash family row render), then the original
+// conversation found by the copy stem's prefix. The user's 20261125 scene is
+// exactly the state these two cover: a restored copy whose every phase-1
+// source is empty (its creation predated title inheritance), while the trash
+// family rendering shows the Chinese title by resolving the family to the
+// main conversation. Both lookups run only on stuck rows — titled rows never
+// reach here — so the panel's steady-state cost is unchanged.
+func recoveryDisplayNameInherited(transcriptPath string, titles map[string]string, depth int) string {
 	if title := recoverySidecarTitle(transcriptPath); title != "" {
 		return title
 	}
@@ -307,7 +328,129 @@ func recoveryDisplayNameFor(transcriptPath string, titles map[string]string) str
 	if title, ok := loadSessionTitles(filepath.Dir(transcriptPath))[filepath.Base(transcriptPath)]; ok && strings.TrimSpace(title) != "" {
 		return strings.TrimSpace(title)
 	}
+	if title := recoveryInheritedTitle(transcriptPath, depth); title != "" {
+		return title
+	}
 	return recoveryLabel(transcriptPath)
+}
+
+// recoveryInheritedTitle resolves a titleless transcript's name from the
+// conversation it belongs to. Two routes, both reusing existing truth sources
+// rather than minting a second registry:
+//
+//  1. Registry: the meta sidecar's topic_id — recovery copies inherit the
+//     parent conversation's topic id at creation (tabSessionRecoveryMeta
+//     carries tab.TopicID) — looked up in the topic registry, the same map
+//     the sidebar renders. This works even while the original file itself is
+//     still in the trash (the 20261125 scene: registry row topic_20261104-*
+//     holds the Chinese title, the copy's legacy_ row holds none).
+//  2. Stem prefix: a recovery filename is the original stem plus a
+//     -recovery-<16 hex> suffix, so the peeled parent id names the original
+//     transcript; when that file is absent (still trashed), the directory is
+//     prefix-scanned for it (long legacy stems were truncated+hashed at copy
+//     time, so exact-name lookup is not always possible).
+//
+// Empty return means nothing resolvable — caller falls back to the stem.
+func recoveryInheritedTitle(transcriptPath string, depth int) string {
+	if depth >= recoveryInheritDepthCap {
+		return ""
+	}
+	dir := filepath.Dir(transcriptPath)
+	if meta, ok, err := agent.LoadBranchMeta(transcriptPath); err == nil && ok {
+		if topicID := strings.TrimSpace(meta.TopicID); topicID != "" {
+			if _, _, topicRoot, ok := legacyMigrationTargetForDir(dir); ok {
+				if title := strings.TrimSpace(loadTopicTitles(topicRoot)[topicID]); title != "" {
+					return title
+				}
+			}
+		}
+	}
+	parentID, ok := agent.RecoveryFilenameParentID(transcriptPath)
+	if !ok || strings.TrimSpace(parentID) == "" {
+		return ""
+	}
+	if parentPath := recoveryStemMatchIn(dir, parentID, transcriptPath); parentPath != "" {
+		return recoveryDisplayNameInherited(parentPath, nil, depth+1)
+	}
+	return ""
+}
+
+// recoveryParentStemTruncatedAt mirrors the agent-side copy-stem truncation
+// point (maxRecoveryParentStemBytes, unexported there): stems longer than this
+// were hashed into the copy name, so the peeled parent id carries a 12-hex
+// digest segment in place of the original tail.
+const recoveryParentStemTruncatedAt = 80
+
+// recoveryStemMatchIn finds the original transcript for a copy stem: the exact
+// <stem>.jsonl when it exists, otherwise the directory's best prefix match.
+// Candidates are live session transcripts that are not recovery-shaped (those
+// are siblings, not the original) and not the excluded path itself. The
+// shortest matching stem wins — closest to the copy's prefix — ties break
+// lexicographically, so the pick is deterministic. For truncated (>80-byte)
+// parent stems the digest segment is stripped and the shorter prefix is tried
+// only when the full parent id matched nothing, so the hash-shaped-but-real
+// stems common in this codebase (timestamp-hex ids) are never mis-stripped
+// first.
+func recoveryStemMatchIn(dir, stem, excludePath string) string {
+	exact := filepath.Join(dir, stem+".jsonl")
+	if _, err := os.Stat(exact); err == nil {
+		return exact
+	}
+	if match := recoveryStemPrefixScanIn(dir, stem, excludePath); match != "" {
+		return match
+	}
+	if trimmed, ok := trimTruncatedStemHash(stem); ok {
+		return recoveryStemPrefixScanIn(dir, trimmed, excludePath)
+	}
+	return ""
+}
+
+// recoveryStemPrefixScanIn is one deterministic pass over dir's live session
+// transcripts for stems carrying the given prefix.
+func recoveryStemPrefixScanIn(dir, prefix, excludePath string) string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	best := ""
+	bestStem := ""
+	for _, entry := range entries {
+		if entry.IsDir() || !store.IsSessionTranscriptName(entry.Name()) {
+			continue
+		}
+		full := filepath.Join(dir, entry.Name())
+		if sameDesktopPath(full, excludePath) || agent.LooksLikeRecoveryFilename(full) {
+			continue
+		}
+		id := agent.BranchID(full)
+		if !strings.HasPrefix(id, prefix) {
+			continue
+		}
+		if best == "" || len(id) < len(bestStem) || (len(id) == len(bestStem) && id < bestStem) {
+			best = full
+			bestStem = id
+		}
+	}
+	return best
+}
+
+// trimTruncatedStemHash recognizes the truncated copy-parent shape
+// (<first 80 bytes>-<12 lower hex>) and returns the matchable prefix. The
+// length gate keeps ordinary short stems ending in a hex segment untouched.
+func trimTruncatedStemHash(stem string) (string, bool) {
+	if len(stem) <= recoveryParentStemTruncatedAt {
+		return stem, false
+	}
+	i := strings.LastIndexByte(stem, '-')
+	if i <= 0 || len(stem)-i-1 != 12 {
+		return stem, false
+	}
+	for _, r := range stem[i+1:] {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return stem, false
+		}
+	}
+	return stem[:i], true
 }
 
 // recoverySidecarTitle reads the branch meta sidecar's two title fields in the
