@@ -11,7 +11,15 @@ var (
 	exitCodeLine = regexp.MustCompile(`(?i)exit (status|code)[:= ]+(-?\d+)`)
 )
 
-func summarizeCIOutput(body string) string {
+// summarizeCIOutput replaces a CI-shaped log with a bounded failure digest.
+// tl1561b: the old header promised "full original retained locally" with no
+// path and no recovery channel — the summary replaced the raw wholesale, so
+// the model could never reach the original (tl 现场: heartbeat_task_list 78KB
+// summarized away, second call had nothing to read). The header now names the
+// archived original when one exists (read_file path — same channel as the
+// truncation marker) and stays honest when archiving failed ("original not
+// retained") instead of promising an unreadable copy.
+func summarizeCIOutput(body, archivePath string) string {
 	if !looksLikeCILog(body) {
 		return body
 	}
@@ -36,7 +44,13 @@ func summarizeCIOutput(body string) string {
 	}
 	head, tail := ciHeadTail(body, 8, 8)
 	var b strings.Builder
-	b.WriteString("CI/log summary (full original retained locally):\n")
+	if archivePath != "" {
+		// Same quote-escape as the truncation marker (tl1584): the path is
+		// spliced between literal quotes in the recovery guidance.
+		b.WriteString("CI/log summary (full original saved to " + archivePath + "; read it back with read_file(path=\"" + strings.ReplaceAll(archivePath, `"`, "%22") + "\", offset, limit)):\n")
+	} else {
+		b.WriteString("CI/log summary (original not retained):\n")
+	}
 	if exit != "" {
 		b.WriteString("exit_code: ")
 		b.WriteString(exit)

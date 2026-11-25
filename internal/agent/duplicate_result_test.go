@@ -87,7 +87,7 @@ func TestResolvedSkipOutcomeDedupesRepeatedLocalDiscovery(t *testing.T) {
 
 func TestSummarizeCIOutputKeepsFailures(t *testing.T) {
 	body := "##teamcity[testFailed name='A']\n" + strings.Repeat("ok\n", 400) + "exit status 1\n"
-	got := summarizeCIOutput(body)
+	got := summarizeCIOutput(body, "")
 	if !strings.Contains(got, "exit_code: 1") || !strings.Contains(got, "testFailed") {
 		t.Fatalf("summary = %q", got)
 	}
