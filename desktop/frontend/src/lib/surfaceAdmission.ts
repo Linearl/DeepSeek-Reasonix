@@ -35,8 +35,6 @@ export interface SurfaceRowFacts {
   readonly userInboxItemIds: ReadonlySet<string>;
   /** user 行携带的 submissionId（K8 幂等：W5 乐观双发判定）。 */
   readonly userSubmissionIds: ReadonlySet<string>;
-  /** notice 行全文集合（W4 无 id 同文气泡折叠判定的 O(1) 形态）。 */
-  readonly noticeTexts: ReadonlySet<string>;
 }
 
 const rowFactsCache = new WeakMap<readonly Item[], SurfaceRowFacts>();
@@ -51,20 +49,18 @@ export function surfaceRowFacts(items: readonly Item[]): SurfaceRowFacts {
   const noticeInboxItemIds = new Set<string>();
   const userInboxItemIds = new Set<string>();
   const userSubmissionIds = new Set<string>();
-  const noticeTexts = new Set<string>();
   for (const item of items) {
     if (item.id) renderedItemIds.add(item.id);
     const turnId = turnRowIdOf(item);
     if (turnId) renderedTurnRows.set(turnId, (renderedTurnRows.get(turnId) ?? 0) + 1);
     if (item.kind === "notice") {
       if (item.inboxItemId) noticeInboxItemIds.add(item.inboxItemId);
-      noticeTexts.add(item.text);
     } else if (item.kind === "user") {
       if (item.inboxItemId) userInboxItemIds.add(item.inboxItemId);
       if (item.submissionId) userSubmissionIds.add(item.submissionId);
     }
   }
-  const facts: SurfaceRowFacts = { renderedTurnRows, renderedItemIds, noticeInboxItemIds, userInboxItemIds, userSubmissionIds, noticeTexts };
+  const facts: SurfaceRowFacts = { renderedTurnRows, renderedItemIds, noticeInboxItemIds, userInboxItemIds, userSubmissionIds };
   rowFactsCache.set(items, facts);
   return facts;
 }
@@ -123,17 +119,21 @@ export function userInputRowWithItemIdRendered(s: State, inboxItemId: string | u
 }
 
 // W4×W4 空白格收口（tl1802 新增判定，方案 §6.2 inbox 行「1712 判定扩展一行」）：
-// 无 id 气泡与表面既有同文 notice 行折叠（K7 对无 id 气泡零去重的空白）。
-// 1712 文本折叠判定的 inbox 扩展形态。P17 重注入不受影响：history_replace 擦除
-// 气泡后表面无同文行，判定放行——「表面重建即恢复」语义保持。
+// 无 id 气泡的「尾邻孪生」折叠——紧邻上一行是同文 notice 行即拒（双发/重注入
+// 窗口内气泡必然连续落位）。O(1) 尾查，不做全表面派生（追加路径每次 items
+// 都是新引用，memo 永不命中，全表面派生=每追加一次 O(n)——bench 实测 51×
+// 回退，故收窄）。漏检方向=现状行为（放行），不会造成漏渲染。P17 重注入不受
+// 影响：replace 擦除气泡后尾行非同文气泡，判定放行——「表面重建即恢复」语义
+// 保持。
 export function guidanceBubbleDuplicateOnSurface(s: State, renderedText: string): boolean {
-  return surfaceRowFacts(s.items).noticeTexts.has(renderedText);
+  const last = s.items[s.items.length - 1];
+  return last !== undefined && last.kind === "notice" && last.text === renderedText;
 }
 
-// guidance_bubble 顶部统一判定（现状 K7 幂等 + 新增 W4 同文折叠）。
+// guidance_bubble 顶部统一判定（现状 K7 幂等 + 新增 W4 尾邻孪生折叠）。
 export function judgeGuidanceBubble(s: State, inboxItemId: string | undefined, renderedText: string): SurfaceVerdict {
   if (noticeBubbleWithItemIdRendered(s, inboxItemId)) return { admit: false, reason: "inbox_item_idempotent" };
-  if (!inboxItemId && guidanceBubbleDuplicateOnSurface(s, renderedText)) return { admit: false, reason: "bubble_same_text_on_surface" };
+  if (!inboxItemId && guidanceBubbleDuplicateOnSurface(s, renderedText)) return { admit: false, reason: "bubble_consecutive_duplicate" };
   return { admit: true };
 }
 
