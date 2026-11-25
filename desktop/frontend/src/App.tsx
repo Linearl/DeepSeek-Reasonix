@@ -5457,7 +5457,8 @@ export default function App() {
         },
       },
       { id: "cmd-terminal", group: t("palette.group.tools"), title: t("rightDock.terminal"), icon: <TerminalSquare size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("terminal.toggle", desktopPlatform), desktopPlatform), keywords: ["terminal", "shell", "终端"], run: () => toggleTerminalPanel() },
-      { id: "cmd-task-center", group: t("palette.group.tools"), title: t("palette.cmd.taskCenter"), icon: <Activity size={15} />, compact: true, keywords: ["task", "tasks", "center", "任务", "任务中心"], run: () => setTasksOpen("all") },
+      // tl1773：命令面板「任务中心」入口观察期隐藏（2026-12-23 到期）——底层
+      // setTasksOpen 与任务面板零改动；恢复入口取本行删除的 feat-tl1773b commit 反向。
       { id: "cmd-right-dock", group: t("palette.group.tools"), title: t("palette.cmd.toggleRightDock"), icon: <PanelRight size={15} />, compact: true, shortcutLabel: formatShortcutCombo(defaultShortcutCombo("view.rightDock", desktopPlatform), desktopPlatform), keywords: ["right", "dock", "panel", "右", "面板", "工作区"], run: () => toggleWorkspacePanel() },
       {
         id: "cmd-reload-runtime",
