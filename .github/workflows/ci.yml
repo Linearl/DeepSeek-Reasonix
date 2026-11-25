@@ -558,8 +558,13 @@ jobs:
       - name: build
         run: go build ./...
 
+      # -timeout=45m explicit (tl1807): the desktop package's measured wall
+      # clock is 928s-1758s on dev machines (tl1789 baselines + preexisting-red
+      # sweep; tl1775 filed a healthy-package kill at go's 10m default). CI's
+      # Linux runners have stayed under 10m so far, but the budget must be a
+      # declared property of the run, not an accident of runner speed.
       - name: test
-        run: go test ./...
+        run: go test -timeout=45m ./...
 
       - name: WebKitGTK 4.0 native recovery smoke
         run: xvfb-run -a env WEBKIT_DISABLE_COMPOSITING_MODE=1 go test -tags reasonix_webkit_smoke . -run '^TestWebKitNativeRecoverySmoke$'

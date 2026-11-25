@@ -65,6 +65,19 @@ lint-cross:
 # meaningful while leaving real hangs to the caller's own kill switch.
 GO_TEST_TIMEOUT := 30m
 
+# Desktop package level gets its own 45m budget (tl1807): the desktop package
+# alone has measured at 928s-1758s wall clock on this repo (tl1789 baseline
+# runs 928-1260s / 4558 tests; the preexisting-red sweep final run 1212s,
+# worst observed 1758s under load), so the 30m ceiling sits too close to the
+# measured envelope and the 10m default is a guaranteed false kill: tl1775
+# filed exactly that (603.578s "panic: test timed out after 10m" on a healthy
+# package; goroutine dump families all verified to have stop/Close or be
+# process-lifetime singletons — pure budget, not a leak). Rationale and
+# verdict: docs/reasonix/issues/reports/预存红集中清零-实施报告-20261124.md
+# #5 + §八.1 (user-approved batch: pin -timeout 45m at package level).
+# 45m still leaves real hangs to the caller's own kill switch.
+DESKTOP_TEST_TIMEOUT := 45m
+
 test:
 	go test -timeout $(GO_TEST_TIMEOUT) ./...
 
@@ -75,17 +88,20 @@ test:
 test-triage:
 	bash scripts/go-test-triage.sh ./...
 
+# All four desktop targets carry DESKTOP_TEST_TIMEOUT (45m, tl1807) — never
+# drop to a bare `go test .` here: go's 10m per-package default is a proven
+# false kill for this package (tl1775, 603.578s panic on a healthy package).
 desktop-test:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) .
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) .
 
 desktop-test-short:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) -short .
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) -short .
 
 desktop-test-times:
-	cd desktop && go test -timeout $(GO_TEST_TIMEOUT) -count=1 -json . | python3 ../scripts/desktop-test-times.py
+	cd desktop && go test -timeout $(DESKTOP_TEST_TIMEOUT) -count=1 -json . | python3 ../scripts/desktop-test-times.py
 
 desktop-test-triage:
-	cd desktop && bash ../scripts/go-test-triage.sh .
+	cd desktop && bash ../scripts/go-test-triage.sh -timeout $(DESKTOP_TEST_TIMEOUT) .
 
 sdk-test:
 	cd sdk/go && go test -timeout $(GO_TEST_TIMEOUT) ./...
