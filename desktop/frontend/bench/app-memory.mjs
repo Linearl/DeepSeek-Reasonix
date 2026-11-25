@@ -155,6 +155,21 @@ async function runProcess(index) {
       await page.mouse.move(0, 0);
       await settleFrames(page);
     }
+    // Per-fixture resting state (expanded transcripts, the safety projection)
+    // still warms on a fixture's SECOND visit: probe evidence 20261125 shows a
+    // one-time +4,996 renderer-node rise across the first post-baseline
+    // windowed/geometry visits that then stays flat for 10 straight rounds
+    // while the in-page census (2433 elements / 5125 nodes) never moves —
+    // warm-up, not per-navigation retention. Tour every fixture once more
+    // before the baseline so the floor the drift classifier judges against is
+    // already warm; otherwise phase traffic re-warms caches above the baseline
+    // and reads as persistent drift.
+    await selectFixture(page, fixtures.windowed);
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
+    await enterSafety(page);
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
     // Baseline and checkpoints share a post-navigation resting state. Layout
     // controls can still own transient listeners immediately after closing, so
     // one early reading can sit above the resting value and make every later
