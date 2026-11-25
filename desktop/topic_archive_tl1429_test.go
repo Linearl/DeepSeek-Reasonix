@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 // tl1429 端到端钉:归档自锁形态的判定与强放。

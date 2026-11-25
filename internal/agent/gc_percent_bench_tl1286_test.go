@@ -1,3 +1,5 @@
+//go:build windows
+
 package agent
 
 // tl1286 三档重测仪器：GOGC 50/100/150 下「会话全量解码」负载的 RSS + GC CPU
