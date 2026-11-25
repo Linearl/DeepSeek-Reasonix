@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+import { en } from "../locales/en";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
 Object.assign(globalThis, {
@@ -341,7 +342,7 @@ assert.match(document.body.textContent ?? "", /Decided by human/, "the recorded 
 // 消除 → 新快照行消失（e-①：调用即返回新 revision）。
 await act(async () => {
   Array.from(panel!.querySelectorAll<HTMLButtonElement>("button"))
-    .find((b) => b.textContent === "Dismiss" && b.closest(".collab-inbox-panel__row"))
+    .find((b) => b.textContent === en["collabInbox.dismiss"] && b.closest(".collab-inbox-panel__row"))
     ?.click();
 });
 assert.equal(calls.some((c) => c.name === "DismissCollabMail"), true, "dismiss goes through the binding");

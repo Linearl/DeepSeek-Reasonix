@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, ExternalLink, RefreshCw, Settings2, X } from "lucide-react";
+import { Tooltip } from "./Tooltip";
 import {
   app,
   type TasklistBoardOpenResult,
@@ -69,6 +70,29 @@ const STATUS_DICT: Record<string, "tasklist.status.pending" | "tasklist.status.i
 function statusLabel(status: string, t: ReturnType<typeof useT>): string {
   const key = STATUS_DICT[status];
   return key ? t(key) : status;
+}
+
+/** tl1810 — 标准优先级集 → 定义字典键。合法口径与 tl.py _norm_prio 一致
+ * （P0-P3；trim+大小写容错）。20261125 起写入侧已由 tl.py 统一归一，
+ * 这里只做显示层识别：命中才挂 tooltip，未标标准优先级不出空 tooltip。 */
+const PRIO_DICT: Record<string, "tasklist.prio.p0" | "tasklist.prio.p1" | "tasklist.prio.p2" | "tasklist.prio.p3"> = {
+  P0: "tasklist.prio.p0",
+  P1: "tasklist.prio.p1",
+  P2: "tasklist.prio.p2",
+  P3: "tasklist.prio.p3",
+};
+
+/** tl1810 — 优先级标签统一出口：P0-P3 悬停出定义 tooltip（复用共享
+ * Tooltip：delay=300ms 不遮行操作，pointerdown 即隐）。未标标准优先级
+ * （空 / 遗留符号如 🟡）原样展示，无 tooltip。 */
+function PrioLabel({ value, t, fallback }: { value: string; t: ReturnType<typeof useT>; fallback?: string }) {
+  const key = PRIO_DICT[value.trim().toUpperCase()];
+  if (!key) return <>{value || fallback || "—"}</>;
+  return (
+    <Tooltip label={t(key)} delay={300} side="top">
+      <span className="tlpanel__prio">{value}</span>
+    </Tooltip>
+  );
 }
 
 type Tab = "overview" | "list";
@@ -337,7 +361,9 @@ export function TasklistPanel({
                   <div className="tlpanel__bars">
                     {overview.openByPriority.map((c: TasklistCount) => (
                       <div className="tlpanel__bar-row" key={c.key || "__unlabeled__"}>
-                        <span className="tlpanel__bar-label">{c.key || t("tasklist.overview.unlabeled")}</span>
+                        <span className="tlpanel__bar-label">
+                          <PrioLabel value={c.key} t={t} fallback={t("tasklist.overview.unlabeled")} />
+                        </span>
                         <div className="res-panel__sysbar tlpanel__bar">
                           <div className="res-panel__sysbar-fill" style={{ width: `${Math.round((c.count / maxPrio) * 100)}%` }} />
                         </div>
@@ -425,7 +451,7 @@ export function TasklistPanel({
                               {statusLabel(row.status, t)}
                             </span>
                           </td>
-                          <td>{row.priority || "—"}</td>
+                          <td><PrioLabel value={row.priority} t={t} fallback="—" /></td>
                           <td>{row.domain || "—"}</td>
                           <td className="tlpanel__title-cell">
                             {row.title}

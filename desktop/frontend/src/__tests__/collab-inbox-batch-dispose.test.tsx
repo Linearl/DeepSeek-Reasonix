@@ -11,6 +11,7 @@
 
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
+import { en } from "../locales/en";
 
 const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost/", pretendToBeVisual: true });
 Object.assign(globalThis, {
@@ -151,7 +152,7 @@ entries = [entryOf("m1"), entryOf("m2"), entryOf("m3")];
 await refetchByToggles();
 await enterMultiAndSelectAll();
 assert.match(batchbar()!.textContent ?? "", /3 selected/, "select-all counts every row");
-const dismissBatch = buttonIn(batchbar()!, "Dismiss");
+const dismissBatch = buttonIn(batchbar()!, en["collabInbox.dismiss"]);
 assert.ok(dismissBatch, "the batch bar offers the recoverable batch dismiss");
 await act(async () => { dismissBatch!.click(); });
 await settle();
@@ -170,7 +171,7 @@ await act(async () => { showDismissed!.click(); });
 await settle();
 await enterMultiAndSelectAll();
 assert.match(batchbar()!.textContent ?? "", /3 selected/, "the dismissed view selects all three rows");
-const dismissMixed = buttonIn(batchbar()!, "Dismiss");
+const dismissMixed = buttonIn(batchbar()!, en["collabInbox.dismiss"]);
 assert.ok(dismissMixed && !dismissMixed.disabled, "a mixed selection arms the dismiss button");
 await act(async () => { dismissMixed!.click(); });
 await settle();
@@ -181,7 +182,7 @@ assert.deepEqual([...(dismissMixedCall!.args[0] as string[])].sort(), ["k2", "k3
 // 全部消除后回到已消除视图，批量恢复只把已消除行交给 UndismissCollabMail。
 calls.length = 0;
 await enterMultiAndSelectAll();
-const dismissRest = buttonIn(batchbar()!, "Dismiss");
+const dismissRest = buttonIn(batchbar()!, en["collabInbox.dismiss"]);
 assert.ok(dismissRest && dismissRest.disabled, "with every selected row already dismissed the dismiss button is inert");
 const restoreBatch = buttonIn(batchbar()!, "Restore");
 assert.ok(restoreBatch, "the dismissed view offers the batch restore");
@@ -201,7 +202,7 @@ await enterMultiAndSelectAll();
 assert.match(batchbar()!.textContent ?? "", /5 selected/, "select-all covers the FULL truncated set, not just the loaded page");
 const fullFetch = calls.find((c) => c.name === "ListCollabMail" && (c.args[0] as number) >= collabInboxMaxPageSize);
 assert.ok(fullFetch, "the truncated select-all fetches a full page first (markAllRead precedent)");
-const dismissBatch2 = buttonIn(batchbar()!, "Dismiss");
+const dismissBatch2 = buttonIn(batchbar()!, en["collabInbox.dismiss"]);
 assert.ok(dismissBatch2, "the cross-page dismiss button renders");
 await act(async () => { dismissBatch2!.click(); });
 await settle();
