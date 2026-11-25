@@ -90,7 +90,7 @@ web_search  = true
 
 [tools]
 enabled = []   # omit/empty = all built-ins
-bash_timeout_seconds = 120   # foreground safety cap; set 0 for no tool-local cap
+bash_timeout_seconds = 300   # foreground safety cap (fork default 300, upstream 120); set 0 for no tool-local cap
 mcp_startup_timeout_seconds = 30   # background initialize + tools/list safety cap
 mcp_call_timeout_seconds = 300   # default MCP call safety cap; per-plugin/tool overrides may raise it
 

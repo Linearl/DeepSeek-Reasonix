@@ -9,7 +9,7 @@ next launch into a global Safe Mode.
 ```text
 reasonix doctor
 reasonix doctor repair
-reasonix crash report   # when available in your build
+reasonix report         # diagnostic reports: list / show / send
 ```
 
 - **doctor** inspects configuration, derived desktop state, and common install

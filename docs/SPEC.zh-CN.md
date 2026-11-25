@@ -344,7 +344,7 @@ read-only 并不蕴含 stateless。浏览器类服务器会打开页面、切换
 因此每个已配置服务器带一条并发策略：
 
 ```toml
-[[mcp.servers]]
+[[plugins]]
 name = "browser"
 concurrency = "serial"   # parallel（默认）| serial
 ```
@@ -430,7 +430,7 @@ context_window = 1000000
 
 [tools]
 enabled = []
-bash_timeout_seconds = 120
+bash_timeout_seconds = 300   # fork 默认 300（上游 120）
 mcp_startup_timeout_seconds = 30
 mcp_call_timeout_seconds = 300
 

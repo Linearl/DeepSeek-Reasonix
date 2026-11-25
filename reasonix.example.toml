@@ -17,7 +17,7 @@ show_turn_usage = true   # CLI/TUI: show per-request token and cost receipts in 
 [desktop]
 # language = "auto"   # auto|en|zh; auto follows the browser/OS locale
 # currency = "auto"   # legacy display currency; prefer [billing].display_currency
-layout_style = "workbench"   # workbench|creation; legacy classic migrates to workbench
+layout_style = "workbench"   # workbench|classic; retired creation (tl1450) reads as workbench and is rewritten on startup
 # theme = "auto"   # desktop only: auto|dark|light
 # terminal_theme = "auto"   # integrated terminal: auto|dark|light; auto follows the desktop app
 # theme_style = "graphite"   # graphite|aurora|slate|carbon|nocturne|amber and legacy aliases
@@ -34,6 +34,16 @@ turn_done = true   # notify when a turn finishes
 approval_request = true   # notify when a tool approval is waiting
 ask_request = true   # notify when a question is waiting
 
+# [network.dial_gate]
+# Process-level dial gate (tl1327): bounds concurrent new TCP connections to
+# provider endpoints and circuit-breaks a dead network. Fail-open by design:
+# a broken gate reverts to plain dialling. 0 keeps each field's default
+# (16 concurrent dials / 3 consecutive failures / 45s cooldown).
+# disabled = false              # rollback switch: true turns the gate off entirely
+# max_concurrent_dials = 0      # override the 16-connection process budget when >0
+# failure_threshold = 0         # override the 3-consecutive-failure trip point when >0
+# cooldown_seconds = 0          # override the 45s breaker cooldown when >0 (30-60s is the sane range)
+
 [agent]
 # system_prompt = "You are ..."   # custom persona/prompt; unset or empty = built-in default
 # system_prompt_file = "prompts/system.md"   # project paths stay in <workspace>; user paths may fall back to <reasonix home>
@@ -45,8 +55,13 @@ compact_ratio       = 0.80  # sole auto trigger; presets 0.70 (active) / 0.80 (r
 # planner_model = "deepseek-pro"   # optional: enable two-model collaboration
 # subagent_model = "deepseek-pro"   # optional default for runAs=subagent skills
 # subagent_models = { review = "deepseek-pro", security_review = "deepseek-pro" }   # per-skill overrides
+# title_model = "deepseek"   # optional: model for one-shot AI session naming on the first user turn;
+#                              empty = heuristic titles only; manual rename always wins
 # max_subagent_concurrency = 6   # session-wide sub-agent concurrency (task/fleet/skills)
 # max_parallel_writers = 3       # concurrent writers with non-overlapping write_paths
+# detached_turn_wall_clock_minutes = 30   # wall-clock cap for one detached/background turn;
+#                                          0 = default 30 min, negative disables; env
+#                                          REASONIX_DETACHED_TURN_WALL_CLOCK_SECONDS (seconds) takes precedence
 # output_style = "explanatory"   # persona/tone folded into the prompt: explanatory | learning | concise,
 #                                  or a custom .reasonix/output-styles/<name>.md ; empty = default
 
@@ -133,7 +148,7 @@ offline = false  # set true when outbound network access is unavailable; prevent
 
 [tools]
 enabled = []   # empty = all built-in tools
-bash_timeout_seconds = 120   # foreground safety cap; set 0 for no tool-local cap
+bash_timeout_seconds = 300   # foreground safety cap; fork default 300 (upstream 120); set 0 for no tool-local cap
 mcp_startup_timeout_seconds = 30   # background initialize + tools/list safety cap; per-server overrides may raise it
 mcp_call_timeout_seconds = 300   # default MCP call safety cap; per-plugin/tool overrides may raise it
 
@@ -278,7 +293,7 @@ stalled_warning_seconds = 900   # heads-up once per background job after this ma
 # Authentication for the HTTP serve frontend (reasonix serve).
 # auth_mode = "none"      # none | token | password
 # token      = ""          # pre-shared token for auth_mode = "token" (auto-generated if empty)
-# password_hash = ""       # bcrypt hash for auth_mode = "password". Generate with: reasonix serve --hash-password <password>
+# password_hash = ""       # bcrypt hash for auth_mode = "password". Generate with: reasonix serve --hash-password --password '<password>'
 # behind_proxy = false      # set true when behind a trusted reverse proxy (nginx, Caddy, etc.) that sets X-Forwarded-* headers
 
 # [serve.bus_mcp]

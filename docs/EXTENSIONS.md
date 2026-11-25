@@ -129,8 +129,7 @@ development loop is:
    and exercise the contributed intercept, Provider, UI action, or resource.
 
 SDK releases use immutable `sdk/go/vX.Y.Z` tags. The first public version is
-`sdk/go/v1.0.0`; until that tag exists, use the starter from a source checkout
-instead of relying on an unversioned module.
+`sdk/go/v1.0.0`.
 
 ## Compatibility
 

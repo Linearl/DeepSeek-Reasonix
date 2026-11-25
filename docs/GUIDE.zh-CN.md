@@ -85,7 +85,7 @@ web_search  = true
 
 [tools]
 enabled = []   # 省略/为空 = 全部内置工具
-bash_timeout_seconds = 120   # 前台安全上限；设为 0 表示不设工具层超时
+bash_timeout_seconds = 300   # 前台安全上限（fork 默认 300，上游 120）；设为 0 表示不设工具层超时
 mcp_startup_timeout_seconds = 30   # 后台 initialize + tools/list 安全上限
 mcp_call_timeout_seconds = 300   # MCP 调用默认安全上限；可用 plugin/tool 覆盖
 

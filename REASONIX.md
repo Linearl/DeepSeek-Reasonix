@@ -66,7 +66,8 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   `desktop/frontend/DESIGN.md` **before** inventing visual rules when generating
   or editing UI. It concentrates the font-scale ladder, theme-token discipline
   (enforced by `check:theme-token`), radius/spacing tiers, popup/menu language,
-  and the 383 three-layout verdict whitelist. Violations are design-system
+  and the 383 layout verdict whitelist (two layouts since tl1450 — classic +
+  workbench; creation retired). Violations are design-system
   defects, not stylistic preferences (task 391).
 - Structure changes are gated by the module registry: before touching a
   registered module, pull its context with
@@ -80,10 +81,11 @@ agent. It is the Reasonix analog of Claude Code's CLAUDE.md.
   `labNonFeatureKeys` exemption with a reason (task 575 shipped
   `experimental_bash_heavy_guard` with backend + render table but no lab
   switch — the user could not find it; task 815 closed the residue and added
-  this check). The 562 gates on both sides
-  (`internal/config/render_lab_tiers_test.go` +
-  `desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts`) enforce
-  the tier half; this line is the entry-half review check.
+  this check). The 562 gates enforce the tier half — config side via the
+  task 979 ledger gate (`internal/config/experimental_ledger_gate_test.go`,
+  successor to the retired `render_lab_tiers_test.go`), frontend side via
+  `desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts`; this
+  line is the entry-half review check.
 
 ## Comments
 
@@ -129,11 +131,13 @@ Run these **before every commit** to catch the fastest CI failures locally:
 ```bash
 gofmt -w .                          # catches gofmt (saves ~13s CI)
 go vet ./...                        # catches vet warnings (saves ~52s CI/lint)
-make lint                           # golangci-lint at CI's pin + repolint
+make lint                           # golangci-lint at CI's pin + repolint + structure gates
 go test ./internal/tool/builtin/ ./internal/boot/  # catches tool/boot test breaks
 ```
 
-`make lint` runs both gates CI runs, at the version in `.golangci-version`;
+`make lint` runs the gates CI runs — golangci-lint at the version in
+`.golangci-version`, repolint, plus the architecture / injection-entrypoints /
+wails-pin checks;
 `make lint-install` installs it. Do not skip it: a `modernize` finding never
 shows up in `go vet`, and the CI round trip that catches it instead costs ten
 minutes.
@@ -143,9 +147,10 @@ minutes.
 A failure that predates your change still has to be diagnosed and driven to zero.
 "Pre-existing, not mine" records where it came from; it does not close it. Decide
 **which side is wrong** and act on that verdict — never leave a known red test in
-the suite, because on a fork branch the suite is the only guard against a later
-merge quietly overwriting our behavior (see `docs/upstream-merge-checklist.md`),
-and a permanently red test swallows the next real regression.
+the suite, because on a fork branch the suite is the only guard against an
+upstream cherry-pick or single-point absorption quietly overwriting our
+behavior (see `docs/upstream-merge-checklist.md`), and a permanently red test
+swallows the next real regression.
 
 * **The test is stale** — the behavior it pins was deliberately changed and the
   new behavior is right → update the fixture or expectation, and say in the commit
@@ -245,7 +250,9 @@ measurement), never closed as "pre-existing, not mine":
   (`third_party/go-webview2/pkg/edge/chromium.go` errorCallback).
 
 * **批42 gate pass (registered 2026-10-19, user directive: "预存失败要分析修复,
-  不能看到也不处理") — 9 items analyzed to a verdict, 8 closed / 1 open.**
+  不能看到也不处理") — 9 items analyzed to a verdict, all 9 closed** (the
+  final open item closed code-side on 2026-11-20, tl1716 — see the CLOSED
+  entry below).
   Verdicts (evidence in `global-workspace/docs/collab/zcode/to-main.md`
   [07:12] block + the fix commit message):
 
@@ -296,17 +303,16 @@ measurement), never closed as "pre-existing, not mine":
     the timeout was hiding the real assertion). Widening **exposed** the open
     entry below rather than closing it.
 
-* **OPEN: `internal/boot` effect-compaction shrink assertion (registered
-  2026-10-19, specialist task — predates batch 42)** — under the widened
-  deadline the test reaches its real assertion and fails:
-  `summary request after an overflow did not shrink: [36380 25767 24833 34632
-  26277 34724 34724]`. Logs show compaction's summarizer requests themselves
-  overshooting the 40k fixture window on some rounds
-  (`status 400 … requested 44572 …` → `compaction failed … in=0 out=0`) while
-  other rounds pre-fold and succeed (input 25767/24833) — the shrink chain
-  breaks when the summarizer request is rejected. Fix direction: pre-fold the
-  summarizer input to the model ceiling before issuing the request. Evidence:
-  `wt-42fix` boot `-v` run, 2026-10-19.
+* **CLOSED (code-side, 2026-11-20): `internal/boot` effect-compaction shrink
+  assertion (registered 2026-10-19, specialist task — predates batch 42)** —
+  under the widened deadline the test reached its real assertion and failed.
+  Root cause (tl1716, `f2ab8ba3a0`): `compact_projection.go` `summaryRateLimited`
+  matched the substring `"429"` in the error body, so an overflow-shaped 400
+  was misclassified as rate limiting and parked in the 60s wait, burning the
+  120s deadline before a retry could land. The bare `"429"` probe now matches
+  a standalone status number only (see the tl1716 comment in
+  `compact_projection.go`); the effect-summary scenario is back to ~2s
+  baseline green.
 
 Environment-tier entries (no code change, by verdict): `internal/worktree`
 `TestMergeBackRejectsIndexMutationBeforeRefUpdate` fails only as go's package

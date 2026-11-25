@@ -114,8 +114,7 @@ go test ./internal/extension/... -run '^$' -bench 'Extension|Dispatch' -benchmem
    插件贡献的拦截器、Provider、UI action 或资源。
 
 SDK 使用不可变的 `sdk/go/vX.Y.Z` 标签发布，首个公开版本为
-`sdk/go/v1.0.0`。该标签存在之前，请从源码 checkout 使用 starter，不要依赖
-未版本化的 module API。
+`sdk/go/v1.0.0`。
 
 ## 兼容性
 

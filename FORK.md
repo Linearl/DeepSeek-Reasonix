@@ -110,7 +110,7 @@ git ls-tree -r --name-only upstream/main-v2 -- <目标路径>/ | grep -i <关键
 | 能力 | 说明 |
 |---|---|
 | **serve pool + 单入口网关** | 按项目懒启动 serve，`/p/<project-id>/*` 反向代理，bearer token，空闲回收 |
-| **独立 CLI 网关** | `serve-pool` 子命令：headless Linux / NAS（systemd）托管 |
+| **独立 CLI 网关** | `reasonix serve --pool`：headless Linux / NAS（systemd）托管 |
 | **多项目会话浏览** | `GET /projects` 只读浏览器（读同一份 desktop-projects.json） |
 | **图片上传端点** | `POST /attachments`（≤64MiB base64）→ 返回 `.reasonix/attachments/...` ref |
 | **会话所有权移交** | `/release-session`、`/takeover-session` + 心跳过期自动释放 + `.takeover-request` marker |
@@ -137,7 +137,7 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 |---|---|---|
 | 本地服务器 / 远程网关 | ✅ 设置 → 连接 → **本地服务**（fork-only tab） | ✅ gateway access log + `feature=servepool` 生命周期 |
 | serve pool + 单入口网关 | ✅ 同上 | ✅ spawn / 空闲回收 / degraded 退避 |
-| 独立 CLI 网关（`serve-pool` 子命令） | ❌ CLI | ⚠️ 同上（无 GUI） |
+| 独立 CLI 网关（`reasonix serve --pool`） | ❌ CLI | ⚠️ 同上（无 GUI） |
 | 已授权写目录面板 | ✅ 设置 → 权限 → 本会话已授权写目录 | ⚠️ 待补（`allow_global` 命中） |
 | 用户全局公共写目录（`allow_global`） | ⚠️ 设置 → sandbox | ⚠️ 待补 |
 | 会话所有权移交 / `heldBy` | ❌ serve 命令 + HTTP | ✅ `session_ownership.go` 原有 10 处 + `/sessions` 每响应一条汇总（`feature=session-ownership`） |
@@ -214,7 +214,7 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
      - 保底路径必须**保持可用**——不得因为加了增强就删掉上游入口（按钮 / 菜单项 / 快捷键等）。
      - 任务单里要**同时写明两条路径的行为与验收**，不能只写增强路径。
    - **为什么值得这么做**：这条同时消解了「fork 魔改 vs 追齐上游」的长期矛盾——**默认路径即上游路径**，创新被隔离在开关之后，merge 时不必再为独有交互反复打补丁或手工恢复。
-   - **实例（任务 160，2026-09-17）**：加载更早消息。上游已把该交互改为**按钮驱动**（`components/Transcript.tsx` 的 `chat-older` 按钮），fork 原有滚动触发因 `towardHistory` 要求 `scrollTop` 严格变小而在「已在顶部」时失效。**决策：默认补上上游的按钮（保底路径）**，**滚动触发改为 `experimental_auto_load_older` 开关控制（增强路径，默认关）**。
+   - **实例（任务 160，2026-09-17）**：加载更早消息。上游已把该交互改为**按钮驱动**（`chat-older` 按钮，时在 `components/Transcript.tsx`，现位于 `components/TranscriptViewport.tsx`），fork 原有滚动触发因 `towardHistory` 要求 `scrollTop` 严格变小而在「已在顶部」时失效。**决策：默认补上上游的按钮（保底路径）**，**滚动触发改为 `experimental_auto_load_older` 开关控制（增强路径，默认关）**。
 
 9. **新特性优先走实验特性落地，保留兼容行为**（2026-09-28 用户确立）
    - **次序规定**：新特性**默认路径 = 实验特性**（`experimental_*` 开关，默认关），而不是「先当默认行为上线、出问题再补开关」。第 2 条管的是「改变默认行为要开关」，本条把范围扩到**特性本身**——凡 fork 新增的能力，一律先挂在实验开关后试运行。
@@ -236,7 +236,7 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 3. **改 provider 面的唯一来源 = 设置开关**（工具优化聚合页族：multi_edit 直注 / restart_update / 能力组披露 / readBack 等），生效通道按设计就是「启动时定格，改开关需重建运行时（重启）生效」（各开关 hint 原文），与本文件「新特性开发规范」第 2 条（banner + 一键重启）一致。
 4. **压缩边界不刷新工具面是现状语义，不是缺陷**：`TestCompactionDoesNotTearToolSurface`（`compact_tool_surface_atomicity_971_test.go:97`，971 断言②）钉死「压缩 pass 前后可见集与 schemaRev 逐位不变」。压缩点刷新工具面的完整方案（压缩边界钩子 + pendingToolRebuild + admission 入口兑现 + 动态守卫测试）已按 tl-1195 前置核实评估为**暂缓**：运行期无真实换面场景（见 2/3），机制成本与「低频设置开关免一次重启」的问题轻重错配，且竞品（主流 agent 会话）工具面一律会话定格 + 重启生效，无一做压缩边界换面。将来若出现真实的运行期换面场景，先重启该评估，勿凭空零散接线。
 
-⚠️ **已知文案债（勿在无关任务里顺手处理）**：工具优化聚合页三语文案（`settings.toolOptHub.effect/.pending/.warning`）承诺「/compact 即可生效（三生效点含压缩边界）」，后端未实现该快捷通道——用户照做不会报错，但当前对话工具表不变，需重启（或新会话）才生效。修法二选一（改文案 / 补实现）由需求线另立任务裁定；改文案需连带改 `task971-tool-opt-hub.test.ts` 的逐字断言。
+✅ **文案债已还清（2026-10-29 tl1251，`90fad33f84`，选「改文案」路线）**：工具优化聚合页三语文案（`settings.toolOptHub.effect/.pending/.warning`）已修复——现文案明示「两个生效点：新会话 / 恢复重启；/compact 只重建对话前缀、不重建工具表，改动需重启」，`task971-tool-opt-hub.test.ts` 逐字断言同步。历史背景：旧文案曾承诺「/compact 即可生效」，后端并无该快捷通道。
 
 ## Release 与安装
 
@@ -274,7 +274,7 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
    **非空即禁止出包**，除非明确裁剪范围并把未合分支逐个写进 release notes「本版未含」。
    事故实录：09-23 AB 基线定格（`ace410487`）后 15 个任务（批六 8 + 零散 7，含 196 图缓存修复）全在分支未合，
    `v1.38.3-20260924-1255` 照样出包 → 装机不含任何新交付、196 修复缺席致切 tab 慢。核查报告：
-   `global-workspace/handoff/fork开发-批六未合缺口核查-20260924.md`
+   `global-workspace/tasks/20260923并行开发-批次6/fork开发-批六未合缺口核查-20260924.md`
 
 ## 发布前检查清单（fork desktop）
 

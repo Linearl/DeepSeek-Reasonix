@@ -127,17 +127,19 @@
 flex 内可截断文本加 `min-width: 0`（任务 278 实测教训：长 token 把弹窗行撑破的唯一
 残余路径）。布局类缺陷优先怀疑收缩链，不加特判宽度。
 
-三套布局口径与例外白名单（出处：任务 383 交付报告「十条裁决对照表」+ Go 事实源
+布局口径与例外白名单（出处：任务 383 交付报告「十条裁决对照表」+ Go 事实源
 `normalizeDesktopLayoutStyle`）：
 
-- 布局规范值恰三个：`classic` / `workbench` / `creation`；`workspace` 是退役别名，折叠进
+- 布局规范值恰两个：`classic` / `workbench`；`creation` 已随 tl1450 退役（读入折叠进
+  workbench，启动迁移改写存量值），`workspace` 是退役别名，折叠进
   workbench。**注意区分维度**：`data-platform` 的 windows/darwin/linux 是 OS 平台
   维度，不是布局维度，两者不要混写。
 - 十条裁决已闭环：「做」的统一项（#2 分组入口、#5 classic 底栏纯图标 + Tooltip、
   #8 自动化单名、#10 三值注释）已落地并有验收 harness；「不做/缓」的差异
   （#1 classic 无空白项目入口、#3 排序入口位置、#4 header/footer 风格、#6 creation
   feature-zone、#7 creation 折叠按钮、#9 workbench More 死项）是**既定例外白名单**。
-  新 UI 工作不得重开这些裁决，也不得把 classic 专属能力顺手「统一」到其他布局。
+  tl1450 退役 creation 后，#6/#7 随之失效，余项仍有效。新 UI 工作不得重开这些裁决，
+  也不得把 classic 专属能力顺手「统一」到其他布局。
 
 ## ④ 密度与弹窗 / 菜单语言
 
@@ -221,7 +223,7 @@ Do：
 - 动效走 `--dur-*` / `--ease-*` 四档；新动画依赖全局 reduced-motion 兜底，无需重复写。
 - 改完 CSS 本地过 `pnpm check:css`；涉及 bundle 面的改动关注 `check:bundle` 预算
   （棘轮规则与贴顶预警见 `check-bundle-budget.mjs` 与各交付报告，如 505 §5）。
-- 尊重 383 三布局裁决白名单与三规范值（classic/workbench/creation）。
+- 尊重 383 布局裁决白名单与两规范值（classic/workbench；creation 已随 tl1450 退役）。
 
 Don't：
 

@@ -15,14 +15,14 @@
   &nbsp;·&nbsp;
   <a href="./docs/SPEC.zh-CN.md">规格</a>
   &nbsp;·&nbsp;
-  <a href="https://esengine.github.io/DeepSeek-Reasonix/">官方网站</a>
+  <a href="https://linearl.github.io/DeepSeek-Reasonix/">文档站</a>
   &nbsp;·&nbsp;
   <strong><a href="https://discord.gg/XF78rEME2D">Discord</a></strong>
 </p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/v/reasonix.svg?style=flat-square&color=cb3837&labelColor=161b22&logo=npm&logoColor=white" alt="npm version"/></a>
-  <a href="https://github.com/esengine/DeepSeek-Reasonix/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/esengine/DeepSeek-Reasonix/ci.yml?style=flat-square&label=ci&labelColor=161b22&logo=githubactions&logoColor=white" alt="CI"/></a>
+  <a href="https://github.com/Linearl/DeepSeek-Reasonix/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Linearl/DeepSeek-Reasonix/ci.yml?style=flat-square&label=ci&labelColor=161b22&logo=githubactions&logoColor=white" alt="CI"/></a>
   <a href="./LICENSE"><img src="https://img.shields.io/npm/l/reasonix.svg?style=flat-square&color=8b949e&labelColor=161b22" alt="license"/></a>
   <a href="https://www.npmjs.com/package/reasonix"><img src="https://img.shields.io/npm/dm/reasonix.svg?style=flat-square&color=3fb950&labelColor=161b22&label=downloads" alt="downloads"/></a>
   <a href="https://github.com/esengine/DeepSeek-Reasonix/stargazers"><img src="https://img.shields.io/github/stars/esengine/DeepSeek-Reasonix.svg?style=flat-square&color=dbab09&labelColor=161b22&logo=github&logoColor=white" alt="GitHub stars"/></a>
@@ -31,6 +31,8 @@
   <a href="https://github.com/esengine/DeepSeek-Reasonix/discussions"><img src="https://img.shields.io/github/discussions/esengine/DeepSeek-Reasonix.svg?style=flat-square&color=58a6ff&labelColor=161b22&logo=github&logoColor=white" alt="Discussions"/></a>
   <a href="https://discord.gg/XF78rEME2D"><img src="https://img.shields.io/badge/discord-join-5865F2.svg?style=flat-square&labelColor=161b22&logo=discord&logoColor=white" alt="Discord"/></a>
 </p>
+
+<p align="center"><sub>npm / stars / contributors / trendshift 等徽章统计的是上游 esengine/DeepSeek-Reasonix 仓库；CI 徽章为本仓库。</sub></p>
 
 <p align="center">
   <a href="https://trendshift.io/repositories/27020?utm_source=trendshift-badge&amp;utm_medium=badge&amp;utm_campaign=badge-trendshift-27020" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/trendshift/repositories/27020/monthly?language=Go" alt="esengine/DeepSeek-Reasonix | Trendshift" width="250" height="55"/></a>
@@ -50,25 +52,28 @@
 <br/>
 
 > [!IMPORTANT]
-> **加入社区 · Community** — 双语 Discord，提供安装答疑（`#help` / `#求助`）、工作流展示与功能想法。→ **<https://discord.gg/XF78rEME2D>**
+> **加入社区 · Community** — 上游社区的双语 Discord（非本 fork 维护；fork 的问题反馈请提本仓库 issue），提供安装答疑（`#help` / `#求助`）、工作流展示与功能想法。→ **<https://discord.gg/XF78rEME2D>**
 
 ## 关于本仓库（fork 说明）
 
 本仓库是 [esengine/DeepSeek-Reasonix](https://github.com/esengine/DeepSeek-Reasonix) 的**长期维护
-fork**（`main-v2-stable`）：在追齐上游的同时，保留我们确实需要的改动。具体含义如下：
+fork**（`main-v2-stable`）：保留我们确实需要、但上游不一定合并的改动——**2026-10-05 起不再追齐上游
+版本**；上游于 2026-11-12 公告停止维护后，转入**独立演进**（按需 cherry-pick 上游修复）。具体含义如下：
 
 - **数据与上游兼容。** 会话数据按上游格式写入、按上游的宽松程度读取；在此之上还有一条**修复路径**：
   上游读不动的会话（写入中断 / 文件受损）在本仓库仍能正常打开。**随时可以切回官方版**：用官方安装包
-  覆盖安装即可，走内置自动更新也可以。
+  覆盖安装即可，走内置自动更新也可以。但**不要回退到 `1.34` / `1.38.1` 以下**——会话格式单向升级，
+  旧构建会拒绝加载（文件本身不损坏）。
 - **只测 Windows 桌面版** —— `win-amd64-desktop` + **经典布局（经典模式）**，这是我们日常使用的组合。
   其他目标（其他平台、CLI/TUI、VS Code 扩展、workbench 布局）在本仓库**未经验证**，不保证易用性，
   也不保证功能一致。
-- **上游不稳定时不追更新。** 上游处于大重构中、或发版节奏混乱的阶段，本分支停留在当前基线，不跟。
+- **不再整批追齐上游。** 上游 fix 按需 cherry-pick（安全 / 数据完整性 / 崩溃三类优先甄别），其余按自身节奏独立演进。
 - **每一项魔改都有版本对照清单**，见
   [`release-notes/FORK-vs-upstream.md`](release-notes/FORK-vs-upstream.md)：逐版本列出开关、默认值、
   承载文件，以及上游是否已吸收。完整入口文档是 [`FORK.md`](FORK.md)，逐版 release notes 见
   [`release-notes/`](release-notes/)。
-- **稳定版本：`1.31.4` – `1.34`，以及 `1.38.3`。** `1.38.1` 已知不稳定，请勿使用。
+- **稳定版本：`1.38.3-YYYYMMDD-HHMM` 时间戳包**，每包配 release notes，推荐使用最新正式 Release。
+  `1.38.1` 已知不稳定请勿使用，也不要回退到 `1.34` / `1.38.1` 以下。
 - **使用问题、Bug、建议**：欢迎提
   [issue](https://github.com/Linearl/DeepSeek-Reasonix/issues)（另见
   [CONTRIBUTING.md](CONTRIBUTING.md)）。
@@ -85,10 +90,16 @@ fork**（`main-v2-stable`）：在追齐上游的同时，保留我们确实需�
 
 | 领域 | 重点能力 |
 |---|---|
-| **桌面 UI** | 项目分组；颜色筛选与排序（多选）；本地服务器 / 远程网关（手机端与 Tailscale 接入）；已授权写目录面板；合并恢复副本；搜索历史提问；输入框草稿持久化；计划任务 / 心跳 |
-| **Agent 与上下文** | 只读轮次预算加倍（10→80）；每轮上下文预算行；路径作用域规则；乐观并发写入；分片压缩并行化；子代理委派档位 |
-| **服务端与远程** | serve pool + 单入口网关；独立 CLI 网关（NAS / systemd）；多项目会话浏览；图片上传端点；会话所有权移交 |
-| **近期新增** | 会话存储 v4（实验开关，双写镜像）；需重启设置的一键重启 |
+| **多会话协作** | 通讯录/跨会话信箱与派单（hop 链、任务卡）、群聊频道（频道历史、@投递、副管理员）、协作心跳与守护线 |
+| **上下文与压缩** | 压缩进度悬停数据卡（耗时/速度/折叠数/释放量）、压后视图大幅瘦身（86.6%→28.9% 实测）、五入口归一化、尾部保留 32K/3 回合新口径、投影失效可见化与有界降级 |
+| **消息可靠性** | 新消息必渲染、切回即显示（账本对账门）、回合结束排队、压缩中消息注入、回溯不丢消息 |
+| **项目与会话管理** | 项目分组、会话分组、项目颜色筛选、回收站（删除可恢复+dry-run 预演）、对话版本管理（回溯/快照） |
+| **记忆系统** | 背景记忆索引与召回工具、置顶记忆索引化（150 字符行+按需召回）、记忆候选建议与归档 |
+| **实验室（实验特性）** | 分组/卡片/徽章配置驱动 + 推荐/可选/未稳定三档徽章、特性速览墙、生效时机明示（即时/重启/边界） |
+| **更新与版本** | 无感升级一键铺包重启、多版本快速切换（状态栏一键换入暂存构建）、时间戳包+逐包 notes |
+| **稳定性与可观测** | 崩溃与卡顿根因治理（issue #92/#93/#94/#96 收口）、doctor 判活与诊断包、boot/首响性能治理、CDP 界面自验 |
+| **经典布局保留** | classic 双布局完整保留（上游已分批退役，fork 每次合并手工恢复） |
+| **界面打磨** | 侧栏漂移行级锚定、跳转条遮挡修复、亮色主题对比度、模型下拉修正等一批细节 |
 
 ## 特性
 
@@ -110,7 +121,8 @@ Reasonix 引擎。
 
 ### 路径 A：CLI / TUI
 
-任意支持的平台都可以通过 npm 安装原生二进制；macOS 也可以使用 Homebrew：
+npm / Homebrew 为**上游发行渠道**，装到的是上游版本（不含 fork 特性；本 fork 的 CLI 不单独出包，
+源码构建见路径 D）。仍可照常安装上游版：
 
 ```sh
 npm i -g reasonix                  # 任意系统;自动拉取对应平台的原生二进制
@@ -122,7 +134,9 @@ brew install esengine/reasonix/reasonix   # macOS
 
 ### 路径 B：桌面端
 
-前往[官方下载页](https://reasonix.io/?download=desktop#start)获取最新桌面版本。
+前往本仓库的 [Releases](https://github.com/Linearl/DeepSeek-Reasonix/releases) 选取
+`1.38.3-YYYYMMDD-HHMM` 时间戳包（每包配 release notes），推荐最新正式 Release。
+上游官网 reasonix.io 分发的是上游版本。
 
 | 平台 | 安装包 | 架构 |
 | --- | --- | --- |
@@ -130,12 +144,13 @@ brew install esengine/reasonix/reasonix   # macOS
 | Windows | 安装器 `.exe` 或便携 `.zip` | x64 / ARM64 |
 | Linux | `.deb` 或 `.tar.gz` | x64 |
 
-Windows 安装器通过 [SignPath.io](https://signpath.io/) 完成代码签名，证书由
-[SignPath 基金会](https://signpath.org/) 免费提供。
+本 fork 的发布包**不做代码签名**（无 MINISIGN / SignPath / Apple 签名，也不生成自动更新用的
+`latest.json`），请手动安装，**不要依赖内置自动更新**。
 
 ### 路径 C：VS Code 扩展
 
-请先完成路径 A。扩展不内置 CLI，而是启动本机的 `reasonix acp` 后端，
+请先完成路径 A。下列扩展为**上游扩展**——本 fork 未验证其与 fork 版的兼容性（见上方 fork 说明）。
+扩展不内置 CLI，而是启动本机的 `reasonix acp` 后端，
 并提供原生聊天、编辑器上下文、工具调用审批、模型选择和工作区会话。
 
 - **VS Code：** [从 Visual Studio Marketplace 安装](https://marketplace.visualstudio.com/items?itemName=SivanLiu.reasonix-agent)
@@ -147,13 +162,13 @@ Windows 安装器通过 [SignPath.io](https://signpath.io/) 完成代码签名�
 先克隆仓库：
 
 ```sh
-git clone https://github.com/esengine/DeepSeek-Reasonix.git
+git clone https://github.com/Linearl/DeepSeek-Reasonix.git
 cd DeepSeek-Reasonix
 ```
 
 #### CLI
 
-CLI 构建需要 **Go 1.25+**。模块固定了 `toolchain` 指令；
+CLI 构建需要 **Go 1.26+**。模块固定了 `toolchain` 指令；
 保持 `GOTOOLCHAIN=auto` 让 Go 自动下载固定的工具链，或自行安装。
 
 ```sh
@@ -171,7 +186,13 @@ make cross      # -> dist/（darwin|linux|windows × amd64|arm64）
 ```sh
 make wails-install
 cd desktop
-wails build
+wails build      # 开发构建
+```
+
+fork 正式出包口径（ldflags 版本注入 + NSIS 安装器）：
+
+```sh
+bash scripts/desktop-build.sh windows/amd64 <版本号>
 ```
 
 平台相关的 WebView 依赖和 Linux 构建标签见
@@ -193,7 +214,7 @@ reasonix run "把 main.go 里的 TODO 实现掉"
 
 ### 桌面端
 
-从[官方下载页](https://reasonix.io/?download=desktop#start)下载对应系统的安装包，
+从 [Releases](https://github.com/Linearl/DeepSeek-Reasonix/releases) 下载对应系统的时间戳安装包，
 安装并启动 Reasonix，然后在应用内配置 provider 和模型即可使用。桌面端无需执行
 上面的 CLI 命令。
 
@@ -215,13 +236,15 @@ CLI 进阶用法和详细配置见 **[CLI 命令参考](./docs/CLI.zh-CN.md)**�
 - **工程与迁移：** [规格](./docs/SPEC.zh-CN.md) ·
   [任务合约与暂停策略](./docs/TASK_CONTRACT.zh-CN.md) ·
   [工具合约](./docs/TOOL_CONTRACT.zh-CN.md) ·
-  [从 0.x 迁移](./docs/MIGRATING.zh-CN.md)
+  [从 0.x 迁移](./docs/_archive/MIGRATING.zh-CN.md)
 - **扩展开发：** [扩展概览](./docs/EXTENSIONS.zh-CN.md) ·
   [插件包与 Manifest v1](./docs/PLUGIN_PACKAGES.zh-CN.md) ·
   [Extension Protocol](./docs/EXTENSION_PROTOCOL.zh-CN.md) ·
   [Go SDK 与 starter](./sdk/go/README.md)
 
 ## Star 趋势
+
+以下为上游仓库的 Star 趋势数据。
 
 <a href="https://www.star-history.com/?repos=esengine%2FDeepSeek-Reasonix&type=date&legend=top-left">
  <picture>
@@ -272,7 +295,8 @@ CLI 进阶用法和详细配置见 **[CLI 命令参考](./docs/CLI.zh-CN.md)**�
 <p align="center"><sub><strong>支持本项目</strong></sub></p>
 
 如果 Reasonix 帮你省了时间或 token，欢迎请杯咖啡。捐助不会换来 feature
-优先级，也不会影响 issue 的处理顺序——就是「谢谢」。
+优先级，也不会影响 issue 的处理顺序——就是「谢谢」。以下收款渠道为**上游作者**所有
+（支持的是上游项目的维护，非本 fork）。
 
 - **国内** — 微信支付（扫下方二维码）
 - **海外** — PayPal: [paypal.me/yuhuahui](https://paypal.me/yuhuahui)
