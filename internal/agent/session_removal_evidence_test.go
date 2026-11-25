@@ -1,3 +1,5 @@
+//go:build windows
+
 package agent
 
 // tl1429 回归钉(拒绝身份面):18:39 口径——日志必须给 identity,禁止恒 pid=0。
