@@ -100,8 +100,10 @@ try {
   });
 
   assert(await page.locator(".app.app--workbench").count() === 1, "workbench layout renders from the authoritative startup snapshot");
-  await chooseLayout(page, "Creation", "app--creation");
-  assert(await composer.inputValue() === "layout-owned draft", "creation layout preserves the Composer draft and mount");
+  // tl1450 retired the creation layout; the draft-preservation pair exercises
+  // the two surviving layouts (SettingsPanel settings.desktopLayoutStyle).
+  await chooseLayout(page, "Classic", "app--classic");
+  assert(await composer.inputValue() === "layout-owned draft", "classic layout preserves the Composer draft and mount");
   await chooseLayout(page, "Workbench", "app--workbench");
   assert(await composer.inputValue() === "layout-owned draft", "workbench layout preserves the Composer draft and mount");
 

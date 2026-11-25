@@ -147,7 +147,10 @@ async function runProcess(index) {
     await selectFixture(page, fixtures.full);
     await enterSafety(page);
     await selectFixture(page, fixtures.full);
-    for (const [label, className] of [["Creation", "app--creation"], ["Workbench", "app--workbench"]]) {
+    // tl1450 retired the creation layout (three layouts -> classic|workbench);
+    // the churn pair follows the surviving seg options (SettingsPanel
+    // settings.desktopLayoutStyle.classic|workbench).
+    for (const [label, className] of [["Classic", "app--classic"], ["Workbench", "app--workbench"]]) {
       await chooseAppLayout(page, label, className);
       await page.mouse.move(0, 0);
       await settleFrames(page);
