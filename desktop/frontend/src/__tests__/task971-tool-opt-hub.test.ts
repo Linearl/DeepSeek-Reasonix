@@ -2,10 +2,12 @@
 // 任务 971 acceptance harness (实验室-提效-工具优化聚合页):
 //  ① 聚合页渲染：顶部警告定稿原文逐字断言（tl1251 修订稿：生效点=新会话/重启，
 //     压缩不是生效点）+ 两生效点机制说明 + 四配套
-//     + 开关全集在页（readBack / 证据门 / multi_edit 直注 / restart_update /
-//     能力组披露真开关——任务 979 替换 971 的 session_hub 预留占位）；
-//  ② 迁移零回归：restartUpdate 自界面组更新反馈卡迁入聚合页——键/setter/档位
-//     不变，仅 UI 落点迁移（updateFeedback 不再含该行）；multiEditInjection
+//     + 开关全集在页（readBack / 证据门 / multi_edit 直注 /
+//     能力组披露真开关——任务 979 替换 971 的 session_hub 预留占位；
+//     restart_update 已随 992 裁定 + tl1805 渲染面补同步归位回 updateFeedback）；
+//  ② 迁移零回归：restartUpdate 归位零回归——键/setter/档位不变，仅 UI 落点
+//     （971 曾迁入聚合页；992 裁定归位 updateFeedback 卡、tl1805 补齐渲染面，
+//     updateFeedback 重新承载该行、聚合页不再含）；multiEditInjection
 //     独立卡退役为成员行，键/setter/回落链不变（943 两开关独立语义保持）；
 //  ③ session_hub 真开关（任务 979）：experimental_capability_groups 读写
 //     app.SetExperimentalCapabilityGroups，占位 span 退役；
@@ -49,31 +51,35 @@ console.log("\ntask 971 tool-optimization hub: aggregated page + rev2 warning + 
   ok(panel.includes('app.SetExperimentalToolOptimizations(on)'), "hub hosts the readBack switch");
   ok(panel.includes('app.SetExperimentalEditEvidenceRelaxed(on)'), "hub hosts the edit-evidence-relaxed switch");
   ok(panel.includes('app.SetExperimentalMultiEditInjection(on)'), "hub hosts the multi_edit injection switch");
-  ok(panel.includes('app.SetExperimentalRestartUpdate(on)'), "hub hosts the restart_update switch");
+  // tl1805（20261125）：restart_update 行已归位回 updateFeedback pane（992
+  // 裁定的渲染面补同步）——聚合页不再承载；setter 全链路仍经 panel 拼接源。
+  ok(panel.includes('app.SetExperimentalRestartUpdate(on)'), "restart_update switch stays wired through its unchanged setter (tl1805: pane = updateFeedback)");
   // 任务 979：971 的 session_hub 预留占位已替换为真开关（954/955 已合入）。
   ok(panel.includes('app.SetExperimentalCapabilityGroups(on)'), "hub hosts the real capability-groups switch (979 replaced the placeholder)");
   ok(!panel.includes('data-testid="session-hub-slot"'), "the 971 placeholder span is gone (replaced by the real switch)");
 }
 
-// ② 迁移零回归。
+// ② 迁移零回归（tl1805 归位后口径：行宿主=updateFeedback pane）。
 {
-  // restartUpdate 迁出 updateFeedback pane：该 pane 不再含 restartUpdate 行。
+  // 任务 971 曾迁 restartUpdate 入聚合页；任务 992（用户 1018 21:34）裁定
+  // 归位回 updateFeedback 卡，tl1805（20261125）补齐渲染面——该 pane 重新
+  // 承载 restartUpdate 行（971 迁出前原位），聚合页不再含该行。
   const ufStart = panel.indexOf('{selected === "updateFeedback" && (');
   // tl1309 卡②：monitoring pane 退役改名 runtimeObservability——endMarker
   // needle 随迁（needle 消失=indexOf -1=slice 退化=断言假绿/假红）。
   const ufEnd = panel.indexOf('{selected === "runtimeObservability" && (');
   ok(ufStart >= 0 && ufEnd > ufStart, "updateFeedback pane branch located");
   const ufSlice = panel.slice(ufStart, ufEnd);
-  ok(!ufSlice.includes("app.SetExperimentalRestartUpdate(on)"),
-    "updateFeedback pane no longer renders the restartUpdate switch");
-  // restartUpdate 键/setter 语义不变（仍走原 setter，仅落点在聚合页）。
+  ok(ufSlice.includes('lab-toggle-restartUpdate') && ufSlice.includes("app.SetExperimentalRestartUpdate(on)"),
+    "updateFeedback pane hosts the restartUpdate switch again (992 ruling, render face by tl1805)");
+  ok(ufSlice.includes('Boolean(s.experimentalRestartUpdate)'),
+    "restartUpdate switch still reads its own key");
+  // 聚合页不再承载 restartUpdate（键/setter 语义不变，仅 UI 落点归位）。
   const hubStart = panel.indexOf('{selected === "toolOptimizations" && (');
   ok(hubStart >= 0, "toolOptimizations hub pane branch located");
   const hubSlice = panel.slice(hubStart);
-  ok(hubSlice.includes("app.SetExperimentalRestartUpdate(on)"),
-    "hub renders the migrated restartUpdate switch via its unchanged setter");
-  ok(hubSlice.includes('Boolean(s.experimentalRestartUpdate)'),
-    "restartUpdate switch still reads its own key");
+  ok(!hubSlice.includes("app.SetExperimentalRestartUpdate(on)") && !hubSlice.includes('labLabel("restartUpdate"'),
+    "hub no longer renders the restartUpdate switch (tl1805 move-back)");
   // multiEditInjection 语义不变：独立 pane 退役、回落链/档位保持。
   ok(!panel.includes('{selected === "multiEditInjection" && ('),
     "multiEditInjection standalone pane retired (943 split preserved as independent switch)");

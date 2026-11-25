@@ -240,11 +240,12 @@ const missingRail = entryRows.filter(({ entry }) => !railIds.has(`lab-entry-${en
 ok(missingRail.length === 0, `all ${entryRows.length} rail card anchors render after expanding every group (missing: ${JSON.stringify(missingRail.map((r) => r.entry.id))})`);
 
 // 逐卡点击 → 该卡 yaml 成员行锚点全部真实渲染。
-// 已知漂移（预存，本件只记录不修——任务书 non-goals：不改实验室功能/分组）：
-// restartUpdate 在 yaml 里是 updateFeedback 卡成员（任务 992 归位），pane
-// 分支却把它渲染在 toolOptimizations 卡内（本仓既有状态）——锚点照样挂在该
-// 行上，断言按实际渲染位置收。
-const DRIFT_PANE: Record<string, string> = { restartUpdate: "toolOptimizations" };
+// tl1805（20261125）前唯一已知漂移：restartUpdate 在 yaml 里是 updateFeedback
+// 卡成员（任务 992 归位），pane 分支却渲染在 toolOptimizations 卡内——tl1805
+// 渲染面归位后漂移清零，DRIFT_PANE 留空表（机制保留：日后再有「配置卡≠渲染
+// 卡」的成员行，在此登记 id→实际渲染卡，漂移行由独立断言收口、不混入逐卡
+// 对账）。
+const DRIFT_PANE: Record<string, string> = {};
 const paneRowProbe: Array<{ card: string; missing: string[] }> = [];
 for (const { entry } of entryRows) {
   const row = q(`[data-testid="lab-entry-${entry.id}"]`);
@@ -255,16 +256,21 @@ for (const { entry } of entryRows) {
     .concat((entry.fields ?? []).map((f) => f.id));
   const missing = memberIds.filter((id) => {
     const paneCard = DRIFT_PANE[id] ?? entry.id;
-    if (paneCard !== entry.id) return false; // 漂移行由上方独立断言收口
+    if (paneCard !== entry.id) return false; // 漂移行由独立断言收口
     return !q(`[data-testid="lab-toggle-${id}"]`);
   });
   paneRowProbe.push({ card: entry.id, missing });
 }
-// 漂移行单独断言：restartUpdate 锚点真实渲染在 toolOptimizations 卡 pane 内。
-click(q('[data-testid="lab-entry-toolOptimizations"]')!);
+// tl1805 归位钉：restartUpdate 锚点真实渲染在 updateFeedback 卡 pane 内，
+// 且 toolOptimizations 卡 pane 不再承载该行（992 裁定的渲染面补同步）。
+click(q('[data-testid="lab-entry-updateFeedback"]')!);
 await settle(4);
 ok(q('[data-testid="lab-toggle-restartUpdate"]') !== null,
-  "drift row restartUpdate (yaml: updateFeedback member) renders anchored inside the toolOptimizations pane (pre-existing, documented)");
+  "restartUpdate (yaml: updateFeedback member) renders anchored inside the updateFeedback pane (tl1805 re-homed)");
+click(q('[data-testid="lab-entry-toolOptimizations"]')!);
+await settle(4);
+ok(q('[data-testid="lab-toggle-restartUpdate"]') === null,
+  "toolOptimizations pane no longer hosts the restartUpdate row (tl1805 move-back)");
 const brokenCards = paneRowProbe.filter((r) => r.missing.length > 0);
 ok(brokenCards.length === 0,
   `per-card render reconciliation: every yaml member row renders under its own card (${memberTotal} rows / ${entryRows.length} cards; broken: ${JSON.stringify(brokenCards)})`);
