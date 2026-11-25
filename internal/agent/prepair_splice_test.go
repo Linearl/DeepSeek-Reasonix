@@ -283,3 +283,180 @@ func TestSpliceLedgerRidesSessionSidecarInventory(t *testing.T) {
 		t.Fatal("store.SessionSidecarFiles must carry the splice ledger (清单单一来源纪律)")
 	}
 }
+
+// ---- tl1674c 折叠态降级 ----
+
+// seedDanglingToolCallBackup 手写一份与 20261125 用户现场（调研员3）同形态
+// 的备份转录：末行 assistant 带 tool_calls 但结果未落（diet 改写瞬间轮次在
+// 飞）——LoadSession 读它必然补占位结果（normalizedDirty=true），严格快照
+// 按 tl1315 拒。
+func seedDanglingToolCallBackup(t *testing.T, dir, stem string) string {
+	t.Helper()
+	backupDir := filepath.Join(dir, stem+".pre-repair-20261123T091022")
+	if err := os.MkdirAll(backupDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	backupPath := filepath.Join(backupDir, stem+".jsonl")
+	lines := []string{
+		`{"role":"user","content":"A original"}`,
+		`{"role":"assistant","content":"B original"}`,
+		`{"role":"assistant","content":"","tool_calls":[{"id":"call-diet-1","type":"function","function":{"name":"wait","arguments":"{}"}}]}`,
+	}
+	if err := os.WriteFile(backupPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 前置自证：该形态严格快照必拒、load 时修复必脏（测试红=构造失败）。
+	if sess, err := LoadSession(backupPath); err != nil || sess == nil {
+		t.Fatalf("seed: load backup: %v", err)
+	} else if !sess.normalizedDirty {
+		t.Fatal("seed: the dangling tool call must trip load-time normalization (构造失败=fixture 失真)")
+	}
+	if _, ok := LoadSessionContentSnapshot(backupPath); ok {
+		t.Fatal("seed: the strict snapshot must refuse a dirty backup (tl1315 fail-closed)")
+	}
+	return backupPath
+}
+
+// 现场钉（tl1674c 验收1）：折叠改写留下的脏备份（dangling tool call）不再
+// 堵死拼接——判据降级跑在修复后视图上，fold-continuation 形态照常可拼，Plan
+// 带 Degraded=backup 标记；登记同口径落袋（entry.Degraded 如实），主线转录
+// 与事件日志逐字节不动。
+func TestCheckAndRegisterPreRepairSpliceDegradedDirtyBackup(t *testing.T) {
+	dir := t.TempDir()
+	ownerPath := filepath.Join(dir, "folded.jsonl")
+	owner := NewSession("sys")
+	owner.Add(userTurn("[本地折叠] 已省略 3 条早期消息"))
+	owner.Add(userTurn("F new"))
+	if err := owner.Save(ownerPath); err != nil {
+		t.Fatal(err)
+	}
+	backupPath := seedDanglingToolCallBackup(t, dir, "folded")
+
+	plan, err := CheckPreRepairSplice(ownerPath, backupPath, time.Now().Unix())
+	if err != nil {
+		t.Fatalf("check with degraded backup: %v", err)
+	}
+	if !PreRepairSplicePlanSplicable(plan) {
+		t.Fatalf("plan = %+v, want splicable via the degraded read", plan)
+	}
+	if plan.Kind != PreRepairSpliceFoldContinuation || plan.SplicePoint != 0 {
+		t.Fatalf("plan = %+v, want fold-continuation at point 0", plan)
+	}
+	if plan.Degraded != "backup" {
+		t.Fatalf("plan.Degraded = %q, want %q (放行必须带降级标记)", plan.Degraded, "backup")
+	}
+	// 降级视图口径：修复补的占位结果在备份侧消息数里（3 条原文 + 1 条占位）。
+	if plan.BackupMessages != 4 {
+		t.Fatalf("plan.BackupMessages = %d, want 4 (修复后视图=原文+占位结果)", plan.BackupMessages)
+	}
+
+	transcriptBefore, err := os.ReadFile(ownerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventsBefore, err := os.ReadFile(store.SessionEventLog(ownerPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry, err := RegisterPreRepairSplice(ownerPath, PreRepairSpliceRequest{
+		BackupDir:        filepath.Dir(backupPath),
+		BackupTranscript: backupPath,
+		Stamp:            "20261123T091022",
+		Plan:             plan,
+		Source:           PreRepairSpliceSourceManual,
+	})
+	if err != nil {
+		t.Fatalf("register with degraded backup: %v", err)
+	}
+	if entry.Degraded != "backup" {
+		t.Fatalf("entry.Degraded = %q, want %q (档案袋如实带降级标记)", entry.Degraded, "backup")
+	}
+	if entry.SegmentHash == "" || entry.BackupDigest == "" {
+		t.Fatalf("entry = %+v, want the locally recomputed checksums on the repaired view", entry)
+	}
+	// 校验值与判据同口径（修复后视图）：段哈希 == 修复后备份段的消息摘要。
+	backupSess, err := LoadSession(backupPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	segment := trimLeadingSystemMessages(backupSess.Messages)[plan.SegmentStart:plan.SegmentEnd]
+	segDigest, err := digestSessionMessages(segment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.SegmentHash != digestString(segDigest) {
+		t.Fatal("segment hash must describe the repaired view the verdict ran on (判定与校验值同口径)")
+	}
+	if !HasPreRepairSplice(ownerPath, filepath.Dir(backupPath)) {
+		t.Fatal("the degraded verdict must land in the ledger")
+	}
+	// 投影零改动不变式在降级路径同样成立（字节级）。
+	transcriptAfter, err := os.ReadFile(ownerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eventsAfter, err := os.ReadFile(store.SessionEventLog(ownerPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(transcriptBefore) != string(transcriptAfter) || string(eventsBefore) != string(eventsAfter) {
+		t.Fatal("the main line changed during a metadata-only degraded splice")
+	}
+}
+
+// fail-closed 最后防线（tl1674c 验收2）：降级只收窄「load 时修复」这一形态
+// ——转录读不了、事件日志损坏仍然拒绝，且人话点名哪一侧缺什么。干净配对
+// （健康会话）判据零降级标记（非折叠行为不变的语义钉）。
+func TestCheckPreRepairSpliceStillFailsClosedAndHealthyStaysStrict(t *testing.T) {
+	dir := t.TempDir()
+	ownerPath, backupPath := seedSplicePair(t, dir, "topic")
+	plan, err := CheckPreRepairSplice(ownerPath, backupPath, 0)
+	if err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	if plan.Degraded != "" {
+		t.Fatalf("plan.Degraded = %q, want empty (健康配对必须严格读，零降级)", plan.Degraded)
+	}
+
+	// 备份转录读不了（字节损坏）：拒，点名 backup。
+	broken := filepath.Join(dir, "broken.pre-repair-20261110T010000", "topic.jsonl")
+	if err := os.MkdirAll(filepath.Dir(broken), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(broken, []byte("not json at all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	refused, rerr := CheckPreRepairSplice(ownerPath, broken, 0)
+	if rerr == nil {
+		t.Fatalf("plan = %+v, want refusal for an unreadable backup", refused)
+	}
+	if !strings.Contains(refused.Reason, "backup") || !strings.Contains(refused.Reason, "fail-closed") {
+		t.Fatalf("reason = %q, want fail-closed naming the backup side", refused.Reason)
+	}
+
+	// 备份事件日志损坏（残缺记录）：拒，点名 damage——降级不吞损坏形态。
+	damaged := filepath.Join(dir, "damaged.pre-repair-20261110T010000", "topic.jsonl")
+	if err := os.MkdirAll(filepath.Dir(damaged), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	seed := NewSession("sys")
+	seed.Add(userTurn("A original"))
+	if err := seed.Save(damaged); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(store.SessionEventLog(damaged), os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("{\"broken\n"); err != nil {
+		t.Fatal(err)
+	}
+	_ = f.Close()
+	damagedPlan, derr := CheckPreRepairSplice(ownerPath, damaged, time.Now().Unix())
+	if derr == nil {
+		t.Fatalf("plan = %+v, want refusal for a damaged event log", damagedPlan)
+	}
+	if !strings.Contains(damagedPlan.Reason, "event log damaged") {
+		t.Fatalf("reason = %q, want the damaged-log wording (fail-closed 语义要守住)", damagedPlan.Reason)
+	}
+}

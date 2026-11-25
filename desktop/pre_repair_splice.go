@@ -58,6 +58,10 @@ type PreRepairSplicePreviewView struct {
 	// RepairAt 是改写记录锚点（unix 秒；0=无 repairlog 命中）——预览披露改
 	// 写依据（时间线一致才可拼，见闸）。
 	RepairAt int64 `json:"repairAt,omitempty"`
+	// Degraded 是判据的降级读侧标记（tl1674c 折叠态降级）：空=两侧严格快照；
+	// 非空=有侧跑在 load 时修复后的视图上（"owner"/"backup"/"owner backup"）
+	// ——降级放行不是无声的，预览与回执都如实披露。
+	Degraded string `json:"degraded,omitempty"`
 	// OwnerHealthy/HealthCodes 是健康闸**提示**读数（不硬拦）：体检不过时
 	// 弹窗披露 codes 并建议先修复，拼接本身照常可用（纯元信息操作）。
 	OwnerHealthy bool     `json:"ownerHealthy"`
@@ -79,8 +83,10 @@ type PreRepairSpliceReceiptView struct {
 	SplicePoint     int    `json:"splicePoint,omitempty"`
 	SegmentMessages int    `json:"segmentMessages,omitempty"`
 	OwnerMessages   int    `json:"ownerMessages,omitempty"`
-	OwnerPath       string `json:"ownerPath"`
-	BackupDir       string `json:"backupDir"`
+	// Degraded 与判据同口径（tl1674c）：登记若有降级读侧，回执如实带同值。
+	Degraded  string `json:"degraded,omitempty"`
+	OwnerPath string `json:"ownerPath"`
+	BackupDir string `json:"backupDir"`
 }
 
 // preRepairSpliceTarget 是手动拼接两桥共用的目标闸：备份形态校验 + 已知会
@@ -206,6 +212,7 @@ func (a *App) PreviewPreRepairSplice(dir string) (PreRepairSplicePreviewView, er
 	view.SegmentMessages = plan.SegmentMessages
 	view.OwnerMessages = plan.OwnerMessages
 	view.BackupMessages = plan.BackupMessages
+	view.Degraded = plan.Degraded
 	return view, nil
 }
 
@@ -263,6 +270,7 @@ func (a *App) MergePreRepairSplice(dir string) (PreRepairSpliceReceiptView, erro
 		receipt.SplicePoint = entry.SplicePoint
 		receipt.SegmentMessages = entry.SegmentEnd - entry.SegmentStart
 		receipt.OwnerMessages = entry.OwnerMessages
+		receipt.Degraded = entry.Degraded
 		return nil
 	}()
 	if registerErr != nil {
