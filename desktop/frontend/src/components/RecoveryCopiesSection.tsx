@@ -110,6 +110,15 @@ function fileStemOf(path: string): string {
   return base.replace(/\.jsonl$/i, "");
 }
 
+/** tl1793r3: a backend row label is worth showing in a name slot only when it
+ *  resolved a real title. The backend's display chain bottoms out at the file
+ *  stem, so a label equal to that stem is the "no title anywhere" signal —
+ *  rendering it would only duplicate the identity badge beside it. */
+function rowTitleLabel(label: string, path: string): string {
+  const trimmed = (label ?? "").trim();
+  return trimmed && trimmed !== fileStemOf(path) ? trimmed : "";
+}
+
 /** sameSessionPath compares two transcript paths as the same file. The copies
  *  scan and the chain enumerator are two different backend readers (tl1414's
  *  root cause was exactly a Windows case-folding mismatch between two such
@@ -2488,6 +2497,11 @@ export function RecoveryCopiesSection() {
       model.currentMainChain && model.currentMainChain.path !== group.mainPath
         ? chainIdentityOf(model.currentMainChain.path, model.currentMainChain.headId)
         : "";
+    // tl1793r3 刀②: 主线行名字位此前只有类型词+可选短标识,从不显示名字——
+    // 后端为组算好的 mainLabel（正本缺失时是从副本反向继承来的真名）没有进
+    // 这一行。真名（≠正本 stem 兜底）接进名字位;stem 兜底形态不显示,避免与
+    // 组头/短标识重复。
+    const mainRowLabel = rowTitleLabel(group.mainLabel, group.mainPath);
     const mainMessages = model.currentMainChain ? model.currentMainChain.messageCount : group.mainMessages;
     const mainTurns = model.currentMainChain ? model.currentMainChain.turns : group.mainTurns;
     const mainModified = model.currentMainChain ? model.currentMainChain.lastActivity : group.mainModified;
@@ -2495,10 +2509,13 @@ export function RecoveryCopiesSection() {
     const winner = measured ? predictedWinner(group) : null;
     // tl1415b-2（点1 同族）：会话行 hover 也要比行内多给信息——label 之外补
     // 路径与更新时间（clip1 未截断时纯 label 的 hover 与可见文本相同，无效）。
+    // tl1793r3 刀③：正本缺失的组头 hover 注明「正本已缺失」——组头显示的是
+    // 从副本借来的名字（tl1793r3 刀①反向继承），行内看不出正本没了这一层。
     const sessionTitleText = [
       headCount > 1
         ? `${group.mainLabel}（${t("settings.recoveryCopiesVersionsBadge").replace("{count}", String(headCount))}）`
         : group.mainLabel,
+      ...(group.mainExists ? [] : [t("settings.recoveryCopiesMainMissingNote")]),
       group.mainPath,
       `${t("settings.recoveryCopiesColModified")} ${formatWhen(group.mainModified)}`,
     ].join("｜");
@@ -2612,6 +2629,7 @@ export function RecoveryCopiesSection() {
           >
             <div className="rc-clip1">
               {t("settings.recoveryCopiesMain")}
+              {mainRowLabel ? ` · ${mainRowLabel}` : ""}
               {mainChainShortName ? (
                 <span className="rc-copy__shortname" title={model.currentMainChain?.path}>
                   {mainChainShortName}
@@ -2667,6 +2685,12 @@ export function RecoveryCopiesSection() {
           // tl1415 点12: 文件名短标识(recovery-<8 hex>)——用户要能把面板行
           // 对回磁盘上的 recovery-5df6de18 文件;悬停 title 给完整文件名。
           const shortName = chainIdentityOf(copy.path, chain?.headId ?? "");
+          // tl1793r3 刀②: 后端为每个副本实时算好的显示名（meta
+          // topic_title/custom_title → titles → 继承源，探针实测孤立组副本
+          // 实有「qwen部署」）此前没进名字位——行内只渲染序号+短标识，名字
+          // 位显示的正是用户截图里的 recovery-19cbd749。真名（≠副本 stem
+          // 兜底）接进名字位;短标识保留（tl1415 点12 钉:行↔磁盘文件锚点）。
+          const copyNameLabel = rowTitleLabel(copy.label, copy.path);
           const copyTitle = chain
             ? `${t("settings.recoveryCopiesCopy")} ${visibleIndex + 1}${shortName ? ` · ${copy.path}` : ""}｜${tailPreviewText(chain)}`
             : shortName
@@ -2707,6 +2731,7 @@ export function RecoveryCopiesSection() {
               <td className="rc-col-name" title={copyTitle}>
                 <div className="rc-clip1">
                   {t("settings.recoveryCopiesCopy")} {visibleIndex + 1}
+                  {copyNameLabel ? ` · ${copyNameLabel}` : ""}
                   {shortName ? (
                     <span className="rc-copy__shortname" title={copy.path}>
                       {shortName}

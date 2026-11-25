@@ -211,6 +211,16 @@ func recoveryCopyGroupsIn(dir string) ([]RecoveryCopyGroupView, error) {
 			group.MainBytes = info.Size()
 			group.MainModified = info.ModTime().Format(time.RFC3339)
 		}
+		// tl1793r3 组行反向继承: a mainless group's label chain bottoms out at
+		// the stem (the main's sidecars are keyed by a gone file), so the
+		// header showed the raw session id while its copies carried the real
+		// title. Let the group borrow a copy's resolved title — only when the
+		// main is missing, only from a real title (never a copy's stem).
+		if !group.MainExists {
+			if title := recoveryGroupLabelFromCopies(group.Copies, titles); title != "" {
+				group.MainLabel = title
+			}
+		}
 		out = append(out, group)
 	}
 	return out, nil
@@ -276,6 +286,15 @@ func recoveryCopyGroupFor(dir, mainPath string) (RecoveryCopyGroupView, bool) {
 		}
 		group.Copies = append(group.Copies, copyView)
 	}
+	// tl1793r3 组行反向继承 (scan path): the scan response replaces the group
+	// view in the panel, so the same reverse inheritance as the listing must
+	// hold here too — otherwise the header flips back to the raw stem the
+	// moment the user presses Scan on a mainless group.
+	if !group.MainExists {
+		if title := recoveryGroupLabelFromCopies(group.Copies, titles); title != "" {
+			group.MainLabel = title
+		}
+	}
 	return group, true
 }
 
@@ -319,6 +338,21 @@ func recoveryDisplayNameFor(transcriptPath string, titles map[string]string) str
 // main conversation. Both lookups run only on stuck rows — titled rows never
 // reach here — so the panel's steady-state cost is unchanged.
 func recoveryDisplayNameInherited(transcriptPath string, titles map[string]string, depth int) string {
+	if title := recoveryResolvedTitle(transcriptPath, titles, depth); title != "" {
+		return title
+	}
+	return recoveryLabel(transcriptPath)
+}
+
+// recoveryResolvedTitle is the display chain without the stem fallback: the
+// empty string when every title source is exhausted. tl1793r3 splits it out of
+// recoveryDisplayNameInherited so a group row can run its copies through the
+// same chain and inherit a real title (组行反向继承): when the canonical
+// transcript is gone, every source for the main path reads empty — the sidecars
+// and the titles map are keyed by a file that no longer exists — and MainLabel
+// used to bottom out at the raw stem right beside copies that resolve fine.
+// The stem stays the row-level last resort; only the group header borrows.
+func recoveryResolvedTitle(transcriptPath string, titles map[string]string, depth int) string {
 	if title := recoverySidecarTitle(transcriptPath); title != "" {
 		return title
 	}
@@ -328,10 +362,22 @@ func recoveryDisplayNameInherited(transcriptPath string, titles map[string]strin
 	if title, ok := loadSessionTitles(filepath.Dir(transcriptPath))[filepath.Base(transcriptPath)]; ok && strings.TrimSpace(title) != "" {
 		return strings.TrimSpace(title)
 	}
-	if title := recoveryInheritedTitle(transcriptPath, depth); title != "" {
-		return title
+	return recoveryInheritedTitle(transcriptPath, depth)
+}
+
+// recoveryGroupLabelFromCopies is the group row's reverse inheritance: the
+// first copy whose own chain resolves a real title (sidecar or inherited —
+// never its stem) lends that title to the group header. Used only when the
+// canonical transcript is missing, so titled groups never pay the extra
+// sidecar reads and a main's own name always outranks its copies'. The copies
+// sit in directory order, so the pick is deterministic.
+func recoveryGroupLabelFromCopies(copies []RecoveryCopyView, titles map[string]string) string {
+	for _, copy := range copies {
+		if title := recoveryResolvedTitle(copy.Path, titles, 0); title != "" {
+			return title
+		}
 	}
-	return recoveryLabel(transcriptPath)
+	return ""
 }
 
 // recoveryInheritedTitle resolves a titleless transcript's name from the

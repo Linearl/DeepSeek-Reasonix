@@ -5259,6 +5259,7 @@ export const en = {
   "settings.recoveryCopiesShared": "shared",
   "settings.recoveryCopiesUnique": "unique",
   "settings.recoveryCopiesOrphan": "orphan (canonical transcript missing)",
+  "settings.recoveryCopiesMainMissingNote": "canonical transcript missing",
   "settings.recoveryCopiesMerge": "Merge selected",
   "settings.recoveryCopiesRefresh": "Refresh",
   "settings.recoveryCopiesPreviewTitle": "Preview branch",
