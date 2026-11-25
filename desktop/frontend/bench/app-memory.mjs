@@ -214,6 +214,14 @@ async function runProcess(index) {
     // measured at rest: mid-cleanup listener blips (614 vs the 512 baseline)
     // resolve a few tasks after the last navigation. Settle, GC, and take the
     // quiescent confirmation sample the verdict actually judges.
+    // The tail also has to END IN THE SAME RESTING CONTEXT the baseline used
+    // (geometry -> full): mixed's last round can be a non-safety round ending
+    // on a windowed -> full swap whose renderer footprint sits one fixture
+    // below the floor (shard evidence 20261125: settled 24,973/1,195 vs
+    // baseline 27,515/1,445 after a clean 512-round run = persistent-drift
+    // false positive). Re-walk the baseline path before settling.
+    await selectFixture(page, fixtures.geometry);
+    await selectFixture(page, fixtures.full);
     await settleFrames(page, 12);
     const settled = { phase: "settled", roundTrips: MIXED_CYCLES, ...await forceGc(cdp, page) };
     samples.push(settled);
