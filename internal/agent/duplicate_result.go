@@ -8,16 +8,22 @@ import (
 )
 
 func (a *Agent) boundProviderVisibleResult(raw, toolName, callID, args string) (body, notice, original string) {
-	summarized := summarizeCIOutput(raw)
-	// tl1561: archive the full original before the marker is built so the
-	// truncation marker can point at a readable file. The pre-summary raw is
-	// archived (not the CI summary) — the file is the durable recovery channel.
-	// The trigger follows the tool's tier budget, so an archived original only
-	// exists when the tiered marker actually promises a readable path.
+	// tl1561b: a CI summary replaces the raw wholesale — same information-loss
+	// shape as truncation — so the archive trigger fires on the replacement
+	// itself, not on whether the (tiny) summary then exceeds the tier budget.
+	// Before this fix a summarized 78KB heartbeat_task_list left the model a
+	// header promising a local original with no path to it. The pre-summary raw
+	// is archived (not the summary) — the file is the durable recovery channel;
+	// best-effort archiving keeps the header honest ("original not retained")
+	// when the write fails instead of promising an unreadable path. The tier
+	// branch keeps the plain truncation archive from tl1561 intact: the raw is
+	// never smaller than the summary, so it covers every case the old
+	// len(summarized) trigger did.
 	var archivePath string
-	if len(summarized) > toolOutputBudgetBytes(toolName) {
+	if looksLikeCILog(raw) || len(raw) > toolOutputBudgetBytes(toolName) {
 		archivePath = a.archiveTruncatedToolOutput(toolName, callID, raw)
 	}
+	summarized := summarizeCIOutput(raw, archivePath)
 	body, notice = truncateToolOutputArchived(summarized, toolName, callID, archivePath)
 	deduped := a.dedupeProviderVisibleResult(toolName, callID, args, raw, body)
 	if deduped != body {
