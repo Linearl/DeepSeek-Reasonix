@@ -9,12 +9,14 @@ import { messageSelectionContextText, TRANSCRIPT_COPY_FAILED_EVENT } from "../li
 import { writeClipboardText } from "../lib/clipboard";
 import {
   cancelSpeech,
-  detectSpeakLang,
+  findVoiceFor,
   primeSpeechVoices,
+  segmentSpeakText,
   speakLangDisplayName,
-  speakSelection,
-  speechSupport,
+  speakSegments,
+  speechAvailability,
   MAX_SPEAK_CHARS,
+  type SpeakLang,
 } from "../lib/speech";
 import {
   detectShortcutPlatform,
@@ -259,6 +261,10 @@ export function TranscriptSelectionMenu({
   // the selection has since gone stale), then the visible-failure ladder, then
   // the actual utterance. Every failure lands in the result card like the
   // translate/explain paths do; nothing fails silently.
+  // tl1815: the ladder is availability-first, not language-first — a missing
+  // pack for one language degrades to engine best-effort plus a visible
+  // install-guidance line instead of refusing to read at all. Only an
+  // unsupported environment or zero voices remains a hard stop.
   const runSpeak = useCallback((selection: SelectionAction | null) => {
     if (speakingRef.current) {
       setSpeakingState(false);
@@ -276,34 +282,41 @@ export function TranscriptSelectionMenu({
         setQuickResult(t("selection.quickAction.unavailable"));
         return;
       }
-      const lang = detectSpeakLang(text);
-      const support = speechSupport(lang);
-      if (support !== "ready") {
+      const availability = speechAvailability();
+      if (availability !== "ready") {
         setQuickAction("speak");
         setQuickError(true);
         setQuickResult(t(
-          support === "unsupported"
+          availability === "unsupported"
             ? "selection.quickAction.speechUnsupported"
-            : support === "no-voices"
-              ? "selection.quickAction.speechNoVoices"
-              : "selection.quickAction.speechNoVoiceFor",
-          support === "no-match" ? { lang: speakLangDisplayName(lang) } : undefined,
+            : "selection.quickAction.speechNoVoices",
         ));
         return;
       }
       const truncated = text.length > MAX_SPEAK_CHARS;
       const body = truncated ? text.slice(0, MAX_SPEAK_CHARS) : text;
+      const segments = segmentSpeakText(body);
+      // Degradation guidance: every segment language without an installed
+      // pack still reads (engine lang-hint best effort) but must say so in
+      // the card — the user learns how to get the proper voice.
+      const missingLangs = [...new Set<SpeakLang>(segments.map((segment) => segment.lang))]
+        .filter((lang) => !findVoiceFor(lang));
       setQuickAction("speak");
       setQuickError(false);
       // Same notice contract as the translate/explain paths: a capped payload
-      // is always visible in the card, never silently clipped.
-      setQuickResult(
-        truncated
-          ? `${t("selection.quickAction.speaking")}\n${t("selection.quickAction.truncated")}`
-          : t("selection.quickAction.speaking"),
-      );
+      // is always visible in the card, never silently clipped; the guidance
+      // joins the speaking notice instead of replacing it.
+      const notices = [
+        t("selection.quickAction.speaking"),
+        truncated ? t("selection.quickAction.truncated") : "",
+        ...missingLangs.map((lang) => t(
+          "selection.quickAction.speechVoiceMissingHint",
+          { lang: speakLangDisplayName(lang) },
+        )),
+      ].filter(Boolean);
+      setQuickResult(notices.join("\n"));
       setSpeakingState(true);
-      speakSelection(body, lang, () => {
+      speakSegments(segments, () => {
         // Natural end or error: settle the toggle and drop the speaking card.
         if (speakingRef.current) {
           setSpeakingState(false);

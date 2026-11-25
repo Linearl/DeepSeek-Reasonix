@@ -130,13 +130,14 @@ export const zh: Record<DictKey, string> = {
   "selection.quickAction.failed": "请求失败，请重试",
   "selection.quickAction.unavailable": "选区已失效，请重新选择",
   // tl1709：选中文本朗读（Web Speech API，零后端零网络）。toggle 文案 +
-  // 三种可见失败提示（环境不支持 / 无语音包 / 无匹配语种语音包）——不静默失败。
+  // 可见失败提示（环境不支持 / 无语音包）——不静默失败。tl1815：无匹配语种
+  // 不再硬失败，降级朗读 + 装包指引（speechVoiceMissingHint）。
   "selection.quickAction.speak": "朗读",
   "selection.quickAction.stop": "停止",
   "selection.quickAction.speaking": "朗读中…",
   "selection.quickAction.speechUnsupported": "当前环境不支持语音朗读",
   "selection.quickAction.speechNoVoices": "未检测到可用的系统语音包",
-  "selection.quickAction.speechNoVoiceFor": "未找到可朗读{lang}文本的语音包",
+  "selection.quickAction.speechVoiceMissingHint": "未找到{lang}语音包，将用现有语音尽力朗读；可在 Windows 设置 → 时间和语言 → 语音 中添加语音改善效果",
   "common.cut": "剪切",
   "common.paste": "粘贴",
   "common.selectAll": "全选",
