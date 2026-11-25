@@ -1,9 +1,9 @@
 # 包115 release notes — v1.38.3-20261125-1322
 
 > 基线：包114（v1.38.3-20261124-2208，构建点 `08fcc08a4d`）
-> 构建点：随棘轮 commit 后 tip（本 notes commit 后现查校准）
-> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
-> 执行线：zcode 开发线（15 支 merge 全量本包，zcode 滚合）
+> 构建点：`e2dd61b997`（main-v2-stable，含棘轮两笔：initial raw 探针抬+恰等区二抬）
+> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`（74,249,842 B）
+> 执行线：zcode 开发线（15 支 merge 全量本包，zcode 滚合；二轮构建=一轮 initial raw 恰等区抖 0.1→抬→二轮 rc=0）
 > <!-- claims: feat-tl1800,feat-tl1799,feat-tl1796r2,feat-tl1798,feat-tl1793r2,feat-tl1773b,feat-tl1803,feat-tl1805,feat-tl1806,feat-tl1808,feat-tl1312,feat-tl1807,feat-tl1561b,feat-tl1802,feat-tl1804 -->
 
 ## 一、机制级（P1 旗舰：反复修的重复渲染族从机制上终结）
