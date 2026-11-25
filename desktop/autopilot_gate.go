@@ -152,3 +152,33 @@ func dropAutopilotLivePosture(ctrl control.SessionAPI) bool {
 	dropper.ClearAutopilotPosture()
 	return true
 }
+
+// autopilotPostureArmer is the optional controller capability behind
+// armAutopilotLivePosture (tl1804), the mirror of autopilotPostureDropper.
+// Optional for the same reason: test fakes implementing the plain SessionAPI
+// keep compiling.
+type autopilotPostureArmer interface {
+	ArmAutopilotPosture(approvalGrace, askWait time.Duration, askTimeoutEnabled, askAutoContinue bool, maxRuntime time.Duration) bool
+}
+
+// armAutopilotLivePosture raises the unattended posture on a live controller
+// (tl1804) — the mirror of dropAutopilotLivePosture. The composer tier switch
+// onto the autopilot tier writes tab.autopilot and the five runtime fields,
+// but the live controller kept its construction-time attended posture until
+// the next rebuild — the ask chain waited attended waits in a session with
+// nobody watching (the join-direction half of the tl1795 three-layer desync).
+// The tab fields are read here: the caller wrote them under turnStartMu just
+// before this call, so they are the final values of the switch. Reports
+// whether a live posture was actually armed (a refused unbounded arm reports
+// false and the controller stays attended).
+func armAutopilotLivePosture(ctrl control.SessionAPI, tab *WorkspaceTab) bool {
+	if ctrl == nil || tab == nil || tab.autopilotMaxRuntime <= 0 {
+		return false
+	}
+	armer, ok := ctrl.(autopilotPostureArmer)
+	if !ok || armer == nil {
+		return false
+	}
+	return armer.ArmAutopilotPosture(tab.autopilotApprovalGrace, tab.autopilotAskWait,
+		tab.autopilotAskTimeoutEnabled, tab.autopilotAskAutoContinue, tab.autopilotMaxRuntime)
+}
