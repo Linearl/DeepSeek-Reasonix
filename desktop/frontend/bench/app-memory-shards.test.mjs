@@ -9,10 +9,16 @@ function report(id) {
     lifecycle: { liveRenderTokenIds: [1], liveRenderTokens: 1, activeOperations: 0, activeSubscriptions: 2, overflow: false, invariantViolations: 0 },
     dom: { nodes: 10, jsEventListeners: 2 }, heap: { usedSize: 100 } });
   const samples = [sample("baseline", 0)];
+  samples[0].context = "geometry->full";
   for (const phase of ["full", "windowed", "safety", "mixed"]) {
     for (let count = 32; count <= (phase === "mixed" ? 512 : 128); count += 32) samples.push(sample(phase, count));
   }
-  samples.push(sample("settled", 512));
+  // a+c (task 117-D): the settled tail carries >=3 same-context majority
+  // readings; without them completeShard must refuse the report.
+  const settled = sample("settled", 512);
+  settled.context = "geometry->full";
+  settled.settledReadings = Array.from({ length: 3 }, () => ({ nodes: 10, jsEventListeners: 2, activeSubscriptions: 2 }));
+  samples.push(settled);
   return { identity: structuredClone(identity), fixtures: structuredClone(MEMORY_FIXTURES), protocol: structuredClone(MEMORY_PROTOCOL), shard: { id, total: 3, executionId: "123:1" }, cycles: 128, mixedCycles: 512,
     shardComplete: true, protocolComplete: false, verdict: "SHARD_PASS", processes: [{ process: id, browser: "chromium-fixed", samples,
       snapshots: ["baseline", "full", "windowed", "safety", "mixed"].map(phase => ({ file: `${id}-${phase}.heapsnapshot`, summary: {} })),
@@ -28,6 +34,9 @@ test("absent lifecycle probe degrades the tier without breaking shard or aggrega
     const shard = report(id);
     for (const sample of shard.processes[0].samples) {
       sample.lifecycle = { ...ABSENT_LIFECYCLE_PROBE, liveRenderTokenIds: [], liveRenderTokens: 0 };
+      // probe absent means subscription counters publish 0 everywhere,
+      // settled majority readings included — keep the vote consistent.
+      if (sample.settledReadings) for (const reading of sample.settledReadings) reading.activeSubscriptions = 0;
       sample.lifecycleProbePublished = false;
     }
     shard.processes[0].lifecycleProbePublished = false;
@@ -62,7 +71,14 @@ for (const [name, mutate] of [
   ["different browser", reports => { reports[1].processes[0].browser = "another-browser"; }],
   ["missing checks", reports => { reports[1].processes[0].checks = {}; }],
   ["page error", reports => { reports[1].processes[0].metrics.pageErrors.push("boom"); }],
-  ["persistent DOM drift despite claimed pass", reports => { reports[1].processes[0].samples.at(-1).dom.nodes++; }],
+  ["persistent DOM drift despite claimed pass", reports => {
+    const settled = reports[1].processes[0].samples.at(-1);
+    settled.dom.nodes++;
+    settled.settledReadings.forEach(reading => { reading.nodes++; });
+  }],
+  ["settled tail without majority readings", reports => { delete reports[1].processes[0].samples.at(-1).settledReadings; }],
+  ["settled tail with too few readings", reports => { reports[1].processes[0].samples.at(-1).settledReadings.pop(); reports[1].processes[0].samples.at(-1).settledReadings.pop(); }],
+  ["settled tail sampled in another resting context", reports => { reports[1].processes[0].samples.at(-1).context = "windowed->full"; }],
   ["unfinished operations despite claimed pass", reports => { reports[1].processes[0].samples.at(-1).lifecycle.activeOperations++; }],
   ["missing token identity", reports => { delete reports[1].processes[0].samples[0].lifecycle.liveRenderTokenIds; }],
 ]) test(`aggregate rejects ${name}`, () => {

@@ -78,7 +78,7 @@ jobs:
       - name: Generate wailsjs bindings
         working-directory: desktop
         run: wails generate module
-      - run: node --test bench/app-memory-shards.test.mjs bench/app-memory-paths.test.mjs bench/app-memory-timing.test.mjs
+      - run: node --test bench/app-memory-evidence.test.mjs bench/app-memory-shards.test.mjs bench/app-memory-paths.test.mjs bench/app-memory-timing.test.mjs
       - run: pnpm build
       - run: node bench/app-memory-prepare.mjs "$RUNNER_TEMP/app-memory-build"
       - uses: actions/upload-artifact@v7

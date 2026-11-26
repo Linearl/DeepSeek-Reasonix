@@ -30,10 +30,17 @@ export function protocolSamples(samples) {
 
 export function completeShard(report) {
   const run = report.processes?.[0];
+  const settled = run?.samples?.at(-1);
+  const baseline = run?.samples?.[0];
   return JSON.stringify(report.protocol) === JSON.stringify(MEMORY_PROTOCOL)
     && report.cycles === MEMORY_PROTOCOL.cycles && report.mixedCycles === MEMORY_PROTOCOL.mixedCycles
     && report.processes?.length === 1 && run.process === report.shard?.id
     && protocolSamples(run.samples)
+    // a+c (task 117-D): a shard is only complete when the settled tail carries
+    // >=3 same-context majority readings and both anchors name one resting
+    // context; evidence without them cannot support the mixed verdict.
+    && Array.isArray(settled?.settledReadings) && settled.settledReadings.length >= 3
+    && typeof settled?.context === "string" && settled.context === baseline?.context
     && Array.isArray(run.snapshots) && run.snapshots.length === 5
     && ["baseline", "full", "windowed", "safety", "mixed"].every((phase, index) =>
       run.snapshots[index].file === `${run.process}-${phase}.heapsnapshot` && run.snapshots[index].summary);

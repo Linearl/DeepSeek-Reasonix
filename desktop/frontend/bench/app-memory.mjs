@@ -27,6 +27,14 @@ function integerEnv(name, fallback) {
 const CYCLES = integerEnv("REASONIX_APP_MEMORY_CYCLES", 128);
 const MIXED_CYCLES = integerEnv("REASONIX_APP_MEMORY_MIXED_CYCLES", 512);
 const BASELINE_ATTEMPTS = integerEnv("REASONIX_APP_MEMORY_BASELINE_ATTEMPTS", 4);
+// a+c mixed gate (task 117-D): the settled tail is sampled SETTLED_ATTEMPTS
+// times in one resting context; the classifier takes the majority (>=2 of >=3).
+// Interval per reading = settleFrames(12) + double forced GC, identical to the
+// single-sample cadence, so c adds readings without changing the GC rhythm.
+const SETTLED_ATTEMPTS = integerEnv("REASONIX_APP_MEMORY_SETTLED_ATTEMPTS", 3);
+// Both anchors name their resting context so the classifier can refuse a
+// cross-phase comparison (layer a: same-context in-band only).
+const RESTING_CONTEXT = "geometry->full";
 const SHARD = process.env.REASONIX_APP_MEMORY_SHARD === undefined ? null : Number(process.env.REASONIX_APP_MEMORY_SHARD);
 if (SHARD !== null && ![1, 2, 3].includes(SHARD)) throw new Error("memory shard must be 1, 2 or 3");
 const PROCESSES = SHARD === null ? integerEnv("REASONIX_APP_MEMORY_PROCESSES", 3) : 1;
@@ -48,7 +56,9 @@ async function ensureBuild() {
   }
   // Each run owns a fresh production build; an unverified dist is not evidence.
   await new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit" });
+    // shell:true — on Windows pnpm is pnpm.cmd; a shell-less spawn fails with ENOENT
+    // (tl1823 baseline). Args are static literals, so shell concatenation is safe.
+    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit", shell: true });
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`pnpm build exited ${code}`)));
   });
 }
@@ -187,7 +197,7 @@ async function runProcess(index) {
       const previous = baselineReadings.at(-2);
       const stable = previous && previous.nodes === reading.dom.nodes && previous.jsEventListeners === reading.dom.jsEventListeners;
       if (stable || attempt === BASELINE_ATTEMPTS) {
-        samples.push({ phase: "baseline", roundTrips: 0, baselineStable: Boolean(stable), baselineReadings, ...reading });
+        samples.push({ phase: "baseline", roundTrips: 0, context: RESTING_CONTEXT, baselineStable: Boolean(stable), baselineReadings, ...reading });
         process.stdout.write(`[app-memory] process=${index} phase=baseline stable=${Boolean(stable)} readings=${JSON.stringify(baselineReadings)}\n`);
         break;
       }
@@ -222,11 +232,25 @@ async function runProcess(index) {
     // false positive). Re-walk the baseline path before settling.
     await selectFixture(page, fixtures.geometry);
     await selectFixture(page, fixtures.full);
-    await settleFrames(page, 12);
-    const settled = { phase: "settled", roundTrips: MIXED_CYCLES, ...await forceGc(cdp, page) };
-    samples.push(settled);
+    // a+c layer c: sample the quiescent tail SETTLED_ATTEMPTS times in the
+    // SAME resting context the baseline used, then let the classifier take the
+    // majority reading. Single-sample GC/layout noise (one blip of 614 among
+    // 512s) no longer flips the verdict, while a systematic offset survives
+    // the vote and stays red. Interval between readings = settleFrames(12) +
+    // the double forced-GC inside forceGc, the same cadence as one reading.
+    const settledReadings = [];
+    let settled = null;
+    for (let attempt = 1; attempt <= SETTLED_ATTEMPTS; attempt++) {
+      await settleFrames(page, 12);
+      const reading = await forceGc(cdp, page);
+      settledReadings.push({ nodes: reading.dom.nodes, jsEventListeners: reading.dom.jsEventListeners, activeSubscriptions: reading.lifecycle.activeSubscriptions });
+      if (!settled || attempt === SETTLED_ATTEMPTS) settled = reading;
+      process.stdout.write(`[app-memory] process=${index} phase=settled attempt=${attempt}/${SETTLED_ATTEMPTS} nodes=${reading.dom.nodes} listeners=${reading.dom.jsEventListeners} subscriptions=${reading.lifecycle.activeSubscriptions}\n`);
+    }
+    const settledSample = { phase: "settled", roundTrips: MIXED_CYCLES, context: RESTING_CONTEXT, settledReadings, ...settled };
+    samples.push(settledSample);
     writeFileSync(path.join(artifacts, `${index}-samples.json`), JSON.stringify(samples, null, 2));
-    process.stdout.write(`[app-memory] process=${index} phase=settled nodes=${settled.dom.nodes} listeners=${settled.dom.jsEventListeners} tokens=${settled.lifecycle.liveRenderTokens}\n`);
+    process.stdout.write(`[app-memory] process=${index} phase=settled context=${RESTING_CONTEXT} readings=${JSON.stringify(settledReadings)} tokens=${settled.lifecycle.liveRenderTokens}\n`);
     return {
       process: index,
       browser: browser.version(),
