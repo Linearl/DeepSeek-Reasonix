@@ -961,7 +961,11 @@ export const CHECKS = [
   { feature: "任务544 回合起点清标记（标记恰好覆盖一个回合）", file: "internal/control/turn_orchestrator.go", patterns: ["c.clearTurnAskAnswered()", "maybeAskAutoContinueTurn(ctx, err)"] },
   { feature: "任务544 desktop 六元组接线（默认快照+闸门+反向联动）", file: "desktop/autopilot_gate.go", patterns: ["askAutoContinue bool, approvalMode string", "tab.autopilotAskAutoContinue = false"] },
   { feature: "任务544 设置面+三语（开关读写）", file: "desktop/settings_app.go", patterns: ["ExperimentalAutopilotAskAutoContinue bool `json:\"experimentalAutopilotAskAutoContinue\"`", "func (a *App) SetDesktopAutopilotAskAutoContinue(enabled bool) error"] },
-  { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
+  // 任务325 设置默认值前置校验（拒绝非 yolo）随 tl1741（3ae58d0e54）撤开关退役：SetDesktopAutopilot
+  // 整函数退役（新会话恒默认 unattended，max_runtime 护栏键保留），替代语义=恢复路径仍过 325 闸门
+  // （gateRestoredAutopilotDefaults 锚继续把守）；tl1756 台账（65b4368de2）预判退役候选，
+  // 本条按 orphaned 口径退役（REASONIX.md Pre-existing failures 三裁口，引退役 commit）。
+  // { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
   // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
   // 锁计费点/自禁用、合并与「重开=重置计数」收口、schema 前向保护——丢掉合并
