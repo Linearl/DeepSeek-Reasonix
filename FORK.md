@@ -238,6 +238,20 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
 
 ✅ **文案债已还清（2026-10-29 tl1251，`90fad33f84`，选「改文案」路线）**：工具优化聚合页三语文案（`settings.toolOptHub.effect/.pending/.warning`）已修复——现文案明示「两个生效点：新会话 / 恢复重启；/compact 只重建对话前缀、不重建工具表，改动需重启」，`task971-tool-opt-hub.test.ts` 逐字断言同步。历史背景：旧文案曾承诺「/compact 即可生效」，后端并无该快捷通道。
 
+## 远程仓库（双远程说明，2026-11-26 tl1825 定稿）
+
+本仓配置三个远程；**fork 日常与出包只用 `origin`**，`mirror` 是可检索镜像，`upstream` 仅历史参考（已停止维护，不再 merge）。
+
+| 远程 | 仓库 | 角色 |
+|---|---|---|
+| `origin` | `Linearl/DeepSeek-Reasonix` | **fork 主仓 / 出包仓**：`main-v2-stable` 推送目标；fork release tag、`release-fork.yml` workflow、GitHub Release 全在这里 |
+| `mirror` | `Linearl/reasonix` | **独立镜像仓，保留不删**：唯一存在目的 = **可被检索** |
+| `upstream` | `esengine/DeepSeek-Reasonix` | 上游原仓，2026-11-12 停止维护；仅作历史对照，不再推送 |
+
+**mirror 为什么保留**：GitHub 仓库搜索对 fork 仓库默认 `fork: false` 过滤——`origin` 是从 esengine fork 来的，在默认搜索里搜不到；`mirror` 是独立建仓（无 fork 关系），能出现在搜索结果中，是本 fork 在 GitHub 上被检索到的唯一入口（2026-11-17 实测实锤）。
+
+**分工口径**：出包一律推 `origin`（见下方发布清单第 4/5/6 步）；`mirror` 不用于出包、不跑 CI，仅作可检索镜像。
+
 ## Release 与安装
 
 - fork 仓库自行出 release 包，走正常安装流程覆盖官方安装。
