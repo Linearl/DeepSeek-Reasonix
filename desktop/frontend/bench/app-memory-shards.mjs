@@ -2,7 +2,13 @@ import { attributeRetention, evidenceIntegrity, retainedCohorts, screeningBlocke
 
 // Version 3 requires a settled, repeated baseline reading before the measured
 // cycles, so a single early reading can no longer anchor the drift verdict.
-export const MEMORY_PROTOCOL = Object.freeze({ version: 3, shards: 3, cycles: 128, mixedCycles: 512, hydration: "async-task", pointerRest: [0, 0], viewport: { width: 1440, height: 1000 } });
+// Version 4 (tl1823b, user decision 20261126 option 1) pre-soaks the baseline:
+// one mixed-shaped tour runs before the baseline anchor so baseline and settled
+// share the same load history and the retention-pool floor they read is the
+// same warm/converged floor (117-D report §6.3-6.5). Gate criteria unchanged;
+// the soak produces no protocol samples and no snapshot, so the sample
+// sequence and the 5-snapshot protocol are identical to version 3's.
+export const MEMORY_PROTOCOL = Object.freeze({ version: 4, shards: 3, cycles: 128, mixedCycles: 512, hydration: "async-task", pointerRest: [0, 0], viewport: { width: 1440, height: 1000 } });
 export const MEMORY_FIXTURES = Object.freeze({
   full: { label: "bench:small-6t", marker: "ASYNC LAYOUT EXPANSION COMPLETE" },
   geometry: { label: "bench:geometry", marker: "Geometry contract fixture complete." },
