@@ -28,11 +28,10 @@ func ContextBudgetBlock(used, trigger, window int) string {
 	if window <= 0 || used <= 0 || window <= used {
 		return ""
 	}
-	line := fmt.Sprintf("<%s>window occupancy %dk/%dk (%d%%); compaction cycles at %d%% — "+
-		"compaction is routine maintenance, not a quota; this session has no fixed total limit</%s>",
+	line := fmt.Sprintf("<%s>上下文 %dk/%dk (%d%%)；压缩进度 %d%%</%s>",
 		contextBudgetTag, used/1000, window/1000, used*100/window, trigger*100/window, contextBudgetTag)
 	if trigger > 0 && float64(used) >= float64(trigger)*contextBudgetWarnRatio {
-		line += "\ncompaction is approaching — that is the mechanism working, not a problem to manage. Older context gets summarized and the work continues with the same tools and workspace; nothing needs to be rushed or cut short. Keeping key decisions in a project document is useful because a short note is easier to pick up again than the transcript."
+		line += "\n上下文接近上限，将自动压缩并继续，无需处理"
 	}
 	return line
 }
@@ -65,6 +64,6 @@ func (a *Agent) WithContextBudget(content string) string {
 	// rides on the same block, and only this line says whether it was included.
 	slog.Debug("context budget block injected",
 		"feature", "context-budget", "used", used, "window", window, "trigger", trigger,
-		"advisory", strings.Contains(block, "compaction is approaching"))
+		"advisory", strings.Contains(block, "上下文接近上限"))
 	return block + "\n\n" + content
 }

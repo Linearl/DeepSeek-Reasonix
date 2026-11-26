@@ -271,7 +271,9 @@ export const CHECKS = [
   // { feature: "#9522 P2 task_id 续跑/引导", file: "internal/agent/task.go", patterns: ["steerBackgroundTask", "steerSlots", "subagentSteerHookFromContext"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9521 TPS 采样", file: "internal/agent/subagent_progress.go", patterns: ["progressRateSampler", "TokensPerSec"] },
-  { feature: "#9520 上下文预算行 + 任务 99 窗口状态措辞", file: "internal/agent/context_budget_block.go", patterns: ["context-state", "compaction cycles at", "no fixed total limit"] },
+  // tl1831 把占用率行/85% 升级句改中文短句（标签 context-state 与开关逻辑不变），
+  // 机制未变仅措辞换代：锚点随实际形态同步（任务 1002 改锚先例）。
+  { feature: "#9520 上下文预算行 + 任务 99 窗口状态措辞", file: "internal/agent/context_budget_block.go", patterns: ["context-state", "上下文 %dk/%dk", "上下文接近上限"] },
   { feature: "#9520 系统提示契约", file: "internal/config/config.go", patterns: ["ContextManagementPolicy"] },
   // 20261002 提示词三项补充（调研报告 §4.1，wt-zcode-prompt）：沟通段/忠实汇报/
   // 记忆写作指南。锚点选提示词正文语义句与符号（非注释），防止上游 merge
