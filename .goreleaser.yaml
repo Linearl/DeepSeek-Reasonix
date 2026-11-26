@@ -1,3 +1,6 @@
+# 状态（tl1825 2026-11-26）：本文件是 CLI 发布恢复通道的配置（上游继承），唯一消费方 = .github/workflows/release.yml，其 workflow_dispatch 仅限官方恢复用途，fork 日常严禁误触发。
+# fork 日常不单独发 CLI、不走 goreleaser：CLI 产物走 scripts/fork-release.sh 本地构建（unsigned），fork 发布走 release-fork.yml（desktop，nfpm 打包，非 goreleaser）。
+# 启用条件 = 仅当需要恢复/重建 CLI 官方发布通道时；注意其 homebrew tap 指向 esengine/homebrew-reasonix（上游资源，需 HOMEBREW_TAP_TOKEN），与宪法「独立演进」口径冲突，启用前须先解决。
 version: 2
 project_name: reasonix
 
