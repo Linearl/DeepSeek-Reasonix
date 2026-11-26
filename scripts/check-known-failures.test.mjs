@@ -44,6 +44,34 @@ test("登记失败 → registered（放行）", () => {
   assert.equal(result.unregistered.length, 0);
 });
 
+// tl1819 修复用例：真实 go test -json 对失败包发双事件（测试级 + 包级聚合，
+// scratch 必败模块实证 2026-11-26）。聚合事件不得把登记红重新拦下。
+test("真实 go 形态：测试级登记红 + 包级聚合 → 放行（tl1819 修复）", () => {
+  const reg = registryOf([{ package: "pkg/x", test: "TestOld", reason: "r", registered: "d", source: "s" }]);
+  const events = parseGoTestJSON(
+    [ev("run", "pkg/x", "TestOld"), ev("fail", "pkg/x", "TestOld"), ev("fail", "pkg/x")].join("\n"),
+  ).events;
+  const result = classify(events, reg);
+  assert.equal(result.registered.length, 2); // 测试级 + 包级聚合都归放行
+  assert.equal(result.unregistered.length, 0);
+});
+
+test("真实 go 形态：包级聚合不能替未登记的测试红遮掩", () => {
+  const reg = registryOf([{ package: "pkg/x", test: "TestOld", reason: "r", registered: "d", source: "s" }]);
+  const events = parseGoTestJSON(
+    [
+      ev("fail", "pkg/x", "TestOld"),
+      ev("run", "pkg/x", "TestNewRed"),
+      ev("fail", "pkg/x", "TestNewRed"),
+      ev("fail", "pkg/x"),
+    ].join("\n"),
+  ).events;
+  const result = classify(events, reg);
+  assert.equal(result.registered.length, 2);
+  assert.equal(result.unregistered.length, 1);
+  assert.equal(result.unregistered[0].test, "TestNewRed");
+});
+
 test("子测试路径精确匹配，父名不吞子名", () => {
   const reg = registryOf([{ package: "pkg/x", test: "TestOld/Sub", reason: "r", registered: "d", source: "s" }]);
   const events = parseGoTestJSON(ev("fail", "pkg/x", "TestOld/Sub")).events;
