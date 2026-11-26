@@ -233,7 +233,7 @@ groups:
       - id: interactionPresentation
         labelKey: settings.interactionPresentation
         tier: recommended
-        onKeys: [experimentalQuickCommands, experimentalTraceAsState, experimentalOutputStyleUI, outputStyleActive]
+        onKeys: [experimentalQuickCommands, experimentalTraceAsState, experimentalMimoTts, experimentalOutputStyleUI, outputStyleActive]
         members:
           # 快捷指令（原 efficiency 独立卡，推荐档，961 并卡）。
           - id: quickCommands
@@ -242,6 +242,11 @@ groups:
           # 轨迹状态（原 efficiency 独立卡，961 并卡）。
           - id: traceAsState
             labelKey: settings.traceAsState
+            tier: optional
+          # tl1817：朗读 MiMo TTS 传输层（可选档，默认关=系统 TTS 零回退；
+          # 配 key + 开开关才走 MiMo，失败自动降级回系统链）。
+          - id: mimoTts
+            labelKey: settings.mimoTts
             tier: optional
           # 回答风格（原 efficiency 独立卡；灯=门控开或已选非默认风格，961 并卡）。
           # tl1487 一组②：回答风格行可选→推荐（用户 20261107 八组清单「交互

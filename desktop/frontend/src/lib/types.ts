@@ -2989,6 +2989,8 @@ export interface DesktopStartupSettingsView {
   // without it the preference store resets to off on every restart while the
   // settings switch (full Settings() view) still reads on.
   experimentalSelectionActions?: boolean;
+  /** tl1817: read-aloud MiMo TTS speak gate on the boot snapshot (task 514 rule). */
+  experimentalMimoTts?: boolean;
   bot: BotSettingsView;
   desktopLanguage: string; // "" | "en" | "zh"; empty = auto
   desktopLayoutStyle: string; // "classic" | "workbench" (tl1450: retired creation reads as workbench)

@@ -517,6 +517,13 @@ export interface PreRepairBackupView {
    *  self-heal) or "manual" (the panel entry). Empty on legacy ledger files
    *  written before the source marker existed; the badge stays plain then. */
   splicedBy?: string;
+  /** tl117A/包117-A: the degraded read-side marker of this registration
+   *  (tl1674c semantics: "owner"/"backup"/"owner backup"; empty = both sides
+   *  strict). Non-empty means the splice was registered as pure metadata on a
+   *  load-repaired view — no projection was regenerated — so the badge must
+   *  disclose "degraded" and state that a degraded registration can be
+   *  registered but not merged again. */
+  splicedDegraded?: string;
   label: string;
   stamp: string;
   bytes: number;
@@ -2376,6 +2383,15 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalComposerDraft(enabled: boolean): Promise<void>;
   /** Task 369: selection quick-actions floating card switch. */
   SetExperimentalSelectionActions(enabled: boolean): Promise<void>;
+  /** tl1817: read-aloud MiMo TTS transport switch (live flip, no restart). */
+  SetExperimentalMimoTts(enabled: boolean): Promise<void>;
+  /** tl1817: MiMo TTS availability probe (settings lab card hint; key never
+   * crosses the bridge — endpoint/slot names only). */
+  MimoTtsStatus(): Promise<{ available: boolean; endpoint: string; keyEnv: string }>;
+  /** tl1817: synthesize `text` via the MiMo chat/completions TTS transport;
+   * resolves base64 wav, rejects with a typed key-free error (the caller
+   * degrades to system TTS). */
+  MimoTtsSynthesize(text: string): Promise<string>;
   /** Task 369: one-shot no-turn side query for selection quick-actions
    * (translate/explain). Never touches the transcript or the turn ledger. */
   RunSelectionSideQuery(action: string, text: string, contextText: string): Promise<string>;
@@ -7271,6 +7287,8 @@ function makeMockApp(): AppBindings {
         // Task 514: boot snapshot carries the task-369 gate like the real
         // backend, so the preference store does not reset on a mock reload.
         experimentalSelectionActions: settings.experimentalSelectionActions === true,
+        // tl1817: the MiMo TTS speak gate rides the same boot snapshot.
+        experimentalMimoTts: settings.experimentalMimoTts === true,
       })) as DesktopStartupSettingsView;
     },
     ...makeMockModelSettingsBindings(settings, loadMockProviderCatalog, mockProviderPresetViews),
@@ -7644,6 +7662,12 @@ function makeMockApp(): AppBindings {
     async SetExperimentalPrepairAutosplice() {},
     async RunSelectionSideQuery() { return ""; },
     async SetExperimentalSelectionActions() {},
+    // tl1817 mocks: browser/dev shell has no MiMo credential store — status
+    // reports unavailable and synthesis rejects, so the speak path degrades
+    // to the system chain (the safe default everywhere).
+    async SetExperimentalMimoTts() {},
+    async MimoTtsStatus() { return { available: false, endpoint: "", keyEnv: "" }; },
+    async MimoTtsSynthesize() { throw new Error("mimo tts: not available in browser shell"); },
     async SetExperimentalComposerDraft() {},
     async SetExperimentalAutoLoadOlder() {},
     // Task 670 mocks: dev shell has no versioned install, so the gate stays silent.
