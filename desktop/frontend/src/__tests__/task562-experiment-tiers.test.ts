@@ -171,13 +171,14 @@ console.log("\ntask 562 lab three-tier badges");
   // 移组不改注册表计数）。tl1787 件⑤/A+续作：rangesCompact+modelRangesCompact+
   // prepairAutosplice 三条入未稳定档——未稳定 4→7、总数 91→94（并集解
   // 20261124 撞 tl1772，数字跑实测定稿）。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 27 && counts.unstable === 7 && counts.retired === 0,
-    `register counts are 9 稳定/51/27/7/0 (got ${JSON.stringify(counts)})`);
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 28 && counts.unstable === 7 && counts.retired === 0,
+    `register counts are 9 稳定/51/28/7/0 (got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
   // tl1772：decisionPatternsLayered 入表 → 90→91。tl1787：三条入表 → 91→94。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 94, `register holds exactly 94 features (tl1772 + tl1787 ranges×2 + prepairAutosplice; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 27 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/27/7/0 (tl1772 + tl1787 并集解)");
+  // tl1817：mimoTts（朗读 MiMo TTS 传输层，可选档）入表 → 94→95。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 95, `register holds exactly 95 features (tl1772 + tl1787 ranges×2 + prepairAutosplice + tl1817 mimoTts; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/28/7/0 (tl1787 并集解 + tl1817 mimoTts)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -267,8 +268,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1741 撤七条(autopilot/sessionCollab/collabHub/workflowPanel/cdpDebugPort/sessionStorage/runtimeReuse) + tl1746 加 tasklistPanel：76-7+1=70。
   // tl1718：composerToolsFold 两侧共享入表——70→71。
   // tl1772：decisionPatternsLayered 两侧共享入表——71→72。tl1787 续作：
-  // prepairAutosplice 两侧共享入表——72→73（并集解 20261124）。
-  ok(Object.keys(goTiers).length === 73, `Go registry parses to 73 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold, tl1772 added decisionPatternsLayered, tl1787 added prepairAutosplice; got ${Object.keys(goTiers).length})`);
+  // prepairAutosplice 两侧共享入表——72→73（并集解 20261124）。tl1817：
+  // mimoTts 两侧共享入表——73→74。
+  ok(Object.keys(goTiers).length === 74, `Go registry parses to 74 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold, tl1772 added decisionPatternsLayered, tl1787 added prepairAutosplice, tl1817 added mimoTts; got ${Object.keys(goTiers).length})`);
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -350,8 +352,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1772r2：decisionPatternsLayered 成员行 smartAutomation→safetyCostControl
   // 卡平移——成员总数 65 不变。tl1787 件⑤/A+续作：contextGovernance 卡补
   // ranges 两成员行+runtimeObservability 卡补 prepairAutosplice 成员行——
-  // 65→68（并集解 20261124）。
-  ok(members.length === 68, `merged cards carry 68 member features (tl1772 row + re-home + tl1787 ranges×2 + prepairAutosplice; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // 65→68（并集解 20261124）。tl1817：interactionPresentation 卡补 mimoTts
+  // 成员行——68→69。
+  ok(members.length === 69, `merged cards carry 69 member features (tl1772 row + re-home + tl1787 ranges×2 + prepairAutosplice + tl1817 mimoTts; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -378,8 +381,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1718：composerToolsFold 入表计入 → 89→90。
   // tl1772：decisionPatternsLayered 入表计入 → 90→91（memoryIndexSlim 移组
   // 不改 covered——rail 入口转成员行，id 仍覆盖）。tl1787：ranges×2+
-  // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。
-  ok(covered.size === 94, "rail entries cover all 94 features (tl1772 + tl1787 added)");
+  // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。tl1817：
+  // mimoTts 入表计入 → 94→95。
+  ok(covered.size === 95, "rail entries cover all 95 features (tl1772 + tl1787 + tl1817 added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含

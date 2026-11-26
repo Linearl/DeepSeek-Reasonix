@@ -47,9 +47,17 @@ function ok(value: boolean, label: string) {
   }
 }
 
+function safeJson(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
 function eq(actual: unknown, expected: unknown, label: string) {
   if (actual === expected) ok(true, label);
-  else ok(false, `${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  else ok(false, `${label}: expected ${safeJson(expected)}, got ${safeJson(actual)}`);
 }
 
 function flushTimers(): Promise<void> {
@@ -280,7 +288,7 @@ async function clickSpeak(): Promise<void> {
 
 // ── ②–⑤ 组件接线钉 ─────────────────────────────────────────────────────────
 async function componentScenario(options: { gate: boolean; voices: FakeVoice[]; synthesize: (text: string) => Promise<string> }) {
-  const dom = new JSDOM('<!doctype html><html><body><div id="root"><p id="src">段落</p><span>' + SELECTION_TEXT + "</span></div></body></html>", {
+  const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body></html>", {
     pretendToBeVisual: true,
     url: "http://localhost/",
   });
@@ -302,10 +310,14 @@ async function componentScenario(options: { gate: boolean; voices: FakeVoice[]; 
   installAudio();
   const speech = installSpeechSynthesis(options.voices);
   const bridge = installGoBridge();
-  bridge.synthesizeImpl = options.synthesize;
+  // 缺省不覆盖——installGoBridge 默认实现即「记录调用 + 返回 b64」。
+  if (options.synthesize) bridge.synthesizeImpl = options.synthesize;
   setMimoTtsEnabled(options.gate);
-  const target = document.querySelector("span") as HTMLElement;
   const root = await renderMenu();
+  // 选区目标放 body（root 之外）且包在 .msg__body 里——选区提取要求目标位于
+  // 消息容器内（MESSAGE_SELECTION_SELECTOR），React render 会清空 #root。
+  document.body.insertAdjacentHTML("beforeend", "<div class=\"msg__body\"><span id=\"sel-target\">" + SELECTION_TEXT + "</span></div>");
+  const target = document.getElementById("sel-target") as HTMLElement;
   await openToolbar(target);
   await clickSpeak();
   return { dom, root, speech, bridge, cleanup: async () => {
@@ -328,24 +340,30 @@ console.log("\ntl1817 mimo tts");
 
 // ② 接线钉：gate on → 合成整段选文 → 播放 → ended → 卡片关。
 {
+  // 记录数组先于场景声明——synthesize 回调在场景 await 期间就会执行，禁止
+  // 引用 scenario 本身（TDZ）。
+  const record: string[] = [];
   const scenario = await componentScenario({
     gate: true,
     voices: [{ lang: "zh-CN", name: "Chinese" }],
-    synthesize: async (text) => {
-      scenario.bridge.synthesizeCalls.push(text);
-      return "b64";
+    synthesize: (text) => {
+      record.push(text);
+      return Promise.resolve("b64");
     },
   });
   try {
-    eq(scenario.bridge.synthesizeCalls.length, 1, "gate on: exactly one MiMo synthesis request");
-    eq(scenario.bridge.synthesizeCalls[0], SELECTION_TEXT, "gate on: the full selection rides the request (whole-text transport)");
+    eq(record.length, 1, "gate on: exactly one MiMo synthesis request");
+    eq(record[0], SELECTION_TEXT, "gate on: the full selection rides the request (whole-text transport)");
     eq(FakeAudio.instances.length >= 1, true, "gate on: synthesized audio starts playback");
     const audio = FakeAudio.instances[FakeAudio.instances.length - 1];
     ok(audio.src.includes("b64"), "gate on: playback element carries the returned payload");
     eq(scenario.speech.spoken.length, 0, "gate on: system speechSynthesis stays idle while MiMo plays");
-    audio.onended?.();
-    await flushTimers();
-    eq(resultCard(), null, "gate on: natural end closes the speaking card");
+    await act(async () => {
+      audio.onended?.();
+      await flushTimers();
+      await flushTimers();
+    });
+    eq(resultCard() == null, true, "gate on: natural end closes the speaking card");
   } finally {
     await scenario.cleanup();
   }
@@ -364,7 +382,7 @@ console.log("\ntl1817 mimo tts");
     eq(scenario.speech.spoken.length >= 1, true, "degrade: the tl1815 system segment chain takes over on failure");
     ok(Boolean(scenario.speech.spoken[0]?.text?.includes("需要朗读") || scenario.speech.spoken.some((u) => u.text.includes("需要朗读"))), "degrade: the same selection text is replayed via the system chain");
     const card = resultCard();
-    ok(Boolean(card?.textContent?.includes(zh["selection.quickAction.mimoDegraded"])), "degrade: the visible MiMo degrade notice rides the card");
+    ok(Boolean(card?.textContent?.includes(en["selection.quickAction.mimoDegraded"])), "degrade: the visible MiMo degrade notice rides the card (default locale = en; 三语在位由⑥钉承接)");
   } finally {
     await scenario.cleanup();
   }
@@ -375,7 +393,7 @@ console.log("\ntl1817 mimo tts");
   const success = await componentScenario({
     gate: true,
     voices: [],
-    synthesize: async () => "b64",
+    // 默认 synthesizeImpl 即「记录调用 + 返回 b64」——勿用不记录的覆盖。
   });
   try {
     eq(success.bridge.synthesizeCalls.length, 1, "no system voices + MiMo ok: synthesis still requested (MiMo rides ahead of the availability ladder)");
@@ -391,7 +409,7 @@ console.log("\ntl1817 mimo tts");
     },
   });
   try {
-    ok(Boolean(resultCard()?.textContent?.includes(zh["selection.quickAction.speechNoVoices"])), "no system voices + MiMo failed: the hard-stop guidance stays visible (never silent)");
+    ok(Boolean(resultCard()?.textContent?.includes(en["selection.quickAction.speechNoVoices"])), "no system voices + MiMo failed: the hard-stop guidance stays visible (never silent)");
     eq(failed.speech.spoken.length, 0, "no system voices + MiMo failed: nothing is queued on the system chain");
   } finally {
     await failed.cleanup();
