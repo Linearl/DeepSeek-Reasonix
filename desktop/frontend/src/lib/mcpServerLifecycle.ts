@@ -38,21 +38,3 @@ export function mcpServerRetryableFromAvailableList(s: ServerView): boolean {
 	if (!isEnabled(s)) return false;
 	return runtimeState(s) === "connecting" || s.action === "retry";
 }
-
-/** Prefer product availability labels over legacy status strings. */
-export function mcpServerAvailability(s: ServerView): string {
-  if (s.availability) return s.availability;
-  if (!isEnabled(s)) return "disabled";
-  switch (runtimeState(s)) {
-    case "ready":
-      return "connected";
-    case "connecting":
-      return "starting";
-    case "issue":
-      if (s.requiresLaunchApproval) return "project_auth_changed";
-      if (s.authStatus === "required" || s.authStatus === "possible") return "auth_required";
-      return "start_failed";
-    default:
-      return "available_on_demand";
-  }
-}
