@@ -25,7 +25,8 @@
 
 import { JSDOM } from "jsdom";
 
-import React, { act } from "react";
+import { act } from "react";
+import type { CancelOutcome } from "../lib/inboxCancel";
 import { createRoot } from "react-dom/client";
 import { Composer } from "../components/Composer";
 import { LocaleProvider, preloadLocale } from "../lib/i18n";
@@ -161,14 +162,14 @@ async function renderComposer(props: ComposerProps = {}) {
     cwd: "/repo",
     modelLabel: "mimo-v2.6",
     onSend: () => {},
-    onCancel: () => undefined,
+    onCancel: async () => ({ discardedItemIds: [] }) satisfies CancelOutcome,
     onCycleMode: () => {},
     onSetMode: () => {},
-    onSetCollaborationMode: () => {},
+    onSetCollaborationMode: async (_mode: unknown) => true,
     onSetToolApprovalMode: () => {},
     onToggleYoloApprovalMode: () => {},
     onClearGoal: () => {},
-    onSwitchModel: () => {},
+    onSwitchModel: async (_name: string) => true,
     onSetEffort: () => {},
     ready: true,
     ...props,

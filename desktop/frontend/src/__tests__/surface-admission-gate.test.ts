@@ -10,13 +10,12 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { initialState, reducer } from "../lib/useController";
-import type { Item, WireEvent } from "../lib/types";
+import type { WireEvent } from "../lib/types";
+import type { Item } from "../lib/useController";
 import {
   hasRenderedTurnRows,
   historyRevisionIsOlder,
   isHostAnnouncedTwin,
-  judgeEventSeq,
-  judgeGuidanceBubble,
   judgeHistoryRevision,
   judgeOptimisticUser,
   judgeStreamSegments,
@@ -79,9 +78,9 @@ const noticeRows = (s: { items: Item[] }) => s.items.filter((item) => item.kind 
 {
   const items: Item[] = [
     { kind: "user", id: "u0", text: "q" },
-    { kind: "assistant", id: "a:turn-9:0", text: "answer", reasoning: "" },
-    { kind: "assistant", id: "a:turn-9:1", text: "answer2", reasoning: "" },
-    { kind: "assistant", id: "a42", text: "no-turn-id segment", reasoning: "" },
+    { kind: "assistant", id: "a:turn-9:0", text: "answer", reasoning: "", streaming: false },
+    { kind: "assistant", id: "a:turn-9:1", text: "answer2", reasoning: "", streaming: false },
+    { kind: "assistant", id: "a42", text: "no-turn-id segment", reasoning: "", streaming: false },
   ];
   ok(hasRenderedTurnRows(items, "turn-9"), "a:<turnId>:* 行在表 = 已渲染");
   ok(!hasRenderedTurnRows(items, "turn-8"), "无该 turn 行 = 未渲染");

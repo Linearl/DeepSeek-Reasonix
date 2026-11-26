@@ -392,7 +392,7 @@ console.log("\ntl1817 mimo tts");
 {
   const success = await componentScenario({
     gate: true,
-    voices: [],
+    voices: [] as FakeVoice[],
     // 默认 synthesizeImpl 即「记录调用 + 返回 b64」——勿用不记录的覆盖。
   });
   try {
@@ -439,8 +439,9 @@ ok(MAX_SPEAK_CHARS === 5000, "the MiMo transport inherits the tl1709 selection c
 
 // ⑥ 三语钉。
 for (const [name, dict] of [["zh", zh], ["zh-TW", zhTW], ["en", en]] as const) {
+  const dictRecord = dict as Record<string, string>;
   for (const key of ["settings.mimoTts", "settings.mimoTtsHint", "settings.mimoTts.on", "settings.mimoTts.off", "selection.quickAction.mimoDegraded"]) {
-    ok(Boolean(dict[key]?.trim()), `${name}.${key} is present and non-empty`);
+    ok(Boolean(dictRecord[key]?.trim()), `${name}.${key} is present and non-empty`);
   }
 }
 

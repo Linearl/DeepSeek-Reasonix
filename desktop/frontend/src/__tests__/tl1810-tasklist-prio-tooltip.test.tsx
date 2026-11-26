@@ -119,7 +119,7 @@ function fixtureBindings(): TasklistPanelBindings {
   return {
     getOverview: () => Promise.resolve({ ...FIXTURE_OVERVIEW }),
     queryTasks: () => Promise.resolve({ ...FIXTURE_LIST, rows: FIXTURE_LIST.rows.map((r) => ({ ...r })) }),
-    settings: () => Promise.resolve({ tasklistDbPath: "" }),
+    settings: () => Promise.resolve({ tasklistDbPath: "" } as never),
     openBoard: () => Promise.resolve({ path: "D:/fixture/tasklist.html", stale: false, opened: true, error: "" }),
   };
 }
