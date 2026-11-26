@@ -256,7 +256,9 @@ export const CHECKS = [
   { feature: "任务470 openai 集成测试", file: "internal/provider/openai/image_rejection_test.go", patterns: ["TestStreamAnnotatesInlineImageRejection", "TestRequestHasInlineDataImages"] },
   // tl1587（f2307847a）把 safe 上限调用重写为 boundedSummaryPrefixEnd（分段预算收紧，
   // 段内装不下回退 safe 上限），机制语义未变：锚点随实际形态同步（任务 1002 改锚先例）。
-  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "boundedSummaryPrefixEnd"] },
+  // tl1719（4f23aadec3，trigger-labels）把 manual 类判据归一为 IsManualClassTrigger（ui/slash/serve
+  // 入口标签进 trigger 串，13 处 manual 类分支同步）——锚点随判据换代，#9572 语义本体未变。
+  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["req.mustFree || !IsManualClassTrigger(trigger)", "boundedSummaryPrefixEnd"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9572 Unknown 网关回退", file: "internal/agent/compact_projection.go", patterns: ["a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
@@ -566,8 +568,9 @@ export const CHECKS = [
   { feature: "任务602 工具 schema 塑形目的地化（ SupportsTools/NativeToolSearch 按目的地）", file: "internal/agent/finalization.go", patterns: ["dest := a.providerForRequest()", "if !provider.SupportsTools(dest)"] },
   { feature: "任务602 窗口学习组合以目的地为配置输入（effectiveContextWindow 走 destinationContextWindow）", file: "internal/agent/output_budget.go", patterns: ["cfg := a.destinationContextWindow()"] },
   // 任务 1008 扩了签名（图片门外加音频门 audioInput，desktop/app_model.go 接口声明与调用点同步）——
-  // 锚点随签名演进，功能本体未变（1005/982 同款锚点过期判读）。
-  { feature: "任务602 control 身份原子重绑（SetModelIdentity 图片+音频门 + active* accessor 族）", file: "internal/control/controller.go", patterns: ["func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput *bool)", "func (c *Controller) activeModelRef() string", "func (c *Controller) activeBalance() (url, key string)"] },
+  // 锚点随签名演进，功能本体未变（1005/982 同款锚点过期判读）。tl1787 续作再加视频门 videoInput
+  // （controller.go:1563 实证，SetModelIdentity 图片+音频+视频三门形态）。
+  { feature: "任务602 control 身份原子重绑（SetModelIdentity 图片+音频门 + active* accessor 族）", file: "internal/control/controller.go", patterns: ["func (c *Controller) SetModelIdentity(ref, label, balanceURL, balanceKey string, imageInput, audioInput, videoInput *bool)", "func (c *Controller) activeModelRef() string", "func (c *Controller) activeBalance() (url, key string)"] },
   { feature: "任务602 desktop persona 边界门（跨界退 Build+swap 回退；签名演进为 cfg 入参形态随锚换代）", file: "desktop/app_model.go", patterns: ["func modelSwitchPersonaBoundary(cfg *config.Config, currentRef string, target *config.ProviderEntry) bool", "fallback-persona-boundary"] },
   { feature: "任务602 desktop extras/identity 派生（镜像 boot 的标量折叠；签名演进为 cfg 入参形态随锚换代）", file: "desktop/app_model.go", patterns: ["func modelSwitchExtras(cfg *config.Config, ref string, entry *config.ProviderEntry)", "boot.HighSpeedModelsFor(cfg, entry.HighSpeedModels)"] },
   { feature: "任务602 跨族钉子族（活跃 turn 跨族快路径/身份重绑/persona 回退）", file: "desktop/model_fast_path_active_turn_test.go", patterns: ["TestSetModelForTabCrossProviderFastPathDuringActiveWork", "TestSetModelForTabCrossProviderRebindsControllerIdentity", "TestSetModelForTabPersonaBoundaryKeepsRebuildFallback"] },
@@ -635,7 +638,9 @@ export const CHECKS = [
   { feature: "任务530 run_loop 注入点（172 T1 之前，欠回信优先拿轮次）", file: "internal/agent/run_loop.go", patterns: ["maybeNudgeCollabReply"] },
   { feature: "任务530 Options→svc 接线（nil=逐字零行为；gofmt 对齐后改锚 struct 字段声明形态）", file: "internal/agent/services.go", patterns: ["collabReplyNudge *CollabReplyNudgeConfig"] },
   { feature: "任务530 开关全链（config 字段+渲染表+setter）", file: "internal/config/config.go", patterns: ["session_collab_reply_nudge"] },
-  { feature: "任务530 boot 接线（父开关 AND，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge"] },
+  // tl1741（3ae58d0e54）撤 collab 总开关常开后，dial（SessionCollabReplyNudge）是回信提醒唯一接线
+  // 条件（boot.go 现场注释自证）——锚点随条件换代，resolver 后补半边未变。
+  { feature: "任务530 boot 接线（tl1741 起 dial 唯一条件，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "if cfg.Agent.SessionCollabReplyNudge {"] },
   { feature: "任务530 已读未回扫描的存储读口（settled 不消失）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxMessages"] },
   { feature: "任务530 面板开关+三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.sessionCollabReplyNudge", "settings.sessionCollabReplyNudgeHint"] },
   // ── 任务 549：投影失效窗口治理（观测补口 + 失效即重建 + 面板语义）──
@@ -958,7 +963,11 @@ export const CHECKS = [
   { feature: "任务544 回合起点清标记（标记恰好覆盖一个回合）", file: "internal/control/turn_orchestrator.go", patterns: ["c.clearTurnAskAnswered()", "maybeAskAutoContinueTurn(ctx, err)"] },
   { feature: "任务544 desktop 六元组接线（默认快照+闸门+反向联动）", file: "desktop/autopilot_gate.go", patterns: ["askAutoContinue bool, approvalMode string", "tab.autopilotAskAutoContinue = false"] },
   { feature: "任务544 设置面+三语（开关读写）", file: "desktop/settings_app.go", patterns: ["ExperimentalAutopilotAskAutoContinue bool `json:\"experimentalAutopilotAskAutoContinue\"`", "func (a *App) SetDesktopAutopilotAskAutoContinue(enabled bool) error"] },
-  { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
+  // 任务325 设置默认值前置校验（拒绝非 yolo）随 tl1741（3ae58d0e54）撤开关退役：SetDesktopAutopilot
+  // 整函数退役（新会话恒默认 unattended，max_runtime 护栏键保留），替代语义=恢复路径仍过 325 闸门
+  // （gateRestoredAutopilotDefaults 锚继续把守）；tl1756 台账（65b4368de2）预判退役候选，
+  // 本条按 orphaned 口径退役（REASONIX.md Pre-existing failures 三裁口，引退役 commit）。
+  // { feature: "任务325 设置默认值前置校验（拒绝非 yolo）", file: "desktop/settings_app.go", patterns: ["autopilot requires the yolo approval mode"] },
   { feature: "任务325 拒绝/关闭提示按码本地化", file: "desktop/frontend/src/lib/controllerNotices.ts", patterns: ["autopilot_requires_yolo: \"notice.autopilotRequiresYolo\"", "autopilot_closed_off_yolo: \"notice.autopilotClosedOffYolo\""] },
   // 任务 327：自动化任务运行次数上限 maxRuns（单次 = N 的特例、跑满自动禁用）。
   // 锁计费点/自禁用、合并与「重开=重置计数」收口、schema 前向保护——丢掉合并
@@ -1349,7 +1358,7 @@ export const CHECKS = [
   // 缺口由模式条第四档承接；desktopTabEntry 补 autopilot 列，重启忠实保留。
   // merge 若顶掉任一环：档位静默失效 / 重启丢旗 / goal 被清——均无编译错误。
   { feature: "465 断点C desktopTabEntry autopilot 列（持久化+恢复写入）", file: "desktop/tabs_persistence_types.go", patterns: ["Autopilot bool `json:\"autopilot,omitempty\"`", "Autopilot:   tab.autopilot,"] },
-  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app_tabs.go", patterns: ["if entry.Autopilot || tabSessionAutopilot(tab.SessionPath)", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
+  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app_tabs.go", patterns: ["entry.Autopilot || sidecarAutopilot", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
   { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app_modes.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
   { feature: "465 两维独立：dim-2 播种不清旗（task806 起边沿守卫改 [tab-mode] 前后值日志行，边沿锚随形态换代）", file: "desktop/app_modes.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "\"autopilot_pre\", wasAutopilot, \"autopilot_post\", autopilotOn"] },
   { feature: "465 门文件新 notice 码（决策记录）", file: "desktop/autopilot_gate.go", patterns: ["NoticeCodeAutopilotAssumedYolo = \"autopilot_assumed_yolo\"", "autopilotAssumedYoloText"] },
@@ -1473,12 +1482,12 @@ export const CHECKS = [
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   // 任务562 门禁测试随件退役（1072 裁决，51580cebe：render_artifact 退役时整删 render_lab_tiers_test.go）；档位门禁语义由前端 task562-experiment-tiers.test.ts 计数钉（562 验收测试条）+ render.go labFeatureTiers 注册表锚继续把守。
-  { feature: "任务562 前端档位镜像（单一展示事实源；1d84f34ed 晋升第2轮A组后 stable 9/recommended 50/optional 25/unstable 3/retired 0 总 87，锚同步）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "stable: 9", "unstable: 3", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
+  { feature: "任务562 前端档位镜像（单一展示事实源；tl1787 续作后 stable 9/recommended 51/optional 27/unstable 7/retired 0 总 94，锚同步）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "stable: 9", "unstable: 7", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线（774 徽章聚合 + 1134 rail 迁 ExperimentalLabSection；tl1487 一组③撤 modelCapabilityFilter retired 只读行，第三锚随之退役）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["labEntryBadgeTier(labLayoutResolved.layout, entry.id)", "labLabel(\"autopilot\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；1d84f34ed 晋升第2轮A组后计数 9/50/25/3/0=87，锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.stable === 9 && counts.recommended === 50 && counts.optional === 25 && counts.unstable === 3 && counts.retired === 0", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；tl1787 续作后计数 9/51/27/7/0=94，锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.stable === 9 && counts.recommended === 51 && counts.optional === 27 && counts.unstable === 7 && counts.retired === 0", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（1134 迁 ExperimentalLabSection；tl1487 coldCacheCompact 转 labLabel 主控行，裸 label 兄弟行减一）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.perfMonitor\")}", "label={t(\"settings.collabGuidanceMerge\")}", "labLabel(\"tabModeTint\"", "labLabel(\"coldCacheCompact\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
