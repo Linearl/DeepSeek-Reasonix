@@ -239,10 +239,6 @@ function loadRightDockPreviewWidth(): number {
   return loadLayoutSize("rightDockPreviewWidth", RIGHT_DOCK_PREVIEW_DEFAULT_WIDTH, clampRightDockPreviewWidth);
 }
 
-export function saveRightDockPreviewWidth(width: number): void {
-  saveLayoutSize("rightDockPreviewWidth", width, clampRightDockPreviewWidth);
-}
-
 // rightDockMode selects what the right dock shows. workspacePanelOpen is
 // restored from localStorage (same pattern as sidebarCollapsed) so a collapsed
 // dock survives restart. maximized/preview stay session-local — they are view
