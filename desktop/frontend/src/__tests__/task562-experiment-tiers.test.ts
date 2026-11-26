@@ -170,14 +170,16 @@ console.log("\ntask 562 lab three-tier badges");
   // 分层伴生开关，可选档）入表——可选 26→27、总数 90→91（同件 memoryIndexSlim
   // 移组不改注册表计数）。tl1787 件⑤/A+续作：rangesCompact+modelRangesCompact+
   // prepairAutosplice 三条入未稳定档——未稳定 4→7、总数 91→94（并集解
-  // 20261124 撞 tl1772，数字跑实测定稿）。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 27 && counts.unstable === 7 && counts.retired === 0,
-    `register counts are 9 稳定/51/27/7/0 (got ${JSON.stringify(counts)})`);
+  // 20261124 撞 tl1772，数字跑实测定稿）。tl1816：fallbackModel（备用模型
+  // 开关行，可选档）入表——可选 27→28、总数 94→95（前端独有，feOnly 豁免）。
+  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 28 && counts.unstable === 7 && counts.retired === 0,
+    `register counts are 9 稳定/51/28/7/0 (tl1816 fallbackModel 入可选档; got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
   // tl1772：decisionPatternsLayered 入表 → 90→91。tl1787：三条入表 → 91→94。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 94, `register holds exactly 94 features (tl1772 + tl1787 ranges×2 + prepairAutosplice; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 27 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/27/7/0 (tl1772 + tl1787 并集解)");
+  // tl1816：fallbackModel 入表 → 94→95。
+  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 95, `register holds exactly 95 features (tl1787 ranges×2 + prepairAutosplice + tl1816 fallbackModel; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/51/28/7/0 (tl1787 并集解 + tl1816 fallbackModel)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -294,8 +296,9 @@ console.log("\ntask 562 lab three-tier badges");
   // 转入 feOnly。
   // tl1741：八项撤开关 id 转入 feOnly（Go 表条目退役，前端注册表标注保留
   // ——图墙/徽章展示面用，拍板条款②「注册表不动」）；idleReleaseMinutes/
-  // gcPercent 随资源治理拆卡回散条 param 卡（仍 feOnly）。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["autopilot", "cdpDebugPort", "coldCacheCompact", "collabHub", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "runtimeReuse", "searchHistory", "sessionCollab", "sessionStorage", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowPanel", "workflowTemplates"]),
+  // gcPercent 随资源治理拆卡回散条 param 卡（仍 feOnly）。tl1816：
+  // fallbackModel（备用模型开关行徽章，模型目标行在设置→模型偏好）入 feOnly。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["autopilot", "cdpDebugPort", "coldCacheCompact", "collabHub", "fallbackModel", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "runtimeReuse", "searchHistory", "sessionCollab", "sessionStorage", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowPanel", "workflowTemplates"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -350,8 +353,9 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1772r2：decisionPatternsLayered 成员行 smartAutomation→safetyCostControl
   // 卡平移——成员总数 65 不变。tl1787 件⑤/A+续作：contextGovernance 卡补
   // ranges 两成员行+runtimeObservability 卡补 prepairAutosplice 成员行——
-  // 65→68（并集解 20261124）。
-  ok(members.length === 68, `merged cards carry 68 member features (tl1772 row + re-home + tl1787 ranges×2 + prepairAutosplice; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // 65→68（并集解 20261124）。tl1816：pinnedIndex 独立卡移组 safetyCostControl
+  // 卡成员行（tl1772 memoryIndexSlim 同款）——68→69。
+  ok(members.length === 69, `merged cards carry 69 member features (tl1816 re-homed pinnedIndex as a safetyCostControl member; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -378,8 +382,10 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1718：composerToolsFold 入表计入 → 89→90。
   // tl1772：decisionPatternsLayered 入表计入 → 90→91（memoryIndexSlim 移组
   // 不改 covered——rail 入口转成员行，id 仍覆盖）。tl1787：ranges×2+
-  // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。
-  ok(covered.size === 94, "rail entries cover all 94 features (tl1772 + tl1787 added)");
+  // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。tl1816：
+  // fallbackModel 入表计入（模型策略卡 pane 行）→ 94→95；pinnedIndex 移组
+  // 不改 covered（rail 入口转成员行）。
+  ok(covered.size === 95, "rail entries cover all 95 features (tl1787 + tl1816 fallbackModel added)");
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
@@ -516,9 +522,10 @@ console.log("\ntask 562 lab three-tier badges");
     // tl1741r2 卡体回归后 labLabel 包装断言恢复（含 sessionCollabAutoFold/
     // gcPercent/idleReleaseMinutes 成员行）；tasklistPanel=专用 pane 豁免
     // （tl1746 合并态条目）；opencodeGoUsage/modelCapabilityFilter/logManagement
-    // 三真豁免保留。
+    // 三真豁免保留。safetyCostControl=tl1816 豁免：总开关行（原 labLabel
+    // 宿主）随方案A 退役，卡徽章由 rail 聚合面承载（labEntryBadgeTier）。
     if (["opencodeGoUsage", "modelCapabilityFilter", "logManagement",
-         "tasklistPanel"].includes(id)) continue;
+         "tasklistPanel", "safetyCostControl"].includes(id)) continue;
     if (!wrapped.has(id)) missing.push(id);
 
   }

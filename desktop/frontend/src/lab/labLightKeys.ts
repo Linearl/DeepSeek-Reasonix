@@ -38,7 +38,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalStartupSplash: (s: SettingsView) => Boolean(s.experimentalStartupSplash),
   // 任务 1070：Standard 流续跑总闸（默认关）。
   standardContinuation: (s: SettingsView) => Boolean(s.standardContinuation),
-  experimentalSafetyCostControl: (s: SettingsView) => Boolean(s.experimentalSafetyCostControl),
+  // tl1816：experimentalSafetyCostControl 灯键随总开关退役——「安全 / 成本
+  // 控制」卡灯=家族非默认键并集（三子键读数走成员行态，master 不再参与）。
   // 任务 815：cascade_approval 是 sessionCollab 卡内行级开关（Task 225 交付，
   // 甄别确认非缺口）——补灯：审批回投开 = 卡亮（tl1741 返修随卡恢复）。
   experimentalCascadeApproval: (s: SettingsView) => Boolean(s.experimentalCascadeApproval),

@@ -3967,12 +3967,11 @@ a[href] {
   color: var(--fg-faint, #67717f);
   text-decoration: line-through;
 }
-/* Rail rows: the badge rides at the row's right edge, off rows keep it dim. */
+/* Rail rows: the badge rides at the row's right edge.
+   tl1816: the off-row dimming (--off badge opacity) is retired — rail rows
+   keep full badge/label color in every state; on/off stays on the dot. */
 .experimental-rail__item .lab-tier-badge {
   margin-left: auto;
-}
-.experimental-rail__item--off .lab-tier-badge {
-  opacity: 0.55;
 }
 /* 图墙 cards (ForkFeaturesIntroDialog "实验室精选" section, task 562; 任务
    563 grows each card with 效果/状态/详情). */
@@ -4268,9 +4267,8 @@ a[href] {
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--fg);
 }
-.experimental-rail__item--off .experimental-rail__label {
-  opacity: 0.72;
-}
+/* tl1816: the off-row label dimming is retired with the --off class —
+   the rail row reads normal in every state; on/off stays on the dot. */
 .experimental-rail__dot {
   width: 8px;
   height: 8px;

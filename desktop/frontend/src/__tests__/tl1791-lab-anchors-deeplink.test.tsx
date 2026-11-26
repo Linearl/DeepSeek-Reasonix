@@ -1,11 +1,11 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/tl1791-lab-anchors-deeplink.test.tsx
 //
 // tl1791 验收套（设置/实验室面板 CDP 可自动化性改善——稳定锚点 + 深链导航）：
-//  ① 静态对账：lab-layout.yaml 全量（8 组 / 28 卡 / 全部成员+字段行）逐一
+//  ① 静态对账：lab-layout.yaml 全量（tl1816 后 7 组 / 27 卡 / 全部成员+字段行）逐一
 //     对到源码锚点——组头 lab-group-<组key>、rail 卡行 lab-entry-<卡id>、
 //     开关行 lab-toggle-<id>；漏一个即红（任务书验收①「漏一个即补」）。
 //  ② 渲染对账：jsdom 挂全量 SettingsPanel（tl1179 同款桩桥），展开全部分组
-//     → 断言 28 张卡的 rail 锚点全部在 DOM；逐卡点击 → 断言该卡 yaml 成员
+//     → 断言 27 张卡的 rail 锚点全部在 DOM（tl1816 后实测值）；逐卡点击 → 断言该卡 yaml 成员
 //     行锚点全部真实渲染（含独立卡组件里的 opencodeGoUsage）；再以
 //     prepairAutosplice（20261124 包113 装机验证的 CDP 痛点目标）做
 //     「锚点点中开关 + 读状态 + 落盘回读」全链路（验收②的 harness 面）。
@@ -66,7 +66,7 @@ ok(resolved.source === "yaml" && resolved.warnings.length === 0,
 const groups = resolved.layout.groups;
 const groupKeys = groups.map((g) => g.key);
 const entryRows = labEntries(resolved.layout);
-ok(groupKeys.length === 8, `yaml carries 8 groups (got ${groupKeys.length})`);
+ok(groupKeys.length === 7, `yaml carries 7 groups (tl1816 retired the memory-context group; got ${groupKeys.length})`);
 ok(sectionSrc.includes('data-testid={`lab-group-${g.key}`}'),
   "group toggle heads carry the lab-group-<组key> testid template (all 8 keys ride one template)");
 ok(sectionSrc.includes('data-testid={`lab-entry-${feature.id}`}'),
@@ -232,7 +232,8 @@ dom.window.history.replaceState(null, "", "/");
 await mountPanel({ initialTab: "experimental" });
 await settle(24);
 const groupHeads = [...document.querySelectorAll<HTMLElement>('[data-testid^="lab-group-"]')];
-ok(groupHeads.length === 8, `all 8 group heads render on the rail (got ${groupHeads.length})`);
+// tl1816：组数 8→7（「记忆与上下文」组随 pinnedIndex 移组退役）。
+ok(groupHeads.length === 7, `all 7 group heads render on the rail (tl1816 retired memory-context; got ${groupHeads.length})`);
 for (const head of groupHeads) click(head);
 await settle(8);
 const railIds = new Set([...document.querySelectorAll<HTMLElement>('[data-testid^="lab-entry-"]')].map((el) => el.getAttribute("data-testid")));

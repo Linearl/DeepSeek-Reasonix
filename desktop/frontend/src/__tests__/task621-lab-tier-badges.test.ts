@@ -66,6 +66,10 @@ const badge = readFileSync(fileURLToPath(new URL("../components/TierBadge.tsx", 
     } else if (id === "modelCapabilityFilter") {
       // 任务 722 点2：「已退役」徽章移除（rail 成员表 + 卡内只读行都不挂）。
       if (n !== 0) dupes.push(`${id}×${n}`);
+    } else if (id === "safetyCostControl") {
+      // tl1816：总开关行（原 labLabel 宿主行）随方案A 退役——卡徽章改由
+      // rail 聚合面承载（labEntryBadgeTier），pane 内不再挂行级徽章。
+      if (n !== 0) dupes.push(`${id}×${n}`);
     } else if (id === "sessionStorage") {
       // tl1741r2：档位成员行随卡体回归（稳定展示行）+ sessionStore 卡内
       // 「存储版本」行（916 面板锁迁移工具面）——恰好 1 允许。

@@ -56,6 +56,10 @@
 #       memoryIndexSlim 行后邻位；两开关语义互异在 hint 注明防混淆）——
 #       档位与键不动，只移组；hint 改两态语义口径（开=索引 ≈1.6KB 常驻+
 #       全文按需读，关=全量注入逐字节，三语同步）。
+#   tl1816（20261126 用户拍板五子项①）：pinnedIndex 卡自「记忆与上下文」组
+#       移入「安全/成本控制」卡成员行（tl1772 memoryIndexSlim 同款三件套：
+#       成员行+灯键随迁+独立 pane 退役）——档位与键不动，只移组；组内仅此
+#       一卡，「记忆与上下文」组随之退役（组键保留词表，tool-opt 先例）。
 
 version: 1
 groups:
@@ -182,7 +186,9 @@ groups:
         # 灯=家族任一非默认；heartbeatRotation 默认开，不参与（见文件头）。
         # tl1772：memoryIndexSlim 并卡，灯键随迁（灯=家族任一非默认口径不变）。
         # tl1772r2：decisionPatternsLayered 行迁入，灯键随迁（口径不变）。
-        onKeys: [experimentalSafetyCostControl, experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge, experimentalMemoryIndexSlim, experimentalDecisionPatternsLayered]
+        # tl1816：pinnedIndex 并卡，灯键随迁；任务517 总开关键随总开关退役出灯
+        # （灯键族收缩，722 三子键走成员行态）。
+        onKeys: [experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge, experimentalMemoryIndexSlim, experimentalDecisionPatternsLayered, experimentalPinnedIndex]
         members:
           # 任务 722 点5：指定压缩模型（707）。
           - id: compactModel
@@ -217,6 +223,15 @@ groups:
           # config，保存即生效。
           - id: decisionPatternsLayered
             labelKey: settings.decisionPatternsLayered
+            tier: optional
+          # tl1816（原「记忆与上下文」组独立卡移组，tl1772 memoryIndexSlim 同款
+          # 三件套）：置顶记忆索引化——安全/成本控制卡成员行（用户拍板归组）。
+          # 档位与键不动：可选档，experimental_pinned_index。tl1193b：pinned
+          # 常驻层索引化（plan E）。默认关=常驻层 body 全量注入与引入前逐字节
+          # 一致（铁律 2）；开启后常驻层一行一条索引，body 转按需召回。boot
+          # 快照消费（capabilityGroups 先例），重启生效。
+          - id: pinnedIndex
+            labelKey: settings.pinnedIndex
             tier: optional
       - id: modelStrategy
         labelKey: settings.modelStrategy
@@ -696,17 +711,6 @@ groups:
             labelKey: settings.multiEditSkipFailed
             tier: recommended
 
-  # ── 记忆与上下文（1 项；tl1193b 增 pinnedIndex 卡——pinned 常驻层索引化；tl1256 落位基础设施组后）──
-  - key: memory-context
-    labelKey: settings.labGroup.memoryContext
-    entries:
-      # tl1193b：pinned 常驻层索引化（plan E，原环境变量通道退役后落 config
-      # 实验段）。未稳定档，默认关=常驻层 body 全量注入与引入前逐字节一致
-      # （铁律 2）；开启后常驻层一行一条索引，body 转按需召回。boot 快照
-      # 消费（capabilityGroups 先例），重启生效。
-      - id: pinnedIndex
-        labelKey: settings.pinnedIndex
-        # tl1487 八组：置顶记忆索引化未稳定→可选（用户 20261107 八组清单；
-        # 默认关=铁律 2 不变）。
-        tier: optional
-        onKeys: [experimentalPinnedIndex]
+  # tl1816：「记忆与上下文」组随 pinnedIndex 移组安全/成本控制卡而退役（组内
+  # 仅此一卡；tl1772 memoryIndexSlim 移组同款三件套）。组键 memory-context
+  # 保留在 LAB_GROUP_KEYS 词表（旧词表兼容，992 tool-opt 先例）。

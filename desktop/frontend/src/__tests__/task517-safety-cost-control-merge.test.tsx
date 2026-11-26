@@ -1,19 +1,21 @@
 // Run: npx tsx src/__tests__/task517-safety-cost-control-merge.test.tsx
-// 任务 517 acceptance harness (「安全 / 成本控制」single-switch merge):
-//  ① one switch controls the three task-244 B-group guards and every member
-//     state stays visible: the safetyCostControl card carries exactly ONE
-//     writable switch (SetExperimentalSafetyCostControl); 任务 722 点6 把三个
-//     成员行从只读状态行升级为细粒度子开关（nil=跟随总开关，显式写=独立），
-//     且整卡自 automation 迁 efficiency、消息合并/压缩模型/心跳轮换并入；
+// 任务 517 acceptance harness (「安全 / 成本控制」single-switch merge) →
+// tl1816 换代（方案A 一次性迁移：总开关退役）：
+//  ① the safetyCostControl card no longer carries ANY master switch — 任务 722
+//     点6 的三个细粒度子开关是唯一控制面（tl1816 后读数=显式值，Go 侧 load
+//     已把 nil 全部写实），整卡自 automation 迁 efficiency、消息合并/压缩
+//     模型/心跳轮换并入；
 //  ② old configs migrate losslessly: the Go side folds any legacy
 //     experimental_autonomous_idle_terminate / experimental_loop_streak_note /
-//     experimental_event_wait_recheck true into
-//     experimental_safety_cost_control and clears the legacy fields
-//     (internal/config/safety_cost_control_merge_test.go owns the semantics —
+//     experimental_event_wait_recheck true into the merged master and then
+//     materializes it into every nil sub-switch (tl1816 方案A —
+//     internal/config/safety_cost_control_merge_test.go owns the semantics —
 //     this harness pins the render/gate/UI wiring);
-//  ③ off = zero behavior: all three runtime gates read the single merged key;
-//  ④ the retired entry points are gone end to end (union, rail, setters,
-//     bridge, snapshot fields) and the integrity anchors are registered.
+//  ③ off = zero behavior: all three runtime gates read their explicit
+//     sub-switch (absent reads off = retired master default);
+//  ④ the retired entry points are gone end to end (master row, master setter,
+//     master bridge declaration, master snapshot fields, master render line)
+//     and the integrity anchors are registered.
 
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -47,8 +49,8 @@ function cardSlice(startMarker: string, endMarker: string): string {
 
 console.log("\n任务 517 安全 / 成本控制 合并开关");
 
-// ① rail（任务 722 点6 修订）：卡迁提效组（布局数据为准），灯仍绑合并键 +
-//    并入成员的键（compactModel / 消息合并）。
+// ① rail（tl1816 修订）：卡在提效组（布局数据为准），灯=家族非默认键并集
+//    （总开关键随 tl1816 退役出灯；pinnedIndex 并卡灯键随迁）。
 {
   const layoutDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
@@ -57,20 +59,23 @@ console.log("\n任务 517 安全 / 成本控制 合并开关");
     "rail hosts the safetyCostControl card in the efficiency group (under contextGovernance)");
   ok(!layoutDefault.slice(0, eff.indexOf('id: "safetyCostControl"') + layoutDefault.indexOf('key: "efficiency"')).includes('id: "safetyCostControl"') || true,
     "group membership lives in the layout document");
-  ok(yaml.includes("onKeys: [experimentalSafetyCostControl, experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge]"),
-    "card light binds the merged key plus the folded members' keys");
+  ok(yaml.includes("onKeys: [experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge, experimentalMemoryIndexSlim, experimentalDecisionPatternsLayered, experimentalPinnedIndex]"),
+    "card light binds the folded members' keys (tl1816: master key retired from the light; pinnedIndex rides in)");
+  ok(!yaml.includes("experimentalSafetyCostControl") && !layoutDefault.includes('"experimentalSafetyCostControl"'),
+    "tl1816: the master light key is gone from both layout sources");
 }
 
-// ① card: master switch + three read-only member rows.
+// ① card: three fine-grained sub-switches, NO master row (tl1816).
 {
   // tl1741：sessionCollab 分支随撤开关删除——slice 结束锚随迁下一现存分支
   // modelStrategy（needle-随迁教训：锚消失=slice 退化=断言假绿）。
   const card = cardSlice('{selected === "safetyCostControl" && (', '{selected === "modelStrategy" && (');
   ok(card.length > 0, "safetyCostControl pane branch located");
-  ok(card.includes('labLabel("safetyCostControl", t("settings.safetyCostControl"))'),
-    "master row is the labLabel(badged) row");
-  ok((card.match(/app\.SetExperimentalSafetyCostControl\(on\)/g) ?? []).length === 1,
-    "exactly ONE writable switch (master) in the card");
+  // tl1816：总开关行/subHint 段随方案A 退役——负钉防回潮。
+  ok(!card.includes('labLabel("safetyCostControl"') && !card.includes("app.SetExperimentalSafetyCostControl("),
+    "tl1816: no master switch row survives in the card");
+  ok(!card.includes("settings.safetyCostControl.subHint") && !card.includes("settings.safetyCostControlHint"),
+    "tl1816: the follow-the-master hint lines are gone with the master row");
   for (const [label, hint] of [
     ["settings.autonomousIdleTerminate", "settings.autonomousIdleTerminateHint"],
     ["settings.loopStreakNote", "settings.loopStreakNoteHint"],
@@ -79,40 +84,40 @@ console.log("\n任务 517 安全 / 成本控制 合并开关");
     ok(card.includes(`label={t("${label}")}`), `member row ${label} present`);
     ok(card.includes(`t("${hint}")`), `member row ${label} keeps its own hint`);
   }
-  // 任务 722 点6：三个成员行升级为细粒度子开关——显式值 ?? 总开关（跟随），
+  // 任务 722 点6 + tl1816：子开关读显式值（nil 兜底=false=退役总开关默认），
   // 各自写自己的 setter（idle 即时生效；loop/recheck 重启生效）。
   for (const [field, setter] of [
     ["s.safetyIdleTerminate", "app.SetSafetyIdleTerminate(on)"],
     ["s.safetyLoopStreakNote", "app.SetSafetyLoopStreakNote(on)"],
     ["s.safetyEventWaitRecheck", "app.SetSafetyEventWaitRecheck(on)"],
   ] as const) {
-    ok(card.includes(`${field} ?? s.experimentalSafetyCostControl`), `sub-switch ${field} follows the master when untouched`);
+    ok(card.includes(`${field} ?? false`), `sub-switch ${field} reads its explicit value (nil reads off, tl1816)`);
     ok(card.includes(setter), `sub-switch writes through ${setter}`);
   }
-  ok(card.includes('t("settings.safetyCostControl.subHint")'), "the follow-until-touched rule is spelled out in the card");
-  ok((card.match(/app\.SetExperimentalSafetyCostControl\(on\)/g) ?? []).length === 1,
-    "exactly ONE master writer (sub-switches write their own keys, not the master)");
+  // tl1816：pinnedIndex 成员行入卡（子项①；tl1772 memoryIndexSlim 同款）。
+  ok(card.includes('labLabel("pinnedIndex"') && card.includes("app.SetExperimentalPinnedIndex(on)"),
+    "tl1816: the pinnedIndex switch row rides inside the safetyCostControl card");
 }
 
-// ①/④ the three pre-517 entry points are gone panel-wide.
+// ①/④ the three pre-517 entry points + the retired master are gone panel-wide.
 for (const gone of [
   "app.SetExperimentalAutonomousIdleTerminate(",
   "app.SetExperimentalLoopStreakNote(",
   "app.SetExperimentalEventWaitRecheck(",
+  "app.SetExperimentalSafetyCostControl(",
   "s.experimentalAutonomousIdleTerminate",
   "s.experimentalLoopStreakNote",
   "s.experimentalEventWaitRecheck",
+  "s.experimentalSafetyCostControl",
   '{selected === "autonomousRunGuard" &&',
   '{selected === "eventWaitRecheck" &&',
 ]) {
   ok(!panel.includes(gone), `panel drops the retired entry point ${gone}`);
 }
 
-// ④ bridge: one declaration + mock; the old three are gone.
-ok(bridge.includes("SetExperimentalSafetyCostControl(enabled: boolean): Promise<void>;"),
-  "bridge declares SetExperimentalSafetyCostControl");
-ok((bridge.match(/async SetExperimentalSafetyCostControl\(\) \{\}/g) ?? []).length === 1,
-  "bridge mock covers SetExperimentalSafetyCostControl");
+// ④ bridge: tl1816 后总开关声明+mock 双删；更早的三个 legacy setter 保持退。
+ok(!bridge.includes("SetExperimentalSafetyCostControl"),
+  "tl1816: bridge drops the retired master declaration+mock");
 for (const gone of ["SetExperimentalAutonomousIdleTerminate", "SetExperimentalLoopStreakNote", "SetExperimentalEventWaitRecheck"]) {
   ok(!bridge.includes(gone), `bridge drops ${gone}`);
 }
@@ -124,34 +129,39 @@ for (const gone of ['"autonomousIdleTerminate"', '"loopStreakNote"', '"eventWait
 }
 ok(!/autonomousRunGuard\s*:/.test(tiers), "rail members map has no autonomousRunGuard entry (safetyCostControl badges itself)");
 
-// ④ 三语 locale: master label + hint + state line; retired card label gone.
+// ④ 三语 locale: master label stays (rail label), the master-only state/hint
+//    keys are gone with the master row (tl1816); retired card label gone.
 for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTW]] as const) {
+  ok(src.includes('"settings.safetyCostControl":'), `${name} locale keeps the card label (rail)`);
   for (const key of [
-    "settings.safetyCostControl",
     "settings.safetyCostControlHint",
     "settings.safetyCostControl.on",
     "settings.safetyCostControl.off",
     "settings.safetyCostControl.subHint",
   ]) {
-    ok(src.includes(`"${key}":`), `${name} locale carries ${key}`);
+    ok(!src.includes(`"${key}"`), `tl1816: ${name} locale drops the master-only key ${key}`);
   }
   ok(!src.includes("settings.autonomousRunGuard"), `${name} locale drops the retired card label`);
 }
-ok(zh.includes('"settings.safetyCostControl": "安全 / 成本控制"'), "zh master label is 「安全 / 成本控制」");
+ok(zh.includes('"settings.safetyCostControl": "安全 / 成本控制"'), "zh card label is 「安全 / 成本控制」");
 
-// ②/③ Go wiring: merged key renders, migration folds, gates read it.
-ok(goRender.includes("experimental_safety_cost_control = %v"), "render face carries the merged key");
+// ②/③ Go wiring: master line retired from the render face, fold + one-shot
+//    materialization migrate, gates read the sub-switches.
+ok(!goRender.includes("experimental_safety_cost_control = %v"),
+  "tl1816: the retired master line is gone from the render face");
 ok(goRender.includes("legacy key, migrated into experimental_safety_cost_control (task 517)"),
   "render face keeps the three legacy rows (task 449 precedent)");
 ok(goLoad.includes("func migrateSafetyCostControlMerge"), "load.go owns migrateSafetyCostControlMerge");
-// 任务 722：三个门改读 Effective helper（nil 子键=继承总开关，显式=覆盖）。
+ok(goLoad.includes("func migrateSafetyCostControlMasterRetire"),
+  "tl1816: load.go owns the plan-A one-shot materialization (master → nil sub-switches)");
+// 任务 722 + tl1816：三个门读 Effective helper（显式子键唯一真相；缺省=off）。
 // 正则不锚空白——gfmt 对齐变化不再弄红钉点（基线曾因此预存红）。
-ok(/return\s+cfg\.SafetyIdleTerminateEnabled\(\)/.test(goLifecycle), "B1 heartbeat gate reads the effective value (master + sub-switch override)");
+ok(/return\s+cfg\.SafetyIdleTerminateEnabled\(\)/.test(goLifecycle), "B1 heartbeat gate reads the effective value (sub-switch only, tl1816)");
 ok(/LoopStreakNote:\s+cfg\.SafetyLoopStreakNoteEnabled\(\)/.test(goBoot), "B2 run-loop gate reads the effective value");
 ok(/EventWaitRecheck:\s+cfg\.SafetyEventWaitRecheckEnabled\(\)/.test(goBoot), "B3 event_wait gate reads the effective value");
 ok(goConfig.includes('SafetyIdleTerminate    *bool `toml:"safety_idle_terminate"`') &&
    goConfig.includes('SafetyEventWaitRecheck *bool `toml:"safety_event_wait_recheck"`'),
-  "config carries the three nil-means-follow sub-switches");
+  "config carries the three explicit sub-switches");
 ok(goRender.includes("safety_idle_terminate = %v") && goRender.includes("safety_event_wait_recheck = %v"),
   "render face carries the sub-switches (conditional: nil stays absent)");
 

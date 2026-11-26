@@ -112,7 +112,10 @@ export type ExperimentFeatureId =
   | "jsonlZstd"
   // tl1193b: plan-E pinned standing-tier index mode card (memory-context
   // group; unstable, default off, restart to apply).
-  | "pinnedIndex"
+  // tl1816：pinnedIndex 独立 pane 退役——并入 safetyCostControl 卡成员行
+  // （用户拍板「归组安全/成本控制」；union id 同步摘除，档位与键不动，行级
+  // 徽章经 labLabel 保留——tl1772 memoryIndexSlim 先例）。tl1193b 原「记忆
+  // 与上下文」组随卡退役。
   // tl1733: 记忆注入瘦身卡（提效组；可选档，默认关；boot 快照消费重启生效；
   // 开=应急旁路仅注入 pinned）。
   // tl1772：memoryIndexSlim 独立 pane 退役——并入 safetyCostControl 卡成员行
@@ -197,8 +200,9 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "homePointer",
   // tl-1174: cold-session transcript zstd archive pane (storage group).
   "jsonlZstd",
-  // tl1193b: pinned index mode pane (memory-context group).
-  "pinnedIndex",
+  // tl1193b: pinned index mode pane (memory-context group). tl1816：白名单 id
+  // 随移组摘除——safetyCostControl 卡成员行承载（tl1772 memoryIndexSlim 同款，
+  // union id 同步摘除，键/setter 零变化）。
   // tl1733: 记忆注入瘦身 pane（提效组）。tl1772：白名单 id 随移组摘除——
   // safetyCostControl 卡成员行承载（union id 同步摘除，键/setter 零变化）。
   // tl1741 返修：resourceGovernance 容器 id 白名单随卡体回归；五散条白名单

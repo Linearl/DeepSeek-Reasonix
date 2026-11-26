@@ -120,6 +120,7 @@ function familySlice(titleKey: string): string {
 }
 
 // ⑤ 非试点卡零回归：未改造卡的 pane 分支不含 LabSectionCard。
+// tl1816：toolOptimizations 加入族卡试点（multi_edit 族）——负钉清单不含它。
 {
   // 用各卡在源码中的后继分支做切片终点（marker 不存在会让 cardSlice 返回空、
   // 测试假红/假绿——561 同款纪律）。
@@ -129,6 +130,35 @@ function familySlice(titleKey: string): string {
   ok(ctxSlice.length > 0 && !ctxSlice.includes("<LabSectionCard"), "contextGovernance pane has no family card (zero regression)");
   const tabSlice = cardSlice('{selected === "tabManagement" && (', '{selected === "smartAutomation" && (');
   ok(tabSlice.length > 0 && !tabSlice.includes("<LabSectionCard"), "tabManagement pane has no family card (zero regression)");
+}
+
+// ⑧ tl1816：工具优化 multi_edit 族卡——同一工具（multi_edit）的多项优化
+//    聚合为单张 LabSectionCard（任务书④；1099 决策模式族卡同款形态）。
+{
+  // toolOptimizations 是源码中最后一个 pane 分支——无后继 marker，切片直取
+  // 分支起点到 panel 尾（再往后的 QuickCommandsManager 函数不含 pane 行）。
+  const toolAt = panel.indexOf('{selected === "toolOptimizations" && (');
+  const toolSlice = toolAt >= 0 ? panel.slice(toolAt) : "";
+  ok(toolSlice.length > 0, "toolOptimizations pane branch located");
+  const opens = toolSlice.match(/<LabSectionCard\b/g) ?? [];
+  const closes = toolSlice.match(/<\/LabSectionCard>/g) ?? [];
+  ok(opens.length === 1 && closes.length === 1, `toolOptimizations pane renders exactly 1 LabSectionCard container (tl1816 multi_edit family; open ${opens.length}, close ${closes.length})`);
+  ok(toolSlice.includes('title={t("settings.lab.family.multiEdit")}'), "multi_edit family card titled from locale key settings.lab.family.multiEdit");
+  const meStart = toolSlice.indexOf('title={t("settings.lab.family.multiEdit")}');
+  const meEnd = toolSlice.indexOf("</LabSectionCard>", meStart);
+  const me = meEnd > meStart ? toolSlice.slice(meStart, meEnd) : "";
+  for (const [label, setter] of [
+    ['labLabel("multiEditInjection"', "app.SetExperimentalMultiEditInjection(on)"],
+    ['labLabel("multiEditErrorDetail"', "app.SetExperimentalMultiEditErrorDetail(on)"],
+    ['labLabel("multiEditEvidenceNarrow"', "app.SetExperimentalMultiEditEvidenceNarrow(on)"],
+    ['labLabel("multiEditSkipFailed"', "app.SetExperimentalMultiEditSkipFailed(on)"],
+  ] as const) {
+    ok(me.includes(label), `tl1816: multi_edit family card hosts the row (${label})`);
+    ok(me.includes(setter), `tl1816: family member keeps its own setter (${setter})`);
+  }
+  // 族外行负钉：能力组披露/证据门宽松/主开关不在族卡体内。
+  ok(!me.includes('labLabel("capabilityGroups"') && !me.includes('labLabel("editEvidenceRelaxed"') && !me.includes('labLabel("toolOptimizations"'),
+    "tl1816: non-multi_edit rows stay outside the family card");
 }
 
 // ⑥ 组件/样式合同。

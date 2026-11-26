@@ -56,19 +56,20 @@ console.log("\ntask 561 lab regroup + merged cards");
 //    组受控词表在 labLayoutTypes，组序/组键/组标签键全部来自布局文档
 //    （yaml 与内置默认一致）。tl1193b：增「记忆与上下文」组（pinnedIndex
 //    卡落位）——7 组 → 8 组；tl1256 调序：memory-context 移 infra 之后
-//    （原 automation 后 efficiency 前，用户 20261029 令）。
+//    （原 automation 后 efficiency 前，用户 20261029 令）。tl1816：pinnedIndex
+//    移组安全/成本控制卡成员行，组内仅此一卡的「记忆与上下文」组退役——
+//    8 组 → 7 组（组键保留词表，992 tool-opt 先例）。
 {
   const yaml = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const labDefault = readFileSync(fileURLToPath(new URL("../lab/labLayoutDefault.ts", import.meta.url)), "utf8");
   const keys = [
-    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra", "memory-context",
+    "automation", "efficiency", "ui", "observability", "dev-debug", "storage", "infra",
   ];
   const yamlOrder = keys.map((k) => yaml.indexOf(`key: ${k}`));
   ok(yamlOrder.every((i) => i >= 0) && [...yamlOrder].sort((a, b) => a - b).every((v, i) => v === yamlOrder[i]),
-    "lab-layout.yaml carries the 8 groups in the audit-table order (rail order)");
+    "lab-layout.yaml carries the 7 groups in the audit-table order (rail order; tl1816 retired memory-context)");
   for (const [key, labelKey] of [
     ["automation", "settings.labGroup.automation"],
-    ["memory-context", "settings.labGroup.memoryContext"],
     ["dev-debug", "settings.labGroup.devDebug"],
   ] as const) {
     const block = yaml.slice(yaml.indexOf(`key: ${key}`));
@@ -77,6 +78,9 @@ console.log("\ntask 561 lab regroup + merged cards");
   const defOrder = keys.map((k) => labDefault.indexOf(`key: "${k}"`));
   ok(defOrder.every((i) => i >= 0) && [...defOrder].sort((a, b) => a - b).every((v, i) => v === defOrder[i]),
     "built-in default layout mirrors the same group order (fallback = same face)");
+  // tl1816：「记忆与上下文」组退役——yaml/内置默认均不再有该组。
+  ok(!yaml.includes("key: memory-context") && !labDefault.includes('key: "memory-context"'),
+    "tl1816: the memory-context group is gone from both layout sources (pinnedIndex re-homed)");
 }
 
 // ① rail census（任务 783 修订）：恰好 35 个 rail 入口，组分布// 5/8/9/2/1/3/6/1（783：可观测性组增「用量监测」卡——GLM Plan 用量 +
@@ -130,7 +134,9 @@ console.log("\ntask 561 lab regroup + merged cards");
   // 成员行（decisionPatternsLayered 为 smartAutomation 卡成员行，不占
   // rail 入口）→ 29→28。tl1772r2：decisionPatternsLayered 成员行二次移组
   // smartAutomation→safetyCostControl 卡——仍是成员行，rail census 不变。
-  ok(defEntries.length === 28, `default layout carries exactly 28 rail entries (tl1772 re-homed memoryIndexSlim as a safetyCostControl member; got ${defEntries.length})`);
+  // tl1816：pinnedIndex 独立卡移组安全/成本控制卡成员行，「记忆与上下文」
+  // 组退役——28→27（tl1772 memoryIndexSlim 同款）。
+  ok(defEntries.length === 27, `default layout carries exactly 27 rail entries (tl1816 re-homed pinnedIndex as a safetyCostControl member; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -171,10 +177,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1746：tasklistPanel 卡入可观测性组 → observability 3→4 → 2/5/8/4/1/3/6/1。
   // tl1772：memoryIndexSlim 出提效组（并入安全/成本控制卡成员行）→
   // efficiency 6→5 → 2/4/8/4/1/3/6/1。
+  // tl1816：pinnedIndex 出「记忆与上下文」组（并入安全/成本控制卡成员行，
+  // 该组退役）→ 4/5/8/4/1/3/2（七组，总数 27）。
   ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
      groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
-     groups["memory-context"] === 1,
-    `group counts are 4/5/8/4/1/3/2/1 (tl1772 memoryIndexSlim re-homed as a safetyCostControl member; got ${JSON.stringify(groups)})`);
+     groups["memory-context"] === undefined,
+    `group counts are 4/5/8/4/1/3/2 across 7 groups (tl1816 retired the memory-context group; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -189,6 +197,14 @@ console.log("\ntask 561 lab regroup + merged cards");
     "tl1772: memoryIndexSlim rides as an optional safetyCostControl member (tier unchanged)");
   ok(!eff!.entries.some((e: { id: string }) => e.id === "memoryIndexSlim"),
     "tl1772: no standalone memoryIndexSlim entry remains in the efficiency group");
+  // tl1816：pinnedIndex 移组收口——「记忆与上下文」组整组消失、成员行落位
+  // 安全/成本控制卡（档位与键不动；灯键随迁 onKeys）。
+  ok(memberIds.includes("pinnedIndex") && safety!.members!.find((m: { id: string }) => m.id === "pinnedIndex")?.tier === "optional",
+    "tl1816: pinnedIndex rides as an optional safetyCostControl member (tier unchanged)");
+  ok(safety!.onKeys.includes("experimentalPinnedIndex"),
+    "tl1816: the pinnedIndex light key rides with the re-home (onKeys)");
+  ok(!LAB_LAYOUT_DEFAULT_DATA.groups.some((g: { key: string }) => g.key === "memory-context"),
+    "tl1816: no memory-context group remains in the default layout");
   // tl1741：sessionCollab 卡随撤开关退役（autoFold 随宿主卡入 storage 组）——
   // 原断言「sessionCollab hosts the auto-fold member」随卡摘除。
 }
@@ -377,6 +393,7 @@ for (const family of families) {
     ok(panel.includes(pane), `M8 ${id} keeps its own pane branch`);
   }
   // 无主开关语义：四张回归卡的 pane 不含任何 retired 主键开关接线。
+  // tl1816：safetyCostControl 总开关 setter 同入撤开关清单。
   for (const retired of [
     "app.SetDesktopAutopilot(",
     "app.SetExperimentalSessionCollab(",
@@ -385,6 +402,7 @@ for (const family of families) {
     "app.SetExperimentalCDPDebugPort(",
     "app.SetExperimentalWorkflowPanel(",
     "app.SetExperimentalWorkflowTemplates(",
+    "app.SetExperimentalSafetyCostControl(",
   ]) {
     ok(!panel.includes(retired), `retired master-switch setter stays gone: ${retired}`);
   }
@@ -462,6 +480,9 @@ for (const id of [
   // tl1772：memoryIndexSlim 独立卡/pane/union id 摘除——safetyCostControl 卡
   // 成员行承载（档位与键不动，只移组；messageMerge 722 点6 同款）。
   "memoryIndexSlim",
+  // tl1816：pinnedIndex 独立卡/pane/union id 摘除——safetyCostControl 卡
+  // 成员行承载（tl1772 同款；「记忆与上下文」组随卡退役）。
+  "pinnedIndex",
 ]) {
   ok(!panel.includes(`{ id: "${id}", group:`), `rail drops the folded ${id} entry`);
   ok(!panel.includes(`| "${id}"`), `union drops the folded ${id} id`);
@@ -491,8 +512,8 @@ for (const id of [
 //    panel (render-table discipline — a setter without a call site would be a
 //    silent lost-save).
 for (const setter of [
-  // 任务 517：B1/B2/B3 三个旧 setter 撤销，写路径并入 SetExperimentalSafetyCostControl。
-  "app.SetExperimentalSafetyCostControl(on)",
+  // 任务 517：B1/B2/B3 三个旧 setter 撤销；tl1816：总开关 setter 亦退役——
+  // 「安全 / 成本控制」唯一控制面=三个细粒度子开关（负钉在 M8 撤开关清单）。
   "app.SetExperimentalHighSpeedModel(on)",
   "app.SetExperimentalCompactionParallel(on)",
   "app.SetExperimentalContextBudget(on)",
@@ -513,6 +534,8 @@ for (const setter of [
   // tl1772：新伴生开关与移组行各自的 setter 接线随行落位（丢 setter=静默丢档）。
   "app.SetExperimentalDecisionPatternsLayered(on)",
   "app.SetMemoryIndexSlim(on)",
+  // tl1816：pinnedIndex 移组行 setter 接线随行落位（同上）。
+  "app.SetExperimentalPinnedIndex(on)",
 ]) {
   ok(panel.includes(setter), `setter wiring survives the merge: ${setter}`);
 }
@@ -531,6 +554,12 @@ for (const setter of [
     "tl1772r2: no injection-layering remnant stays in the smartAutomation card after the re-home");
   ok(!smart.includes('labLabel("memoryIndexSlim"') && !safety.includes('{selected === "memoryIndexSlim" &&'),
     "tl1772: no standalone memoryIndexSlim rail/pane remnant survives the re-home");
+  // tl1816：pinnedIndex 移组落位钉（pane 行面）——成员行落位安全/成本控制卡
+  // （tl1772 memoryIndexSlim 同款）。
+  ok(safety.includes('labLabel("pinnedIndex"') && safety.includes("app.SetExperimentalPinnedIndex(on)"),
+    "tl1816: the pinnedIndex switch row rides inside the safetyCostControl card");
+  ok(!panel.includes('{selected === "pinnedIndex" &&') && !panel.includes('| "pinnedIndex"'),
+    "tl1816: no standalone pinnedIndex rail/pane/union remnant survives the re-home");
 }
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

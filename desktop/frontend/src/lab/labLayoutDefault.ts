@@ -37,6 +37,9 @@
 //       （plan E pinned 常驻层索引化，未稳定档，默认关，boot 快照重启生效）。
 //   tl1256 调序：「记忆与上下文」组移基础设施组之后（原 automation 后
 //       efficiency 前，用户 20261029 令；yaml 同步移动）。
+//   tl1816 五子项①：pinnedIndex 卡自「记忆与上下文」组移入「安全/成本控制」
+//       卡成员行（tl1772 memoryIndexSlim 同款三件套）——组内仅此一卡，该组
+//       退役（组键保留词表）；档位与键不动，只移组。
 //   tl1309 卡②：可观测性组 monitoring 散卡 + eventsRotation（自存储组
 //       sessionStore 卡迁出）+ trajectoryView（自界面组 viewLayout 卡迁出）
 //       三成员并「运行可观测」卡（runtimeObservability，容器档=成员最高档
@@ -185,7 +188,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           labelKey: "settings.safetyCostControl",
           tier: "optional",
           onKeys: [
-            "experimentalSafetyCostControl",
+            // tl1816：experimentalSafetyCostControl 灯键随总开关退役出族
+            //（722 点5/点6 并入成员的键仍是灯=家族任一非默认口径）。
             // 任务 722 点5/点6：并入成员的键跟随迁卡（灯=家族任一非默认）。
             "experimentalCompactModel",
             "collabInboxMergeOn",
@@ -194,6 +198,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // tl1772r2：decisionPatternsLayered 行迁入，灯键随迁（口径不变）。
             "experimentalMemoryIndexSlim",
             "experimentalDecisionPatternsLayered",
+            // tl1816：pinnedIndex 并卡，灯键随迁（口径不变）。
+            "experimentalPinnedIndex",
           ],
           members: [
             // 任务 722 点5：指定压缩模型（707 交付项）归安全/成本控制。
@@ -221,6 +227,13 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // DP 全文的硬指令；解析不出索引行时静默回退全文形态。注入面现读
             // config，保存即生效。
             { id: "decisionPatternsLayered", labelKey: "settings.decisionPatternsLayered", tier: "optional" },
+            // tl1816（原「记忆与上下文」组独立卡移组，tl1772 memoryIndexSlim
+            // 同款三件套）：置顶记忆索引化——安全/成本控制卡成员行（用户拍板
+            // 归组）。档位与键不动：可选档，experimental_pinned_index。
+            // tl1193b：pinned 常驻层索引化（plan E）。默认关=常驻层 body 全量
+            // 注入与引入前逐字节一致（铁律 2）；开启后常驻层一行一条索引，
+            // body 转按需召回。boot 快照消费（capabilityGroups 先例），重启生效。
+            { id: "pinnedIndex", labelKey: "settings.pinnedIndex", tier: "optional" },
           ],
         },
         {
@@ -619,23 +632,10 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
         ] },
       ],
     },
-    {
-      // tl1193b：记忆与上下文组（实验室第 8 活跃组）——pinned 常驻层索引化
-      // 卡落位（plan E，未稳定档，默认关，boot 快照重启生效）。tl1256 调序：
-      // 基础设施组之后（原 automation 后 efficiency 前，用户 20261029 令，
-      // yaml 同步移动）。
-      key: "memory-context",
-      labelKey: "settings.labGroup.memoryContext",
-      entries: [
-        {
-          id: "pinnedIndex",
-          labelKey: "settings.pinnedIndex",
-          // tl1487 八组：未稳定→可选（默认关=铁律 2 不变）。
-          tier: "optional",
-          onKeys: ["experimentalPinnedIndex"],
-        },
-      ],
-    },
+    // tl1816：「记忆与上下文」组随 pinnedIndex 移组安全/成本控制卡成员行而
+    // 退役（组内仅此一卡；tl1772 memoryIndexSlim 移组同款三件套）。组键
+    // memory-context 保留在 LAB_GROUP_KEYS 词表（旧词表兼容，992 tool-opt
+    // 先例）。
   ],
 };
 

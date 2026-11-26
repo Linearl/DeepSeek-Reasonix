@@ -2930,9 +2930,8 @@ export interface DesktopStartupSettingsView {
   experimentalCapabilityGroups?: boolean;
   /** multi-session collaboration experiment (task 19); off unless the user opts in. */
   experimentalSessionCollab?: boolean;
-  /** merged safety/cost switch (task 517; one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards); off unless the user opts in. */
-  experimentalSafetyCostControl?: boolean;
-  /** 任务 722: fine-grained sub-switch overrides (null = follow the master). */
+  /** tl1816: the task-517 master switch retired — the three task-722 sub-switch overrides below are the only surface. */
+  /** 任务 722: fine-grained sub-switch overrides (null = absent; reads off after the tl1816 master retirement). */
   safetyIdleTerminate?: boolean | null;
   safetyLoopStreakNote?: boolean | null;
   safetyEventWaitRecheck?: boolean | null;
