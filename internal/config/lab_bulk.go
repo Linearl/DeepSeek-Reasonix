@@ -119,6 +119,8 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"outputStyle":           func(c *Config, on bool) error { return c.SetExperimentalOutputStyleUI(on) },
 	"cacheTuning":           func(c *Config, on bool) error { return c.SetExperimentalCacheTuning(on) },
 	"sessionCollabAutoFold": func(c *Config, on bool) error { return c.SetExperimentalSessionCollabAutoFold(on) },
+	// tl1817: 朗读 MiMo TTS 传输层（interactionPresentation 卡成员行）。
+	"mimoTts": func(c *Config, on bool) error { return c.SetExperimentalMimoTts(on) },
 	// ── ui ──
 	"trajectoryView":      func(c *Config, on bool) error { return c.SetExperimentalTrajectoryView(on) },
 	"tabCompress":         func(c *Config, on bool) error { return c.SetExperimentalTabCompress(on) },

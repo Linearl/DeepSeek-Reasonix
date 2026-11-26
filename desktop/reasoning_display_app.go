@@ -36,6 +36,9 @@ func desktopStartupSettingsFromConfig(cfg *config.Config) DesktopStartupSettings
 		// same boot snapshot — without it the frontend store resets to off on
 		// every restart while the settings switch keeps reading on.
 		ExperimentalSelectionActions: cfg.Agent.ExperimentalSelectionActions,
+		// tl1817: the MiMo TTS speak gate rides the same boot snapshot (task
+		// 514 rule — off-by-default, settings switch stays authoritative).
+		ExperimentalMimoTts: cfg.Desktop.ExperimentalMimoTts,
 		// Task 588: the quick-command snippets ride the boot snapshot with the
 		// gate; DesktopQuickCommands returns nil (omitted in JSON) when unset.
 		QuickCommands:  cfg.DesktopQuickCommands(),

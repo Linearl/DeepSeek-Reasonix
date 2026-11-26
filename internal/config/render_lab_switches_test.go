@@ -48,6 +48,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalQuickCommands = true             // quickCommands
 	orig.Agent.TraceAsState = true                            // traceAsState ([agent] authoritative; task-60 field has no Experimental prefix)
 	orig.Desktop.ExperimentalOutputStyleUI = true             // outputStyle
+	orig.Desktop.ExperimentalMimoTts = true                   // mimoTts (tl1817: read-aloud MiMo TTS transport)
 
 	// ui（界面）
 	orig.Desktop.ExperimentalTabCompress = true         // tabCompress
@@ -164,6 +165,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_quick_commands = true",
 		// (cdp_debug_port absent: tl1741 retired the switch — endpoint arms unconditionally.)
 		"experimental_output_style_ui = true",
+		// tl1817：朗读 MiMo TTS 传输层键无条件渲染（fixed-key-set rule）。
+		"experimental_mimo_tts = true",
 		"experimental_acp_listen = true",
 		"acp_listen_port = 8791",
 		// tl1487 七组③：experimental_path_rules 键随整卡移除退役，渲染表

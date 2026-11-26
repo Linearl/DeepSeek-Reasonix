@@ -707,6 +707,14 @@ func (a *App) SetExperimentalSelectionActions(enabled bool) error {
 	})
 }
 
+// SetExperimentalMimoTts toggles the tl1817 read-aloud MiMo TTS transport.
+// The speak path re-reads the gate and re-resolves the MiMo credential at
+// every click, so this is a live config flip — the next read-aloud follows
+// the new state with no restart.
+func (a *App) SetExperimentalMimoTts(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalMimoTts(enabled) })
+}
+
 func (a *App) SetExperimentalComposerDraft(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalComposerDraft(enabled) })
 }

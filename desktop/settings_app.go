@@ -694,6 +694,9 @@ type SettingsView struct {
 	ProactiveCompactCooldownMinutes int  `json:"proactiveCompactCooldownMinutes"`
 	ExperimentalComposerDraft       bool `json:"experimentalComposerDraft"`
 	ExperimentalSelectionActions    bool `json:"experimentalSelectionActions"`
+	// tl1817: read-aloud MiMo TTS transport gate (interactionPresentation lab
+	// member; default off = system speechSynthesis unchanged).
+	ExperimentalMimoTts bool `json:"experimentalMimoTts"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
 	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
@@ -1047,6 +1050,10 @@ type DesktopStartupSettingsView struct {
 	// restart fed the frontend store an undefined flag (= off) while the
 	// settings switch — reading the full Settings() view — still showed on.
 	ExperimentalSelectionActions bool `json:"experimentalSelectionActions"`
+	// tl1817: MiMo TTS gate rides the boot snapshot like task 514 — without
+	// it the frontend speak gate resets to off on every restart while the
+	// settings switch keeps reading on.
+	ExperimentalMimoTts bool `json:"experimentalMimoTts"`
 	// Task 297: cold-cache compact pass knobs (lab storage cost card).
 	ExperimentalColdCacheCompact bool  `json:"experimentalColdCacheCompact"`
 	ColdCacheCompactMinBytes     int64 `json:"coldCacheCompactMinBytes"`
@@ -1731,6 +1738,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.UpdateChimeTune = cfg.UpdateChimeTuneMode()
 		view.ExperimentalSessionMonitor = cfg.Desktop.ExperimentalSessionMonitor
 		view.ExperimentalSplitView = cfg.Desktop.ExperimentalSplitView
+		// tl1817: the speak-path gate rides the boot snapshot (task 514 rule).
+		view.ExperimentalMimoTts = cfg.Desktop.ExperimentalMimoTts
 		// tl1746: tasklist-panel switch + db-path family key readback.
 		view.ExperimentalTasklistPanel = cfg.Desktop.ExperimentalTasklistPanel
 		view.TasklistDBPath = cfg.Desktop.TasklistDBPath
@@ -2203,6 +2212,8 @@ func (a *App) Settings() SettingsView {
 		ProactiveCompactCooldownMinutes: cfg.Agent.ProactiveCompactCooldownMinutes,
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
+		// tl1817: MiMo TTS transport gate readback (click-time live read).
+		ExperimentalMimoTts:             cfg.Desktop.ExperimentalMimoTts,
 		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
 		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
 		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
