@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -146,13 +147,21 @@ func doctorRepairCommand(args []string) int {
 	root := fs.String("root", ".", "project root to inspect")
 	apply := fs.Bool("apply", false, "quarantine invalid config and restore the last-known-good global snapshot")
 	includeProject := fs.Bool("project", false, "allow --apply to quarantine an invalid project reasonix.toml")
+	undo := fs.Bool("undo", false, "undo the most recent repair: restore the exact files it moved aside and retain the replaced state as timestamped redo candidates")
 	jsonOut := fs.Bool("json", false, "print result as JSON")
 	if code, ok := parseCommandFlags(fs, args); !ok {
 		return code
 	}
 	if fs.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "usage: reasonix doctor repair [--root PATH] [--apply] [--project] [--json]")
+		fmt.Fprintln(os.Stderr, "usage: reasonix doctor repair [--root PATH] [--apply] [--project] [--undo] [--json]")
 		return 2
+	}
+	if *undo {
+		if *apply || *includeProject {
+			fmt.Fprintln(os.Stderr, "usage: --undo cannot be combined with --apply or --project")
+			return 2
+		}
+		return doctorRepairUndo(*jsonOut)
 	}
 	report, err := repair.InspectAndRepairConfig(repair.ConfigOptions{
 		Root:           *root,
@@ -193,6 +202,45 @@ func doctorRepairCommand(args []string) int {
 			return 1
 		}
 	}
+	return 0
+}
+
+// doctorRepairUndo exposes repair.UndoLastRepair to the CLI. Its contract is
+// the one documented on that function: restore the exact files the latest
+// repair moved aside, and retain any state this undo displaces as timestamped
+// redo candidates next to each target. The undo is its own durable record —
+// the returned transaction is persisted with Undone/UndoneAt to
+// last-repair.json and appended to repair-log.jsonl — so a second --undo is
+// refused instead of recursing.
+func doctorRepairUndo(jsonOut bool) int {
+	tx, err := repair.UndoLastRepair()
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			fmt.Fprintln(os.Stderr, "error: no repair transaction to undo:", err)
+			return 1
+		}
+		fmt.Fprintln(os.Stderr, "error:", err)
+		return 1
+	}
+	if jsonOut {
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if err := enc.Encode(tx); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	fmt.Println("Reasonix repair undo")
+	fmt.Printf("  undone: %s at %s\n", tx.ID, tx.UndoneAt)
+	for _, change := range tx.Changes {
+		if change.RemoveOnUndo {
+			fmt.Printf("  removed created %s\n", change.TargetPath)
+			continue
+		}
+		fmt.Printf("  restored %s from %s\n", change.TargetPath, change.PreviousPath)
+	}
+	fmt.Println("  any state replaced by this undo was retained next to its target as a timestamped redo candidate")
 	return 0
 }
 
