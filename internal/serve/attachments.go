@@ -77,3 +77,34 @@ func (s *Server) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, map[string]string{"ref": path})
 }
+
+// GET /attachment?path=.reasonix/attachments/clipboard-….png — stream one saved
+// image attachment from the active workspace. Read-side counterpart of
+// POST /attachments: without it an uploaded image is visible in the transcript
+// only while the uploading tab still holds its in-memory bytes, and never in
+// history replay. Path validation lives in
+// control.OpenAttachmentImageInRoot (flat lexical containment inside the
+// workspace's .reasonix/attachments, image-extension whitelist, no symlinks,
+// 64 MiB ceiling), so only files the attachment writers produced can come back
+// out.
+func (s *Server) attachmentImage(w http.ResponseWriter, r *http.Request) {
+	ctl := s.ctl()
+	if ctl == nil {
+		http.Error(w, "no active session", http.StatusBadRequest)
+		return
+	}
+	root := ctl.WorkspaceRoot()
+	if root == "" {
+		http.Error(w, "workspace root unknown", http.StatusBadRequest)
+		return
+	}
+	img, err := control.OpenAttachmentImageInRoot(root, r.URL.Query().Get("path"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	defer img.Close()
+	w.Header().Set("Content-Type", img.Mime)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, img.Name, img.ModTime, img.File)
+}

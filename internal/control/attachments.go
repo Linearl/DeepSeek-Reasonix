@@ -874,3 +874,95 @@ func imageExt(mime string) string {
 	}
 	return ""
 }
+
+// imageAttachmentMime maps an attachment file extension back to its served
+// content type — the inverse of imageExt for the read path.
+func imageAttachmentMime(ext string) string {
+	switch strings.ToLower(strings.TrimSpace(ext)) {
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".gif":
+		return "image/gif"
+	case ".webp":
+		return "image/webp"
+	}
+	return ""
+}
+
+// AttachmentImage is an opened image attachment ready to stream over HTTP.
+type AttachmentImage struct {
+	File    *os.File
+	Mime    string
+	Name    string
+	ModTime time.Time
+	Size    int64
+}
+
+// Close releases the underlying file handle.
+func (a *AttachmentImage) Close() error {
+	if a == nil || a.File == nil {
+		return nil
+	}
+	return a.File.Close()
+}
+
+// OpenAttachmentImageInRoot opens one saved image attachment for HTTP serving —
+// the read-side mirror of SaveImageBytesInRoot's write-side guarantees. rel
+// must lexically resolve to a flat file directly inside
+// <root>/.reasonix/attachments (generated names are flat), carry an accepted
+// image extension, be a regular non-symlink file, and fit the same 64 MiB
+// ceiling the writers enforce. Only files the attachment writers produced can
+// therefore come back out.
+func OpenAttachmentImageInRoot(root, rel string) (*AttachmentImage, error) {
+	if strings.TrimSpace(root) == "" {
+		root = "."
+	}
+	req := strings.TrimSpace(rel)
+	if req == "" {
+		return nil, fmt.Errorf("attachment path is required")
+	}
+	if filepath.IsAbs(req) {
+		return nil, fmt.Errorf("attachment path must be relative")
+	}
+	clean := filepath.ToSlash(filepath.Clean(req))
+	const dirPrefix = ".reasonix/attachments/"
+	name := strings.TrimPrefix(clean, dirPrefix)
+	if !strings.HasPrefix(clean, dirPrefix) || name == "" || strings.Contains(name, "/") || name == "." || strings.HasPrefix(name, ".") {
+		return nil, fmt.Errorf("attachment path must name a file directly inside %s", dirPrefix)
+	}
+	mime := imageAttachmentMime(filepath.Ext(name))
+	if mime == "" {
+		return nil, fmt.Errorf("not a servable image attachment type")
+	}
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return nil, err
+	}
+	full := filepath.Join(absRoot, filepath.FromSlash(clean))
+	// containment double-check after joining: even with a lexically clean rel,
+	// verify the resolved file stays inside the attachments root.
+	attRoot := filepath.Join(absRoot, ".reasonix", "attachments")
+	if inside, err := filepath.Rel(attRoot, full); err != nil || inside == ".." || strings.HasPrefix(filepath.ToSlash(inside), "../") {
+		return nil, fmt.Errorf("attachment path escapes the attachments directory")
+	}
+	info, err := os.Lstat(full)
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return nil, fmt.Errorf("attachment path must not be a symlink")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("attachment path is not a regular file")
+	}
+	if info.Size() <= 0 || info.Size() > maxImageAttachmentBytes {
+		return nil, fmt.Errorf("image attachment must be between 1 byte and 64 MB")
+	}
+	f, err := os.Open(full)
+	if err != nil {
+		return nil, err
+	}
+	return &AttachmentImage{File: f, Mime: mime, Name: name, ModTime: info.ModTime(), Size: info.Size()}, nil
+}
