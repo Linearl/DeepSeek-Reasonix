@@ -284,9 +284,6 @@
       "TS2322",
       "TS2769"
     ],
-    "src/__tests__/gc21-pending-store.test.ts": [
-      "TS6133"
-    ],
     "src/__tests__/goal-activation-tab-routing.test.tsx": [
       "TS18048",
       "TS2322"
@@ -720,10 +717,6 @@
     ],
     "src/__tests__/task686-workflow-panel.test.tsx": [
       "TS2345",
-      "TS6133"
-    ],
-    "src/__tests__/task701-web-shell.test.ts": [
-      "TS2614",
       "TS6133"
     ],
     "src/__tests__/task704-trajectory-ledger.test.ts": [
