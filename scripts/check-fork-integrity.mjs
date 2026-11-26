@@ -1348,7 +1348,7 @@ export const CHECKS = [
   // 缺口由模式条第四档承接；desktopTabEntry 补 autopilot 列，重启忠实保留。
   // merge 若顶掉任一环：档位静默失效 / 重启丢旗 / goal 被清——均无编译错误。
   { feature: "465 断点C desktopTabEntry autopilot 列（持久化+恢复写入）", file: "desktop/tabs_persistence_types.go", patterns: ["Autopilot bool `json:\"autopilot,omitempty\"`", "Autopilot:   tab.autopilot,"] },
-  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app_tabs.go", patterns: ["if entry.Autopilot || tabSessionAutopilot(tab.SessionPath)", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
+  { feature: "465 恢复路径双源+325 再过门", file: "desktop/app_tabs.go", patterns: ["entry.Autopilot || sidecarAutopilot", "gateRestoredAutopilotDefaults(on, maxRuntime, grace, askEnabled, askWait, askAutoContinue, tab.toolApprovalMode)"] },
   { feature: "465 档位自动满足 yolo+双留痕（slog assumed_yolo+notice）", file: "desktop/app_modes.go", patterns: ["effectiveApproval = control.ToolApprovalYolo", "\"assumed_yolo\", assumedYolo", "NoticeCodeAutopilotAssumedYolo, autopilotAssumedYoloText"] },
   { feature: "465 两维独立：dim-2 播种不清旗（task806 起边沿守卫改 [tab-mode] 前后值日志行，边沿锚随形态换代）", file: "desktop/app_modes.go", patterns: ["autopilotOn, autopilotRuntime, autopilotGrace := tab.autopilot, tab.autopilotMaxRuntime, tab.autopilotApprovalGrace", "\"autopilot_pre\", wasAutopilot, \"autopilot_post\", autopilotOn"] },
   { feature: "465 门文件新 notice 码（决策记录）", file: "desktop/autopilot_gate.go", patterns: ["NoticeCodeAutopilotAssumedYolo = \"autopilot_assumed_yolo\"", "autopilotAssumedYoloText"] },
