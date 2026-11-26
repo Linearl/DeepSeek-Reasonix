@@ -25,7 +25,6 @@ import {
   WORKFLOW_NODE_HEIGHT,
   WORKFLOW_NODE_WIDTH,
 } from "../lib/workflowDag";
-import { insertWorkflowPanelEntry } from "../lib/workflowPanelEntry";
 import {
   applyWorkflowEvent,
   createWorkflowRunStore,
@@ -186,11 +185,8 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
     "labFlags no longer knows the workflowPanel flag (tl1741 retired it)");
   ok(labFlagEnabled("workflowPanel") === undefined, "labFlagEnabled has no workflowPanel entry (switch retired)");
 
-  // palette 插条 helper 保留为纯函数（App 不再经它门控——入口直接追加）。
-  const cmds = [{ id: "cmd-reload-runtime" }, { id: "cmd-other" }];
-  const entry = { id: "cmd-workflow-panel" };
-  const on = insertWorkflowPanelEntry(cmds, true, entry);
-  ok(on.length === 3 && on[1].id === "cmd-workflow-panel", "palette helper inserts the entry after the session-wall anchor (pure fn kept)");
+  // palette 插条 helper 已随 tl1826 删除（lib/workflowPanelEntry.ts）——
+  // App 直推入口，无独立 helper；:231 的 App 源码断言守住「不再经 helper 门控」。
 
   // Go 链换代：键退役——config 无字段/无 setter/渲染行不在/档位表无条目。
   const goConfig = readFileSync(`${repoRoot}/internal/config/desktop_preferences.go`, "utf8");
@@ -227,7 +223,7 @@ console.log("\ntask 686 workflow panel: DAG preview + event-driven lighting + dr
   ok(labSection.includes('labLabel("workflowPanel"') && !labSection.includes("app.SetExperimentalWorkflowPanel("), "pane row is a display row again — no switch wiring (tl1741r2)");
   const appTsx = read("src/App.tsx");
   ok(!appTsx.includes('labFlagEnabled("workflowPanel")'), "App no longer reads the lab flag");
-  ok(!appTsx.includes("insertWorkflowPanelEntry("), "App no longer gates the palette entry (direct push)");
+  ok(!appTsx.includes("insertWorkflowPanelEntry("), "App does not reference the (deleted) workflowPanelEntry helper — reintroducing it goes red");
   ok(appTsx.includes('id: "cmd-workflow-panel"'), "App appends the palette entry unconditionally (常显)");
   ok(appTsx.includes("{workflowPanelOpen && ("), "the panel mounts only while open (unchanged)");
   ok(appTsx.includes("const WorkflowPanel = lazy("), "the panel chunk is lazy (unchanged)");
