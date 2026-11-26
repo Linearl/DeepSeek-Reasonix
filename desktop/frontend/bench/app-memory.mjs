@@ -56,7 +56,9 @@ async function ensureBuild() {
   }
   // Each run owns a fresh production build; an unverified dist is not evidence.
   await new Promise((resolve, reject) => {
-    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit" });
+    // shell:true — on Windows pnpm is pnpm.cmd; a shell-less spawn fails with ENOENT
+    // (tl1823 baseline). Args are static literals, so shell concatenation is safe.
+    const child = spawn("pnpm", ["build"], { cwd: frontendDir, stdio: "inherit", shell: true });
     child.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`pnpm build exited ${code}`)));
   });
 }
