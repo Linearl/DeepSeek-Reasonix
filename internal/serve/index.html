@@ -252,6 +252,9 @@ input,textarea{font:inherit;color:inherit}
 .composer__btn--send:disabled{background:var(--panel-2);color:var(--muted);cursor:default;transform:none}
 .composer__btn--stop{background:var(--panel-2);color:var(--danger)}
 .composer__btn--stop:hover{background:var(--danger-soft)}
+.composer__btn--attach{color:var(--muted)}
+.composer__btn--attach:hover{color:var(--fg-2);background:var(--panel-2)}
+.composer__btn--attach:disabled{color:var(--muted-2);opacity:.5;cursor:default}
 /* goal chip */
 .goal-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:var(--accent-soft);border:1px solid var(--accent);font-size:12px;color:var(--accent);font-weight:500;cursor:pointer;transition:all .18s ease;max-width:320px;overflow:hidden}
 .goal-chip:hover{background:oklch(68% .16 38/.25)}
@@ -535,6 +538,10 @@ input,textarea{font:inherit;color:inherit}
     <div class="composer">
       <span class="composer__caret">&#8250;</span>
       <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
+      <button class="composer__btn composer__btn--attach" id="btn-attach" title="__('attach_images')" aria-label="__('attach_images')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <input type="file" id="file-in" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" tabindex="-1" aria-hidden="true">
       <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
       </button>
@@ -750,6 +757,10 @@ const __T = {
     'goal_btn': 'Goal',
     'yolo': 'YOLO',
     'send': 'Send (Enter)',
+    'attach_images': 'Attach images',
+    'attach_failed': 'Attachment upload failed',
+    'attach_too_large': 'Image too large (max 64 MiB)',
+    'attach_images_only': 'Only image files are supported',
     'cancel': 'Cancel (Esc)',
     'cancel_plain': 'Cancel',
     'delete': 'Delete',
@@ -905,6 +916,10 @@ const __T = {
     'goal_btn': '目标',
     'yolo': 'YOLO',
     'send': '发送 (Enter)',
+    'attach_images': '附加图片',
+    'attach_failed': '附件上传失败',
+    'attach_too_large': '图片过大（上限 64 MiB）',
+    'attach_images_only': '仅支持图片文件',
     'cancel': '取消 (Esc)',
     'cancel_plain': '取消',
     'delete': '删除',
@@ -2079,6 +2094,57 @@ async function send(){
   addUserMsg(v);
   post('/submit',{input:submitInput}).then(r=>{if(r.ok&&r.status===204){fetchStatus();loadSessions();}});
   input.value='';input.style.height='';closeSlashMenu();
+}
+
+// ── attachment upload (tl1813 batch 2) ──
+// POST /attachments already exists (base64 image, 64 MiB ceiling, returns a
+// workspace-relative ref); this is the web entry point the backend never had.
+// The returned ref is inserted as an @ref token into the composer, which the
+// agent's existing multimodal @ref pipeline resolves — display in the
+// transcript is handled by the image renderer.
+const ATTACH_MAX_BYTES=64*1024*1024;
+const btnAttach=$('#btn-attach'), fileIn=$('#file-in');
+function insertAttachRef(ref){
+  const token='@'+ref+' ';
+  const cur=input.value;
+  input.value=cur&&!cur.endsWith(' ')&&cur!==''?cur+' '+token:(cur||'')+token;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';
+  input.focus();
+}
+async function uploadAttachmentFile(f){
+  if(!f.type.startsWith('image/')){showNotice(__('attach_images_only'),'warn');return;}
+  if(f.size>ATTACH_MAX_BYTES){showNotice(__('attach_too_large'),'warn');return;}
+  btnAttach.disabled=true;
+  try{
+    const data=await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=()=>resolve(String(r.result).slice(String(r.result).indexOf(',')+1));
+      r.onerror=()=>reject(r.error||new Error('read failed'));
+      r.readAsDataURL(f);
+    });
+    const resp=await post('/attachments',{data,mime:f.type});
+    if(!resp.ok)throw new Error((await resp.text()).trim()||('HTTP '+resp.status));
+    const j=await resp.json();
+    if(!j||!j.ref)throw new Error('no ref returned');
+    insertAttachRef(j.ref);
+  }catch(err){
+    showNotice(__('attach_failed')+(err&&err.message?' — '+err.message:''),'warn');
+  }finally{
+    btnAttach.disabled=false;
+  }
+}
+async function uploadAttachmentFiles(files){
+  for(const f of Array.from(files||[]))await uploadAttachmentFile(f);
+}
+if(btnAttach&&fileIn){
+  btnAttach.onclick=()=>fileIn.click();
+  fileIn.onchange=()=>{const fs=fileIn.files;uploadAttachmentFiles(fs);fileIn.value='';};
+  // screenshot paste: intercept only when the clipboard carries files, so
+  // normal text paste is untouched
+  input.addEventListener('paste',e=>{
+    const fs=e.clipboardData&&e.clipboardData.files;
+    if(fs&&fs.length){e.preventDefault();uploadAttachmentFiles(fs);}
+  });
 }
 
 input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';updateSlashMenu();});
