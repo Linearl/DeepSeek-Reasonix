@@ -158,5 +158,5 @@ This analysis introduces no silent model/protocol switch or new global retry.
 收益；补齐不透明上游错误的诊断/明确恢复入口；完善搜索来源可用性状态。
 所有动作继续复用当前恢复预算、工具持久化和独立搜索实现。
 
-See [live results and limitations](MULTIPROVIDER_VALIDATION.md). / 具体样本、
+See [live results and limitations](../MULTIPROVIDER_VALIDATION.md). / 具体样本、
 未通过场景及验证边界见实测报告，不能宣布 #9808 的任意端点场景已完全解决。

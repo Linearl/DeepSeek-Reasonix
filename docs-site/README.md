@@ -45,6 +45,12 @@ Windows 无 npx 时可用：`python -m http.server 8000 --directory dist`。
 
 **基址对齐**：构建基址由 `DOCS_BASE_URL` 控制（workflow 中当前为 `/DeepSeek-Reasonix/docs-site/`），并与前端 `desktop/frontend/src/lib/docsSite.ts` 的 `DOCS_SITE_BASE_URL` 常量对齐（命令面板「产品文档」与 F1 跳转用）。Pages 实际启用后若真实路径不同，**两处一起改**。
 
+## 与 site/（上游遗留 Astro 官网）的分工（tl1824 定版）
+
+- **docs-site/（本目录）**：fork 唯一的 GitHub Pages 站，随 `main-v2-stable` 更新的产品文档，fork 持续维护。
+- **site/**：上游遗留的 Astro 营销官网（reasonix.io，由上游 `main-v2` 分支的 `pages.yml` 部署，站点内容指向上游仓库），fork 不维护。任务 1270 已停其依赖更新；**tl1824 起整体归档至 `docs/_archive/site/`**，`.github/workflows/pages.yml` 已注释停用（保留恢复路径：取消注释并恢复目录即可）。
+- 仓库 Pages 发布源 = 本目录（`docs-site-pages.yml`）。恢复 site/ 前先解决两站争用同一 Pages 源的问题（退路见 git 历史中本节旧文）。
+
 ## 已知约束
 
-- 同仓库的 `site/`（Astro 官网，`pages.yml`）也部署 Pages；GitHub 同仓 Pages 只有一个发布源，两者能否共存取决于仓库 Pages 配置（详见 workflow 文件头注释）。若冲突，退路是把 docs-site 发布到独立仓库。
+- GitHub 同仓 Pages 只有一个发布源；当前唯一发布方是本目录的 `docs-site-pages.yml`。

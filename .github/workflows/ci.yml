@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Cheap path gate for pull requests. PRs confined to docs/site/release-notes
+  # Cheap path gate for pull requests. PRs confined to docs/release-notes
   # (or top-level Markdown) skip the heavy Go jobs, and PRs that cannot affect
   # the desktop module skip the desktop jobs. Job-level `if` reports skipped,
   # which satisfies the required status checks (lint, race, test) — a
@@ -28,7 +28,6 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
       desktop: ${{ steps.filter.outputs.desktop }}
-      site: ${{ steps.filter.outputs.site }}
       sdk: ${{ steps.filter.outputs.sdk }}
     steps:
       - uses: actions/checkout@v7
@@ -36,7 +35,7 @@ jobs:
           fetch-depth: 0
       - id: filter
         run: |
-          code=true; desktop=true; site=true; sdk=true
+          code=true; desktop=true; sdk=true
           base=""
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
@@ -46,23 +45,22 @@ jobs:
           if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
             files=$(git diff --name-only "$base" HEAD)
             if [ -n "$files" ]; then
-              code=false; desktop=false; site=false; sdk=false
+              code=false; desktop=false; sdk=false
               # Root-module CI: desktop/ is a separate module, so only the
               # clearly unrelated paths below can skip it. docs-site/ (task
               # 1102 product-docs static site) is a self-contained Node build
               # with no Go/desktop coupling, so it joins the skip set.
-              if echo "$files" | grep -qvE '^(docs/|docs-site/|site/|release-notes/|desktop/|workers/|[^/]+\.md$)'; then code=true; fi
+              if echo "$files" | grep -qvE '^(docs/|docs-site/|release-notes/|desktop/|workers/|[^/]+\.md$)'; then code=true; fi
               # desktop/ imports the root kernel via `replace reasonix => ../`,
               # so only this clearly-unrelated set is safe to skip.
-              if echo "$files" | grep -qvE '^(docs/|docs-site/|site/|release-notes/|workers/|benchmarks/|npm/|[^/]+\.md$)'; then desktop=true; fi
-              if echo "$files" | grep -q '^site/'; then site=true; fi
+              if echo "$files" | grep -qvE '^(docs/|docs-site/|release-notes/|workers/|benchmarks/|npm/|[^/]+\.md$)'; then desktop=true; fi
               # sdk/go is a nested module invisible to root `go test ./...`;
               # its DTOs are generated from internal/extension/protocol, so
               # both paths must trigger the sdk job.
               if echo "$files" | grep -qE '^(sdk/|internal/extension/)'; then sdk=true; fi
             fi
           fi
-          { echo "code=$code"; echo "desktop=$desktop"; echo "site=$site"; echo "sdk=$sdk"; } >> "$GITHUB_OUTPUT"
+          { echo "code=$code"; echo "desktop=$desktop"; echo "sdk=$sdk"; } >> "$GITHUB_OUTPUT"
 
   # The ruleset requires the per-OS check names (test (ubuntu-latest) etc.).
   # A matrix job skipped at job level reports no per-leg checks at all, so
@@ -926,26 +924,9 @@ jobs:
           bash scripts/release-workflows.test.sh
           node scripts/check-single-release-public-contract.mjs
 
-  # The site/ auth client has security-sensitive redirect-validation logic
-  # (safeNext) covered by node:test unit tests. Those tests use only Node
-  # builtins, so no `npm install` is needed — run them directly on every PR so
-  # a regression in redirect validation fails the build instead of shipping.
-  site:
-    needs: changes
-    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.site != 'false')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: site
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-
-      - name: test
-        run: npm test
+  # The site/ Astro job (auth-client node:test) was removed in tl1824 when the
+  # upstream-legacy site/ directory moved to docs/_archive/site/ (deployment
+  # and maintenance had already been retired by task 1270 / docs-site).
 
   govulncheck:
     needs: changes

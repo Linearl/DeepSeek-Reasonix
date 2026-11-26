@@ -178,7 +178,7 @@ Responses 搜索缺少来源是原始终态响应可见的事实；最终测试�
 回放与来源可用性，来源缺失记录为未证明，保留最初严格断言失败的证据。
 
 The OpenCode source comparison and recommended changes are documented in
-[OpenCode recovery comparison](OPENCODE_RECOVERY_COMPARISON.md). These are source
+[OpenCode recovery comparison](_archive/OPENCODE_RECOVERY_COMPARISON.md)（tl1824 归档）. These are source
 findings and Reasonix experiments, not an executed OpenCode-vs-Reasonix benchmark.
 
 ## Confirmed fixes / 已确认修复
