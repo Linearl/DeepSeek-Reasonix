@@ -256,7 +256,9 @@ export const CHECKS = [
   { feature: "任务470 openai 集成测试", file: "internal/provider/openai/image_rejection_test.go", patterns: ["TestStreamAnnotatesInlineImageRejection", "TestRequestHasInlineDataImages"] },
   // tl1587（f2307847a）把 safe 上限调用重写为 boundedSummaryPrefixEnd（分段预算收紧，
   // 段内装不下回退 safe 上限），机制语义未变：锚点随实际形态同步（任务 1002 改锚先例）。
-  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["trigger != CompactionTriggerManual", "boundedSummaryPrefixEnd"] },
+  // tl1719（4f23aadec3，trigger-labels）把 manual 类判据归一为 IsManualClassTrigger（ui/slash/serve
+  // 入口标签进 trigger 串，13 处 manual 类分支同步）——锚点随判据换代，#9572 语义本体未变。
+  { feature: "#9572 摘要安全前缀", file: "internal/agent/compact_projection.go", patterns: ["req.mustFree || !IsManualClassTrigger(trigger)", "boundedSummaryPrefixEnd"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
   // { feature: "#9572 Unknown 网关回退", file: "internal/agent/compact_projection.go", patterns: ["a.lastAdmission().ObservedWindow > 0 || a.contextWindow > 0"] },
   // parked: fork 分支不含该实现（1f8c3fe50 对齐时移除 / 上游另有设计）
