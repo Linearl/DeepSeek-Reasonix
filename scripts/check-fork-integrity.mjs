@@ -636,7 +636,9 @@ export const CHECKS = [
   { feature: "任务530 run_loop 注入点（172 T1 之前，欠回信优先拿轮次）", file: "internal/agent/run_loop.go", patterns: ["maybeNudgeCollabReply"] },
   { feature: "任务530 Options→svc 接线（nil=逐字零行为；gofmt 对齐后改锚 struct 字段声明形态）", file: "internal/agent/services.go", patterns: ["collabReplyNudge *CollabReplyNudgeConfig"] },
   { feature: "任务530 开关全链（config 字段+渲染表+setter）", file: "internal/config/config.go", patterns: ["session_collab_reply_nudge"] },
-  { feature: "任务530 boot 接线（父开关 AND，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "sessionCollabEnabled(cfg) && cfg.Agent.SessionCollabReplyNudge"] },
+  // tl1741（3ae58d0e54）撤 collab 总开关常开后，dial（SessionCollabReplyNudge）是回信提醒唯一接线
+  // 条件（boot.go 现场注释自证）——锚点随条件换代，resolver 后补半边未变。
+  { feature: "任务530 boot 接线（tl1741 起 dial 唯一条件，executor 后补 resolver）", file: "internal/boot/boot.go", patterns: ["collabReplyNudge.ResolveSessionPath = executor.SessionPath", "if cfg.Agent.SessionCollabReplyNudge {"] },
   { feature: "任务530 已读未回扫描的存储读口（settled 不消失）", file: "internal/sessioncollab/sessioncollab.go", patterns: ["func (s *MailStore) InboxMessages"] },
   { feature: "任务530 面板开关+三语文案", file: "desktop/frontend/src/locales/zh.ts", patterns: ["settings.sessionCollabReplyNudge", "settings.sessionCollabReplyNudgeHint"] },
   // ── 任务 549：投影失效窗口治理（观测补口 + 失效即重建 + 面板语义）──
