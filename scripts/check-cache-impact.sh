@@ -39,7 +39,10 @@ else
   base="${CACHE_IMPACT_BASE_SHA:-${BASE_SHA:-}}"
   head="${CACHE_IMPACT_HEAD_SHA:-${HEAD_SHA:-HEAD}}"
   if [[ -z "$base" ]]; then
-    base="$(git merge-base origin/main-v2 "$head" 2>/dev/null || git merge-base main-v2 "$head")"
+    # tl1828 (slop audit F5-2): diff base is the fork mainline. The old
+    # origin/main-v2 fallback stopped moving at the 2026-09 fork point, so a
+    # bare local run diffed months of mainline drift instead of this branch.
+    base="$(git merge-base origin/main-v2-stable "$head" 2>/dev/null || git merge-base main-v2-stable "$head")"
   fi
   diff_base="$base"
   if merge_base="$(git merge-base "$base" "$head" 2>/dev/null)"; then

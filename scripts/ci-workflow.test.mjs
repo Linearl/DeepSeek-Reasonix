@@ -87,3 +87,48 @@ test("all Linux consumers use the prepared build and reject a failed preparation
     assert.equal(condition(body, { ...context, needs: { ...context.needs, "desktop-prepare": { result: "failure" } } }), false);
   }
 });
+
+// tl1828 (slop audit F5-1): the architecture / injection / wails-pin gates used
+// to be serial steps inside lint, so the first red step skipped them all and a
+// repolint failure hid the three gates from PRs indefinitely. They must stay
+// independent jobs AND keep rolling their verdict up into lint.
+test("split gates are independent jobs whose verdicts still gate lint", () => {
+  const skipped = { github: { event_name: "pull_request" },
+    needs: { changes: { outputs: { code: "false", desktop: "false", sdk: "false" } } } };
+  const codeChanged = { github: { event_name: "pull_request" },
+    needs: { changes: { outputs: { code: "true", desktop: "false", sdk: "false" } } } };
+  const push = { github: { event_name: "push" }, needs: { changes: { outputs: {} } } };
+  for (const [name, step] of [
+    ["gate-architecture", "architecture registry check"],
+    ["gate-injection", "injection entrypoints check"],
+    ["gate-wails-pin", "wails version pin"],
+  ]) {
+    const body = job(ci, name);
+    assert.ok(body.includes(`name: ${step}`), name);
+    // Same fail-open change filter as lint: docs-only PRs skip the runner,
+    // a code/desktop/sdk diff runs the gate, and a broken changes job
+    // (empty outputs) fails open to running.
+    assert.equal(condition(body, skipped), false, `${name} should skip docs-only PRs`);
+    assert.equal(condition(body, codeChanged), true, `${name} should run for code PRs`);
+    assert.equal(condition(body, push), true, `${name} should always run on pushes`);
+  }
+  // The gates must not be serial steps of lint again.
+  const lintBody = job(ci, "lint");
+  assert.ok(lintBody.includes("needs: [changes, gate-architecture, gate-injection, gate-wails-pin]"));
+  assert.ok(!lintBody.includes("node scripts/check-architecture.mjs"));
+  assert.ok(!lintBody.includes("node scripts/check-injection-entrypoints.mjs"));
+  assert.ok(!lintBody.includes("bash scripts/check-wails-pin.sh"));
+  // The aggregate step folds gate verdicts into lint: success or a
+  // change-filter skip passes; failure, cancellation or a missing signal
+  // (empty result = a rewired aggregate that stopped reading needs) is red.
+  const script = shellStep(lintBody, "Verify split gates succeeded or were change-skipped");
+  const run = env => spawnSync("bash", ["-e", "-c", script], { env: { ...process.env, ...env } }).status;
+  assert.equal(run({ ARCH_RESULT: "success", INJECTION_RESULT: "success", WAILS_RESULT: "success" }), 0);
+  assert.equal(run({ ARCH_RESULT: "skipped", INJECTION_RESULT: "success", WAILS_RESULT: "skipped" }), 0);
+  for (const bad of ["failure", "cancelled"]) {
+    assert.notEqual(run({ ARCH_RESULT: bad, INJECTION_RESULT: "success", WAILS_RESULT: "success" }), 0, `ARCH_RESULT=${bad}`);
+    assert.notEqual(run({ ARCH_RESULT: "success", INJECTION_RESULT: bad, WAILS_RESULT: "success" }), 0, `INJECTION_RESULT=${bad}`);
+    assert.notEqual(run({ ARCH_RESULT: "success", INJECTION_RESULT: "success", WAILS_RESULT: bad }), 0, `WAILS_RESULT=${bad}`);
+  }
+  assert.notEqual(run({}), 0, "missing gate results must fail the aggregate");
+});
