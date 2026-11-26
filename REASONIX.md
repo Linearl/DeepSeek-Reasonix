@@ -131,13 +131,13 @@ Run these **before every commit** to catch the fastest CI failures locally:
 ```bash
 gofmt -w .                          # catches gofmt (saves ~13s CI)
 go vet ./...                        # catches vet warnings (saves ~52s CI/lint)
-make lint                           # golangci-lint at CI's pin + repolint + structure gates
+make lint                           # golangci-lint at CI's pin + repolint + structure gates + docs links
 go test ./internal/tool/builtin/ ./internal/boot/  # catches tool/boot test breaks
 ```
 
 `make lint` runs the gates CI runs — golangci-lint at the version in
 `.golangci-version`, repolint, plus the architecture / injection-entrypoints /
-wails-pin checks;
+wails-pin / docs-links checks;
 `make lint-install` installs it. Do not skip it: a `modernize` finding never
 shows up in `go vet`, and the CI round trip that catches it instead costs ten
 minutes.

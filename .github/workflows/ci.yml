@@ -896,6 +896,13 @@ jobs:
       # 上游合并静默丢块，先修再滚合。
       - name: fork integrity anchors
         run: node scripts/check-fork-integrity.mjs
+      # tl1822：文档机械扫查——md 相对链接存在性 + scripts|cmd|internal|tools|workers
+      # 路径引用存在性（升级自 20261126 文档时效审计 tmp/doc_audit_scan.py，实测口径
+      # 168 md/坏链10/失效引用6）。零误报规则 + 存量基线豁免（脚本内 BASELINE 登记），
+      # 新增坏链/失效引用即红。排除清单与基线理由见脚本头注；回放验收
+      # pre-fix=10坏链+6失效引用全红 见 workspace tl1822 实施报告。
+      - name: docs links check
+        run: node scripts/check-docs-links.mjs
 
       - name: wails version pin
         run: |
