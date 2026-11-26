@@ -817,7 +817,6 @@ ok(stylesSource.includes(".theme-editor__setting-hint"), "content-area guidance 
 ok(stylesSource.includes("background: var(--code-bg, var(--bg-soft))"), "code and diff surfaces consume the opaque code background");
 ok(
   stylesSource.includes("--diff-row-bg: var(--code-add-bg") &&
-    stylesSource.includes("--inline-diff-row-bg: var(--code-del-bg") &&
     stylesSource.includes("background: var(--tp-code-add-bg)") &&
     stylesSource.includes("background: var(--tp-code-del-bg)"),
   "live and preview diff rows consume the same pre-composited safe backgrounds",

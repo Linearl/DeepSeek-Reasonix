@@ -334,11 +334,6 @@ export function setSessionMonitorEnabled(next: boolean): void {
   for (const listener of enabledListeners) listener(next);
 }
 
-export function onSessionMonitorEnabledChange(cb: (enabled: boolean) => void): () => void {
-  enabledListeners.add(cb);
-  return () => enabledListeners.delete(cb);
-}
-
 export function isSessionMonitorOpen(): boolean {
   return monitorOpen;
 }

@@ -3,7 +3,7 @@
     "note": "tl1807 批次刷新（2026-11-25，基点 edd56a7ab5，全量 tsc 实跑重建）：登记 tsconfig.test.json 面（src/__tests__ + bench/transcript-layout.tsx）的全部存量类型诊断。本批构成=1061 条诊断 / 578 对 file+错误码，分布 385 个文件；Top 错误码 TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22。批次依据：2026-10-10 任务 745 立账（226 对/472 条）后测试面持续新增换代，基线未跟，多轮会话申报「基线外 N 条=预存漂移面」无批次依据（预存红集中清零-实施报告-20261124.md §五.5 实录 574/572 条、§八.3 候拍板；本批用户拍板五件批落地）。自本批起名单外新诊断即红（tsc-test-gate.mjs 比对，无自动刷新通道，条目只减不增——还清后人工核对删除对应行）。已知盲区（刻意取舍）：同文件同错误码的新增诊断会被基线吸收，换取行号/文案变化不产生假红。",
     "generated": "2026-11-25",
     "commit": "5cee2b49b",
-    "pairs": 575,
+    "pairs": 574,
     "diagnostics": 1061,
     "files": 385,
     "topCodes": "TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22",
@@ -21,6 +21,13 @@
         "pairs": 578,
         "diagnostics": 1061,
         "note": "tl1807 批次刷新：两月漂移一次性立账（1061 条全量），新增即红"
+      },
+      {
+        "generated": "2026-11-26",
+        "commit": "tl1826",
+        "pairs": 576,
+        "diagnostics": 1061,
+        "note": "tl1826 首批清理还清 2 对（只减不增）：transcript-residency TS6133（文件随 A3 删除，诊断不可能再产生）、resource-governance TS6133（测试随 A2 修剪后该文件零诊断）；task686 TS2345+TS6133 经实跑核为仍存在的预存诊断（此前被条目吸收非还清），条目保留——tl701 pairs 同步先例"
       }
     ]
   },
@@ -516,9 +523,6 @@
     ],
     "src/__tests__/remote-tab-opened.test.tsx": [
       "TS2739"
-    ],
-    "src/__tests__/resource-governance.test.ts": [
-      "TS6133"
     ],
     "src/__tests__/rewind-preflight-classification.test.ts": [
       "TS6133"
@@ -1258,9 +1262,6 @@
       "TS2454"
     ],
     "src/__tests__/transcript-measurement-revision.test.tsx": [
-      "TS6133"
-    ],
-    "src/__tests__/transcript-residency.test.ts": [
       "TS6133"
     ],
     "src/__tests__/transcript-row-render-storm.test.tsx": [

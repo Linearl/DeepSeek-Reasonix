@@ -306,8 +306,3 @@ export function invocationSegmentsFromMessage(
   }
   return hydratedSlashFallbackSegments(display, invocationMetadata) ?? [{ type: "text", content: display, start: 0 }];
 }
-
-export function invocationDisplayFromMessage(displayText: string, submitText?: string): InvocationDisplay | null {
-  const segment = invocationSegmentsFromMessage(displayText, submitText).find((item) => item.type === "invocation");
-  return segment?.type === "invocation" ? segment.invocation : null;
-}

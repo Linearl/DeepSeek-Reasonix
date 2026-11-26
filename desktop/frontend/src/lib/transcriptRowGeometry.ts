@@ -27,25 +27,12 @@ export type TranscriptRowLayoutVariant =
   | "static"
   | "text-flow";
 
-export type TranscriptEstimateSource = "exact" | "calibrated" | "static";
-
 export type TranscriptGeometryEnvironment = {
   /** Actual readable transcript column, not the native window width. */
   contentWidth?: number;
   /** Content/code/metadata font families, sizes, and line heights. */
   typographySignature: string;
 };
-
-const TRANSCRIPT_LAYOUT_VARIANTS: readonly TranscriptRowLayoutVariant[] = [
-  "reasoning-summary", "reasoning-heading-only", "reasoning-expanded",
-  "tool-collapsed", "tool-expanded", "tool-batch-collapsed", "tool-batch-expanded",
-  "tool-group-collapsed", "tool-group-expanded", "compaction-collapsed",
-  "compaction-expanded", "static", "text-flow",
-];
-
-export function isTranscriptRowLayoutVariant(value: unknown): value is TranscriptRowLayoutVariant {
-  return typeof value === "string" && TRANSCRIPT_LAYOUT_VARIANTS.includes(value as TranscriptRowLayoutVariant);
-}
 
 export const TRANSCRIPT_COMPACT_HEIGHTS = {
   "reasoning-summary": 64,

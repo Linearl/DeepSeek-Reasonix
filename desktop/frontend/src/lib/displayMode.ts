@@ -23,9 +23,3 @@ export function hydrateDisplayMode(mode: string | undefined): void {
   if (next === getDisplayMode()) return;
   setDisplayMode(next);
 }
-
-export function onDisplayModeChange(cb: (mode: DisplayMode) => void): () => void {
-  const handler = (e: Event) => cb((e as CustomEvent).detail as DisplayMode);
-  window.addEventListener(DISPLAY_MODE_EVENT, handler);
-  return () => window.removeEventListener(DISPLAY_MODE_EVENT, handler);
-}

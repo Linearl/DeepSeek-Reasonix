@@ -12,9 +12,6 @@
 
 import { FORK_REPO_SLUG } from "./forkLinks";
 
-/** 问号菜单里走 gh-issue-submit 链路的两个入口（bug=问题上报，feature=提需求）。 */
-export type GhIssueKind = "bug" | "feature";
-
 /**
  * 拼装新会话 composer 的预填文本。
  *
@@ -36,5 +33,3 @@ export const HELP_MENU_ITEM_KEYS = [
   "exportLogs",
   "about",
 ] as const;
-
-export type HelpMenuItemKey = (typeof HELP_MENU_ITEM_KEYS)[number];

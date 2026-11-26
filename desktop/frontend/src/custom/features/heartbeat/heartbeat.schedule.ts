@@ -135,10 +135,6 @@ export function parseCalendarSchedule(interval?: string): CalendarSchedule | nul
   return parseCalendarScheduleImpl(interval);
 }
 
-export function calendarDateFor(year: number, month: number, day: number, schedule: CalendarSchedule): Date {
-  return calendarDate(year, month, day, schedule);
-}
-
 export function nextCalendarRunImpl(schedule: CalendarSchedule, after: Date, anchor: Date): Date {
   return nextCalendarRun(schedule, after, anchor);
 }

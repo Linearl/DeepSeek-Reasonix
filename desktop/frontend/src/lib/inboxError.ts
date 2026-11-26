@@ -24,7 +24,6 @@ const CODE_INDEX = {
 
 type InboxErrorCode = keyof typeof CODE_INDEX;
 const UNKNOWN_INDEX = 13;
-const STEER_QUEUED_INDEX = 14;
 const CANCEL_FAILED_INDEX = 15;
 
 const ERROR_COPY: Record<Locale, readonly string[]> = {
@@ -149,10 +148,6 @@ export function formatInboxError(error: unknown, locale: Locale): string {
   if (!code) return raw;
   const index = CODE_INDEX[code as InboxErrorCode];
   return ERROR_COPY[locale][index ?? UNKNOWN_INDEX];
-}
-
-export function inboxSteerQueuedMessage(locale: Locale): string {
-  return ERROR_COPY[locale][STEER_QUEUED_INDEX];
 }
 
 export function isInboxItemMissing(error: unknown): boolean {

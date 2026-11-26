@@ -35,10 +35,6 @@ export type ThemeSelection =
 let experienceCache: ThemeExperienceView | null = null;
 let previewDepth = 0;
 
-export function getCachedThemeExperience(): ThemeExperienceView | null {
-  return experienceCache;
-}
-
 /**
  * Return the configured base style that React owners should mirror.
  * An active pack's effectiveStyle is intentionally excluded: it is a live DOM

@@ -180,15 +180,6 @@ export function noteTranscriptRowCounts(mounted: number, total: number): void {
   mountedRows = { mounted, total };
 }
 
-/** Terminal state of one transcript layout-recovery request (done /
- *  cancelled / expired), reported by the scroll arbiter (#8657). */
-export function noteTranscriptRecoveryTerminal(state: { outcome: "done" | "cancelled" | "expired"; reason?: string }): void {
-  transcriptRecovery[state.outcome] += 1;
-  transcriptRecovery.lastOutcome = state.outcome;
-  transcriptRecovery.lastReason = state.reason;
-  transcriptRecoverySeen = true;
-}
-
 /** Task 137: a tool payload preview was truncated to its byte/block budget. */
 export function noteToolPreviewTruncation(): void {
   resourceBudget.toolPreviewTruncations += 1;

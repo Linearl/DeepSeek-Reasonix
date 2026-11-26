@@ -207,10 +207,6 @@ export function getActiveThemePack(): ThemePackView | null {
   return activePack;
 }
 
-export function getThemeScene(): ThemeScene {
-  return activeScene;
-}
-
 export function getBaseAppearance(): { theme: Theme; style: ThemeStyle } | null {
   return baseAppearance ? { ...baseAppearance } : null;
 }

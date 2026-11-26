@@ -76,26 +76,6 @@ export function dismissToolRecoveryCalls(scope: string, keys: readonly string[])
   if (changed) commit();
 }
 
-// 已忽略键并入指定 scope（不 commit，调用方负责在自己的渲染批次里用）。用于
-// 快照到达后即时并入 tab 键下的旧账（rekeyToolRecoveryDismissals 的异步窗口
-// 里点击忽略的极端时序），避免「点击后一次渲染闪现再消失」。
-export function mergeToolRecoveryDismissals(scope: string, keys: ReadonlySet<string>): void {
-  if (keys.size === 0) return;
-  let set = dismissedByScope.get(scope);
-  if (!set) {
-    set = new Set();
-    dismissedByScope.set(scope, set);
-  }
-  keys.forEach((key) => set!.add(key));
-}
-
-// 快照 scope 下某键是否被忽略（含 legacyTabScope 下的旧账并入）——纯判定不
-// commit，供渲染批次内使用（rekey 未 commit 的竞态窗口）。
-export function legacyTabDismissedKeys(scope: string, legacyTabScope: string): ReadonlySet<string> | undefined {
-  if (scope === legacyTabScope) return undefined;
-  return dismissedByScope.get(legacyTabScope);
-}
-
 // 快照到达时统一 scope：tab 键下的旧账（快照到达前点击忽略的极端时序）搬到
 // session 键，避免同一会话两套键各记一半。搬迁即 commit（订阅方重渲染）。
 export function rekeyToolRecoveryDismissals(fromTabId: string, sessionPath?: string): void {

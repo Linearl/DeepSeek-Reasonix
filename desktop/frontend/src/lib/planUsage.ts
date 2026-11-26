@@ -8,8 +8,6 @@
 /** Window display keys; unknown wire keys fall through to their raw name. */
 export const PLAN_USAGE_WINDOW_KEYS = ["five_hour", "weekly", "monthly"] as const;
 
-export type PlanUsageWindowKey = (typeof PLAN_USAGE_WINDOW_KEYS)[number];
-
 export type PlanUsageWindowView = {
   window: string;
   percent: number | null;

@@ -3187,10 +3187,6 @@ export function __emitMockTopicActivation(event: TopicActivationEvent): void {
   mockTopicActivationListeners.forEach((listener) => listener(event));
 }
 
-export function __emitMockTabMeta(event: TabMetaRefreshEvent): void {
-  mockTabMetaListeners.forEach((listener) => listener(event));
-}
-
 export function onSessionRecovered(cb: (payload: SessionRecoveryEvent) => void): () => void {
   if (realApp() && typeof window !== "undefined" && window.runtime) {
     return window.runtime.EventsOn("session:recovered", (payload?: unknown) => cb((payload ?? {}) as SessionRecoveryEvent));

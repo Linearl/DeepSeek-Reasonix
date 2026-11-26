@@ -144,11 +144,6 @@ export function isBackingOff(provider: ProviderView): boolean {
   return Boolean(state && Date.now() < state.retryAt);
 }
 
-/** Clear cache/backoff for one exact provider request identity. */
-export function invalidateProviderCache(provider: ProviderView): void {
-  invalidateKey(cacheKey(provider));
-}
-
 /** Clear every provider identity that resolves credentials through this env. */
 export function invalidateProviderCacheByAPIKeyEnv(apiKeyEnv: string): void {
   const normalized = apiKeyEnv.trim();

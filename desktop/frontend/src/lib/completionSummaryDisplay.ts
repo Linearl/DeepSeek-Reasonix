@@ -1,15 +1,5 @@
 import type { Translator } from "./i18n";
 
-export function completionVerdictLabel(verdict: string, t: Translator): string {
-  switch (verdict.trim().toLowerCase()) {
-    case "complete": return t("task.state.succeeded");
-    case "partial": return t("completion.verdictPartial");
-    case "blocked": return t("completion.verdictBlocked");
-    case "continue": return t("notice.decisionRecoveryContinue");
-    default: return t("projectTree.status.waitingConfirmation");
-  }
-}
-
 export function completionReviewLabel(review: string, t: Translator): string {
   switch (review.trim().toLowerCase()) {
     case "none": return t("common.none");

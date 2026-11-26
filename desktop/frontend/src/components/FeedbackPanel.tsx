@@ -24,24 +24,11 @@ let feedbackEnabled = false;
 const openListeners = new Set<(open: boolean) => void>();
 const enabledListeners = new Set<(enabled: boolean) => void>();
 
-export function isFeedbackEnabled(): boolean {
-  return feedbackEnabled;
-}
-
 export function setFeedbackEnabled(next: boolean): void {
   if (feedbackEnabled === next) return;
   feedbackEnabled = next;
   if (!next) setFeedbackOpen(false);
   for (const listener of enabledListeners) listener(next);
-}
-
-export function onFeedbackEnabledChange(cb: (enabled: boolean) => void): () => void {
-  enabledListeners.add(cb);
-  return () => enabledListeners.delete(cb);
-}
-
-export function isFeedbackOpen(): boolean {
-  return feedbackOpen;
 }
 
 export function setFeedbackOpen(next: boolean): void {

@@ -30,18 +30,6 @@ export function workspaceTopLevelDirPath(path: string): string {
   return first ? `${first}/` : "";
 }
 
-export function workspaceShortCwd(cwd?: string): string {
-  if (!cwd) return "";
-  const parts = cwd.split("/").filter(Boolean);
-  return parts.length <= 2 ? cwd : `…/${parts.slice(-2).join("/")}`;
-}
-
-export function workspaceFormatBytes(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  if (bytes >= 1024) return `${Math.ceil(bytes / 1024)} KB`;
-  return `${bytes} B`;
-}
-
 export function workspaceFormatCommitDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;

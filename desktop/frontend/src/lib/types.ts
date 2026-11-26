@@ -316,11 +316,6 @@ export interface PromptIdentity {
   kind: PromptKind;
 }
 export type PromptLifecycle = "pending" | "submitting" | "resolved" | "expired";
-export interface DecisionCardState {
-  identity: PromptIdentity;
-  lifecycle: PromptLifecycle;
-  failureNoticeShown?: boolean;
-}
 
 export interface WireAskQuestion {
   id: string;
@@ -1420,25 +1415,6 @@ export function normalizeTokenMode(mode?: string): TokenMode {
   if (m === "delivery" || m === "deliver" || m === "quality") return "delivery";
   // balanced | full | empty | unknown → balanced wire value "full"
   return "full";
-}
-
-/** Canonical product id for the three Agent role settings. */
-export function normalizeAgentPreset(mode?: string): AgentPreset {
-  const wire = normalizeTokenMode(mode);
-  if (wire === "economy" || wire === "light") return "light";
-  if (wire === "delivery") return "delivery";
-  return "balanced";
-}
-
-export function tokenModeFromAgentPreset(preset: AgentPreset): TokenMode {
-  switch (preset) {
-    case "light":
-      return "economy";
-    case "delivery":
-      return "delivery";
-    default:
-      return "full";
-  }
 }
 
 // Mode is the compatibility string for two independent composer axes:
@@ -3068,15 +3044,6 @@ export interface ForkReleaseItem {
 export interface ForkReleaseList {
   releases: ForkReleaseItem[];
   failed: boolean;
-}
-
-export interface UpdateDownloadResult {
-  requestId: string;
-  version: string;
-  channel: string;
-  path: string;
-  size: number;
-  sha256: string;
 }
 
 export interface UpdateProgress {
