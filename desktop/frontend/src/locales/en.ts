@@ -465,6 +465,7 @@ export const en = {
   "topicBar.exportFailed": "Export failed: {error}",
   "topicBar.openIn": "Open in…",
   "topicBar.copyInfo": "Copy",
+  "topicBar.copyName": "Conversation name",
   "topicBar.copySessionPath": "Session path",
   "topicBar.copyLogPath": "Log path",
   "topicBar.copySessionId": "Session ID",

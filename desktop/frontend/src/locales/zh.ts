@@ -456,6 +456,7 @@ export const zh: Record<DictKey, string> = {
   "topicBar.exportFailed": "导出失败：{error}",
   "topicBar.openIn": "打开方式",
   "topicBar.copyInfo": "复制",
+  "topicBar.copyName": "对话名称",
   "topicBar.copySessionPath": "会话路径",
   "topicBar.copyLogPath": "日志路径",
   "topicBar.copySessionId": "会话 ID",
