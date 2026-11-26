@@ -128,6 +128,11 @@ jobs:
         if: env.RUN_STEPS == 'true'
         run: go build ./...
 
+      # tl1819 预存红登记制接线：go test -json 落盘后由
+      # check-known-failures.mjs 裁决——登记表(scripts/known-failures.json)
+      # 内红放行、清单外红阻断（新红必须先登记或修复）、空输出/非零退出但零
+      # fail 事件 fail-closed。Windows push 的 full suite 腿仍走裸 go test，
+      # 未接本门（登记表当前唯一条目属 desktop 模块，根套件三腿本就看不见它）。
       - name: test
         if: env.RUN_STEPS == 'true' && runner.os != 'Windows'
         env:
@@ -135,7 +140,18 @@ jobs:
           # regression there silently tanks the cache hit rate the project is
           # built around.
           REASONIX_RELEASE_CACHE_GUARD: "1"
-        run: go test ./...
+        run: |
+          status=0
+          go test -json ./... > "$RUNNER_TEMP/gotest.json" || status=$?
+          if [ ! -s "$RUNNER_TEMP/gotest.json" ]; then
+            echo "go test produced no JSON output — refusing to pass (fail-closed)"
+            exit 1
+          fi
+          if [ "$status" -ne 0 ] && ! grep -q '"Action":"fail"' "$RUNNER_TEMP/gotest.json"; then
+            echo "go test exited $status with no fail events — refusing to pass (fail-closed)"
+            exit 1
+          fi
+          node scripts/check-known-failures.mjs --from-file "$RUNNER_TEMP/gotest.json"
 
       # Pull requests run a Windows smoke suite: the packages that actually
       # carry *_windows.go code, the startup/checkpoint packages with portable
@@ -875,6 +891,12 @@ jobs:
       - name: injection entrypoints check
         run: node scripts/check-injection-entrypoints.mjs
 
+      # tl1819 出包硬门：fork-only 锚清单在主线上强制执行（与 make lint、两个
+      # 出包脚本 desktop-build.sh / build-local-installer.sh 同源同门）。锚红=
+      # 上游合并静默丢块，先修再滚合。
+      - name: fork integrity anchors
+        run: node scripts/check-fork-integrity.mjs
+
       - name: wails version pin
         run: |
           bash scripts/check-wails-pin.sh
@@ -920,7 +942,9 @@ jobs:
             .github/workflows/docs-impact.yml \
             .github/workflows/transcript-native-smoke.yml \
             .github/workflows/ci.yml
-          node --test scripts/desktop-release-artifacts.test.mjs scripts/ci-workflow.test.mjs scripts/check-architecture.test.mjs
+          # tl1819：fork-integrity / known-failures 两门成为出包硬门后，其冒烟
+          # 测试随本行进 CI（自测红=门本身坏了，先修门）。
+          node --test scripts/desktop-release-artifacts.test.mjs scripts/ci-workflow.test.mjs scripts/check-architecture.test.mjs scripts/check-fork-integrity.test.mjs scripts/check-known-failures.test.mjs
           bash scripts/release-workflows.test.sh
           node scripts/check-single-release-public-contract.mjs
 

@@ -1,7 +1,7 @@
 {
   "_meta": {
     "note": "预存红登记制（2026-11-15 体系补强件①，见 docs/reasonix/report/测试与QA验证体系不足分析-20261115.md §3.1）：测试红必须先登记后放行。entries 逐笔补录，每条须带 source（tl 号/出包台账/回板块）与 registered 日期；check-known-failures.mjs 读 go test -json 输出对照本清单：清单内红放行、清单外红 exit 1、清单内绿提示退役。禁止无 source 登记；禁止登记后不跟进修复。",
-    "matched_by": "package + test 精确匹配（含 \"/\" 子测试路径）；test 省略 = 包级失败（compile/setup fail）"
+    "matched_by": "package + test 精确匹配（含 \"/\" 子测试路径）；test 省略 = 包级失败（compile/setup fail）。真实 go test -json 对失败包会附发无 Test 的包级聚合事件：包内任一测试级命中或该包包级条目命中时，聚合随包放行（tl1819，scratch 必败模块实证 2026-11-26）"
   },
   "entries": [
     {

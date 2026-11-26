@@ -81,8 +81,26 @@ GO_TEST_TIMEOUT := 30m
 # runs; 60m still leaves real hangs to the caller's own kill switch.
 DESKTOP_TEST_TIMEOUT := 60m
 
+# tl1819: test 出口接预存红登记制——go test -json 落盘后由
+# scripts/check-known-failures.mjs 裁决：清单(scripts/known-failures.json,
+# in-repo 权威源)内红放行（REGISTERED_FAIL 逐条打印）、清单外红 exit 1（新红
+# 阻断，先登记或修复）、清单内绿提示退役（RECOVERED）。两条 fail-closed：
+# go test 无 JSON 产出=环境故障不许过；go test 非零退出但零 fail 事件=构建/
+# 工具链故障不许过（同 go-test-triage.sh 判据）。原始 JSON 留在
+# gotest-last.json（.gitignore 已收）供取证。代价：本目标不再直出逐测试的
+# 人类可读输出——看过程用 `tail -f gotest-last.json`，看红用 triage 系目标。
+GOTEST_LAST_LOG := gotest-last.json
+
 test:
-	go test -timeout $(GO_TEST_TIMEOUT) ./...
+	@echo "== make test: go test -json -> $(GOTEST_LAST_LOG); verdict by scripts/check-known-failures.mjs"
+	@status=0; go test -timeout $(GO_TEST_TIMEOUT) -json ./... > "$(GOTEST_LAST_LOG)" || status=$$?; \
+	if [ ! -s "$(GOTEST_LAST_LOG)" ]; then \
+		echo "make test: go test produced no JSON output — refusing to pass (fail-closed)"; exit 1; fi; \
+	if [ "$$status" -ne 0 ] && ! grep -q '"Action":"fail"' "$(GOTEST_LAST_LOG)"; then \
+		echo "make test: go test exited $$status with no fail events — refusing to pass (fail-closed)"; exit 1; fi; \
+	node scripts/check-known-failures.mjs --from-file "$(GOTEST_LAST_LOG)"; verdict=$$?; \
+	echo "make test: go test exit=$$status verdict=$$verdict (raw json: $(GOTEST_LAST_LOG))"; \
+	exit $$verdict
 
 # tl1788 pattern 5: same package sets, but every failing package gets
 # isolated re-runs (default 3 attempts) so load-sensitive flaky tests

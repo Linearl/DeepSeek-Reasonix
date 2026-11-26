@@ -84,6 +84,13 @@ export function loadRegistry(path = DEFAULT_REGISTRY) {
  * 三类判定。matched 记录命中的清单 key（供 RECOVERED 对减）；
  * ranPackages 收集本轮出现过 run（或 fail）事件的包——只有真实运行过的包
  * 才能谈「已愈」，没跑过的包不进 RECOVERED（防「没跑=绿」假象）。
+ *
+ * tl1819 修复（真实 go test -json 形态实证 2026-11-26，scratch 必败模块）：
+ * 测试失败时 go 会同时发测试级 fail 事件（含 Test）与无 Test 字段的包级
+ * 聚合 fail 事件。聚合事件不含新信息——包内任一测试级失败命中清单、或清单
+ * 存在该包包级条目时，聚合随包放行；否则（典型=compile/setup fail，零测试
+ * 事件）维持独立包级判定。未修复时登记红照样被自家聚合事件拦下，放行语义
+ * 失灵（此前零消费方从未暴露）。
  */
 export function classify(events, registry) {
   const ranPackages = new Set();
@@ -102,14 +109,23 @@ export function classify(events, registry) {
       failed.push({ package: event.Package, test: typeof event.Test === "string" ? event.Test : null });
     }
   }
+  const pkgHasMatchedTestFail = new Set();
+  for (const failure of failed) {
+    if (failure.test === null) continue;
+    if (registry.seen.has(`${failure.package}\x00${failure.test}`)) pkgHasMatchedTestFail.add(failure.package);
+  }
   const matched = new Set();
   const registered = [];
   const unregistered = [];
   for (const failure of failed) {
     const testKey = `${failure.package}\x00${failure.test ?? ""}`;
     const pkgKey = failure.test === null ? `${failure.package}\x00` : null;
-    if (registry.seen.has(testKey) || (pkgKey !== null && registry.seen.has(pkgKey))) {
-      matched.add(registry.seen.has(testKey) ? testKey : pkgKey);
+    const registeredFail =
+      registry.seen.has(testKey) ||
+      (pkgKey !== null && (registry.seen.has(pkgKey) || pkgHasMatchedTestFail.has(failure.package)));
+    if (registeredFail) {
+      if (registry.seen.has(testKey)) matched.add(testKey);
+      else if (pkgKey !== null && registry.seen.has(pkgKey)) matched.add(pkgKey);
       registered.push(failure);
     } else {
       unregistered.push(failure);

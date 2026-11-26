@@ -23,6 +23,8 @@
 coverage.out
 cpu.prof
 mem.prof
+# tl1819: make test 的 go test -json 落盘（check-known-failures.mjs 取证用）
+/gotest-last.json
 
 # Wails desktop artifacts
 /desktop/build/*
