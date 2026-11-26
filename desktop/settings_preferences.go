@@ -913,13 +913,9 @@ func (a *App) SetDecisionPatternAutoApprove(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetDecisionPatternAutoApprove(enabled) })
 }
 
-// SetExperimentalSafetyCostControl toggles the merged unattended-safety
-// switch (task 517): one「安全 / 成本控制」knob for the task-244 B1/B2/B3
-// guards. B1 reads the saved switch at call time (no restart); B2/B3 ride
-// boot snapshots — sessions rebuild on restart.
-func (a *App) SetExperimentalSafetyCostControl(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalSafetyCostControl(enabled) })
-}
+// tl1816：SetExperimentalSafetyCostControl 随总开关退役——「安全 / 成本控制」
+// 的唯一控制面=三个细粒度子开关（SetSafetyIdleTerminate/SetSafetyLoopStreakNote/
+// SetSafetyEventWaitRecheck，722 细粒度口径；总开关一次性迁移见 load.go）。
 
 // SetSafetyIdleTerminate writes the B1 sub-switch override (task 722).
 // Effective at the next heartbeat run — the B1 gate reads the saved config at

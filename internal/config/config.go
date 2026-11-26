@@ -2448,14 +2448,15 @@ type AgentConfig struct {
 	// is byte-identical to the pre-369 surface.
 	ExperimentalSelectionActions bool `toml:"experimental_selection_actions"`
 
-	// ExperimentalSafetyCostControl is the single merged unattended-safety
-	// switch (task 517): one user-understandable「安全 / 成本控制」knob gating
-	// all three task-244 B-group guards —
-	//   B1 heartbeat idle self-terminate (unattended burn guard),
-	//   B2 loop neutral "Continue." note (loop-stall guard), and
-	//   B3 event_wait return-time recheck (lost-wakeup guard).
-	// Off by default (fork rule 2): with the switch off every gate reads
-	// false — byte-identical to the pre-517 all-off baseline.
+	// ExperimentalSafetyCostControl is the RETIRED task-517 master switch
+	// (「安全 / 成本控制」): tl1816 (plan A, one-shot migration) retired it —
+	// the three task-722 fine-grained sub-switches below are the only control
+	// surface now. The field stays decode-only so old configs still load: at
+	// load, migrateSafetyCostControlMasterRetire materializes the master value
+	// into every nil sub-switch (behaviour bit-identical to the old inherit
+	// semantics) and the next save drops the key (the render face no longer
+	// writes it). No setter writes it; no gate reads it (the Effective helpers
+	// below read the sub-switches only).
 	ExperimentalSafetyCostControl bool `toml:"experimental_safety_cost_control"`
 	// ExperimentalAutonomousIdleTerminate / ExperimentalLoopStreakNote /
 	// ExperimentalEventWaitRecheck are the legacy task-244 B1/B2/B3 keys,
@@ -2463,19 +2464,21 @@ type AgentConfig struct {
 	// migrateSafetyCostControlMerge folds any legacy true into
 	// ExperimentalSafetyCostControl at load and clears them, so the next save
 	// carries only the merged key (task 517; task 449 precedent).
+	// tl1816：合并键本身亦退役——fold 后由
+	// migrateSafetyCostControlMasterRetire 一次性写实到三子键。
 	ExperimentalAutonomousIdleTerminate bool `toml:"experimental_autonomous_idle_terminate"`
 	ExperimentalLoopStreakNote          bool `toml:"experimental_loop_streak_note"`
 	ExperimentalEventWaitRecheck        bool `toml:"experimental_event_wait_recheck"`
 
 	// SafetyIdleTerminate / SafetyLoopStreakNote / SafetyEventWaitRecheck are
-	// the task-722 fine-grained sub-switches under the merged safety/cost
-	// master: one per B-group guard, each an explicit override. nil (the
-	// default — the key is absent from config.toml) means "follow
-	// experimental_safety_cost_control", so pre-722 configs keep their exact
-	// behaviour and the master switch stays the one-knob control. A non-nil
-	// value wins over the master, which is what makes 开总关子 / 关总开子
-	// expressible. The Effective helpers below are the ONLY read path —
-	// reading the raw fields directly would silently skip the inherit.
+	// the task-722 fine-grained sub-switches of the「安全 / 成本控制」card: one
+	// per B-group guard, each an explicit value. tl1816 retired the task-517
+	// master they used to inherit from: at load every nil sub-switch is
+	// materialized with the master's last value (plan A one-shot — pre-722 and
+	// 722-era configs keep their exact behaviour), and after that a
+	// hand-deleted line reads off (the retired master's own default). The
+	// Effective helpers below are the ONLY read path — reading the raw fields
+	// directly would silently skip the explicit value.
 	SafetyIdleTerminate    *bool `toml:"safety_idle_terminate"`
 	SafetyLoopStreakNote   *bool `toml:"safety_loop_streak_note"`
 	SafetyEventWaitRecheck *bool `toml:"safety_event_wait_recheck"`

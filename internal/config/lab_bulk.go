@@ -172,8 +172,9 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	"standardContinuation": func(c *Config, on bool) error { return c.SetStandardContinuation(on) },
 	// tl 1105：中断自动续轮（默认关；outcome_unknown 中断→一次宿主续轮）。
 	"interruptedAutoResume": func(c *Config, on bool) error { return c.SetInterruptedAutoResume(on) },
-	"safetyCostControl":     func(c *Config, on bool) error { return c.SetExperimentalSafetyCostControl(on) },
-	"stalledIntentNudge":    func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
+	// tl1816：safetyCostControl 总开关注销出批量面（setter 随总开关退役）——
+	// 「安全 / 成本控制」批量面由三子开关成员行承载（722 细粒度口径）。
+	"stalledIntentNudge": func(c *Config, on bool) error { return c.SetStalledIntentNudge(on) },
 	// ── memory-context（记忆/上下文）──
 	// tl-1193b：pinned 常驻层索引化（未稳定档，默认关）。批量开=允许 plan E
 	// 的索引行形态+按需召回随重启生效——关态逐字节一致（铁律 2），写入面
@@ -225,11 +226,14 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 //     前端转 feOnly 展示行，无批量面）。
 //   - tl1741：autopilot / collabHub / sessionStorage 排除条目随撤开关移除
 //     （键退役或档位行撤出实验室 UI，无批量面）。
+//   - tl1816：safetyCostControl 总开关退役（setter 随之撤销，卡片唯一控制
+//     面=722 三细粒度子开关）——排除条目登记退役原因（批面无总闸可翻）。
 var labBulkExcluded = map[string]string{
-	"fullAccess":     LabBulkSkipDangerGate,
-	"tabModeTint":    LabBulkSkipNotBool,
-	"messageMerge":   LabBulkSkipNotBool,
-	"eventsRotation": LabBulkSkipNotBool,
+	"fullAccess":        LabBulkSkipDangerGate,
+	"tabModeTint":       LabBulkSkipNotBool,
+	"messageMerge":      LabBulkSkipNotBool,
+	"eventsRotation":    LabBulkSkipNotBool,
+	"safetyCostControl": LabBulkSkipNoSetter,
 }
 
 // ParseLabBulkScope 校验范围串（未知值报错，前端传参 typo 不静默落空集）。

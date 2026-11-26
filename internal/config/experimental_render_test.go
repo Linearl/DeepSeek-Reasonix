@@ -25,8 +25,12 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 	// Task 473: the lab mirror set is single-source now — the [agent] key
 	// carries the value and the render face has only the [agent] row.
 	c.Agent.TraceAsState = true
-	// 任务 517：合并键往返；legacy B1/B2/B3 键不再是可写面（见 off 断言）。
-	c.Agent.ExperimentalSafetyCostControl = true
+	// 任务 517 → tl1816：总开关键退役出渲染面（字段 decode-only 供一次性
+	// 迁移；子开关承载状态，见子开关往返钉）；legacy B1/B2/B3 键保持渲染
+	// （迁移后读 false，见 off 断言）。
+	c.Agent.SafetyIdleTerminate = boolPtr(true)
+	c.Agent.SafetyLoopStreakNote = boolPtr(true)
+	c.Agent.SafetyEventWaitRecheck = boolPtr(true)
 	c.Desktop.ExperimentalOrphanLeaseReclaim = true
 	c.Agent.ExperimentalOrphanLeaseReclaim = true
 	c.Desktop.ExperimentalRecoveryOrphanSweep = true
@@ -50,7 +54,11 @@ func TestExperimentalSwitchesRoundTripThroughRender(t *testing.T) {
 		"experimental_prompt_history_picker = true",
 		"trace_as_state = true",
 		// (experimental_session_collab absent: tl1741 retired the key from the render face.)
-		"experimental_safety_cost_control = true",
+		// (experimental_safety_cost_control absent: tl1816 retired the master key
+		// from the render face — the sub-switch rows carry the state.)
+		"safety_idle_terminate = true",
+		"safety_loop_streak_note = true",
+		"safety_event_wait_recheck = true",
 		"experimental_orphan_lease_reclaim = true",
 		"experimental_recovery_orphan_sweep = true",
 		"experimental_session_cwd_follow = true",
@@ -80,7 +88,8 @@ func TestExperimentalSwitchesRenderWhenOff(t *testing.T) {
 		// (trace_as_state) is asserted further down the list. tl1453:
 		// experimental_dream left the render face with its feature.
 		// (experimental_session_collab absent when off: tl1741 retired the key.)
-		"experimental_safety_cost_control = false",
+		// (experimental_safety_cost_control absent when off: tl1816 retired the
+		// master key from the render face.)
 		// 任务 517：legacy B1/B2/B3 键保持渲染（迁移后读 false），关态可记录。
 		"experimental_autonomous_idle_terminate = false",
 		"experimental_loop_streak_note = false",

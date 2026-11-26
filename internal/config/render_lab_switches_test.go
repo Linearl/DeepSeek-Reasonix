@@ -21,7 +21,9 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Agent.ExperimentalFullAccess = true // fullAccess (M8 standalone)
 	orig.Sandbox.OptimisticWrite = true      // optimisticParallel (M8 standalone)
 	// tl1453：experimental_dream 随 dream/distill 实验退役，不再入往返面。
-	orig.Agent.ExperimentalSafetyCostControl = true // 任务 517 合并键（B1/B2/B3）
+	// tl1816：experimental_safety_cost_control 总开关键退役出渲染面（渲染表
+	// 不再输出该行；字段 decode-only 供一次性迁移），三子开关承载状态——
+	// 往返面只钉子开关（真值各半）+ legacy 三键（迁移后读 false）。
 	// 任务 722：细粒度子开关显式覆盖往返（true/false 各半，nil 键不落盘）。
 	orig.Agent.SafetyIdleTerminate = boolPtr(true)
 	orig.Agent.SafetyLoopStreakNote = boolPtr(false)
@@ -174,7 +176,8 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// (session_collab absent: tl1741 retired the key from the render face.)
 		"experimental_auto_load_older = true",
 		"experimental_perf_monitor = true",
-		"experimental_safety_cost_control = true",
+		// (tl1816: experimental_safety_cost_control retired from the render face —
+		// the three sub-switches below carry the state.)
 		// 任务 722：子开关条件渲染——非 nil 才落盘，true/false 逐键往返。
 		"safety_idle_terminate = true",
 		"safety_loop_streak_note = false",
@@ -249,7 +252,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		// tl1746：任务面板开关+路径家族子键往返。
 		"desktop.experimental_tasklist_panel":        got.Desktop.ExperimentalTasklistPanel,
 		"agent.experimental_full_access":             got.Agent.ExperimentalFullAccess,
-		"agent.experimental_safety_cost_control":     got.Agent.ExperimentalSafetyCostControl,
+		// tl1816：总开关键退役——往返面改钉三子开关显式值。
 		"agent.safety_idle_terminate":                got.Agent.SafetyIdleTerminate != nil && *got.Agent.SafetyIdleTerminate,
 		"agent.safety_loop_streak_note":              got.Agent.SafetyLoopStreakNote != nil && !*got.Agent.SafetyLoopStreakNote,
 		"agent.safety_event_wait_recheck":            got.Agent.SafetyEventWaitRecheck != nil && *got.Agent.SafetyEventWaitRecheck,
