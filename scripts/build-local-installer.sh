@@ -69,6 +69,16 @@ case "$VER" in
 		;;
 esac
 
+# Fork integrity gate (tl1819 出包硬门,与 tl1760 ancestry 门并排):fork-only
+# 锚清单(见 scripts/check-fork-integrity.mjs CHECKS)任一缺失即中止建包——
+# 此前锚清单只在 CI lint 与上游合并检查单跑,本地出包可静默带着丢锚树出包。
+# 无条件门(ancestry 门仅 --verify-notes 时启用),非零即中止。
+echo "==> Fork integrity gate (tl1819)"
+( cd "$ROOT" && node scripts/check-fork-integrity.mjs ) || {
+	echo "==> Fork integrity gate FAILED — build aborted: fork-only feature anchors missing from tree." >&2
+	exit 1
+}
+
 # Ancestry gate (tl1760 防线接线,20261124 包112 补滚事故判例):tl1760 的门此前只挂
 # fork-release.sh,实际出包路径(本脚本)无门——包112 notes 预写三支未滚合支(tl1786/
 # 1788/1789)虚报,防线空转。传 --verify-notes <release-notes 含 claims 行> +

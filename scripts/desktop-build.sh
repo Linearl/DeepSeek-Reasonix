@@ -40,6 +40,16 @@ LAUNCHERNAME="reasonix-launcher"
 windows_resource_tool_dir=""
 windows_host_include=""
 
+# tl1819 fork-integrity 出包硬门：fork-only 锚清单（CSS/TS/Go 符号 + release
+# notes embed 链，见 scripts/check-fork-integrity.mjs CHECKS）任一缺失即中止
+# 出包。必须放在下方改写 wails.json 版本戳之前（锚清单含产品版本字面量）；
+# 与 build-local-installer.sh 的门同款 fail-closed，非零即中止。
+echo "==> fork integrity gate (tl1819)"
+( cd "$ROOT" && node scripts/check-fork-integrity.mjs ) || {
+	echo "FATAL: check-fork-integrity FAILED — packaging aborted (fork-only feature anchors missing from tree)" >&2
+	exit 1
+}
+
 # desktop/ is a nested Go module, so the Go toolchain cannot discover the
 # repository VCS revision for the Wails binary. Link the same source identity
 # into both Desktop and its CLI sidecar before this script mutates packaging

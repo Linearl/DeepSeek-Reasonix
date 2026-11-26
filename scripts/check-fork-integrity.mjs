@@ -1602,6 +1602,16 @@ export const CHECKS = [
   { feature: "tl1485e 壳行活动值一体取（GetTopic 单查询回 path+activity）", file: "desktop/session_catalog_runtime.go", patterns: ["func (a *App) catalogSessionShellForTopic", "LastActivityAt: shellActivity"] },
   { feature: "tl1485e 置顶壳行同源修复", file: "desktop/session_catalog.go", patterns: ["shellPath, shellActivity := a.catalogSessionShellForTopic", "LastActivityAt: shellActivity"] },
 
+  // ── tl1819 P8 短期锚：release notes embed 链（防 rename 静默破坏）────
+  // 消费链：release-notes/embed.go `//go:embed releases.json` → package
+  // releasenotes → internal/productdocs/docs.go import + 运行时
+  // fs.ReadFile(releaseNotesFS, "releases.json")。三处必须同钉：embed.go 或
+  // 目录改名后 //go:embed 的通配形态/新文件名会让构建照过、changelog 要到
+  // 运行时才炸（docs.go 的文件名字面量与 embed 指令一旦失配即静默断供）。
+  { feature: "tl1819 release notes embed 指令（文件名精确钉）", file: "release-notes/embed.go", patterns: ["//go:embed releases.json", "var Content embed.FS"] },
+  { feature: "tl1819 release notes 数据源存在性（embed 本体）", file: "release-notes/releases.json", patterns: ["\"schemaVersion\":"] },
+  { feature: "tl1819 release notes 消费链（import + 运行时读取字面量）", file: "internal/productdocs/docs.go", patterns: ["releasenotes \"reasonix/release-notes\"", "releasenotes.Content", "fs.ReadFile(releaseNotesFS, \"releases.json\")"] },
+
 ];
 
 // Run the checklist against `root` (defaults to the full CHECKS manifest).
