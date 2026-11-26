@@ -843,9 +843,13 @@ jobs:
         run: ../scripts/desktop-build.sh windows/amd64 v0.0.0-ci canary
 
   # repolint scans desktop/ and sdk/ too, so this job also runs for diffs the
-  # `code` filter would otherwise skip.
+  # `code` filter would otherwise skip. The architecture / injection / wails-pin
+  # gates live in their own jobs below (tl1828): a serial chain here let the
+  # first red step skip every later one, so a repolint failure silently hid
+  # those three gates on PRs (slop audit F5-1). They still roll up into this
+  # job's verdict via the final aggregate step, so a red gate keeps lint red.
   lint:
-    needs: changes
+    needs: [changes, gate-architecture, gate-injection, gate-wails-pin]
     if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' || needs.changes.outputs.desktop != 'false' || needs.changes.outputs.sdk != 'false')
     runs-on: ubuntu-latest
     steps:
@@ -878,19 +882,6 @@ jobs:
       - name: repo standards
         run: go run ./tools/repolint
 
-      # 任务 392：模块注册表结构门禁（依赖方向/testutil 隔离/internal 禁环/禁深导入）。
-      # 存量登记在 architecture-baseline.json，这里只挡新增违规；与 repolint 等既有
-      # 防线的分工见 architecture-policy.json 的 _division-of-labor。
-      - name: architecture registry check
-        run: node scripts/check-architecture.mjs
-
-      # tl1650 阶段 1：注入通道拦点断言——user 形态消息写入转录/事件流的合法
-      # 入口清单固化，新增旁路写入点（新文件构造/新文件发射 user_input/reducer
-      # 分叉）即红。白名单与锚清单在脚本内，枚举对照表在 workspace docs 的
-      # tl1650 拦点枚举文档。
-      - name: injection entrypoints check
-        run: node scripts/check-injection-entrypoints.mjs
-
       # tl1819 出包硬门：fork-only 锚清单在主线上强制执行（与 make lint、两个
       # 出包脚本 desktop-build.sh / build-local-installer.sh 同源同门）。锚红=
       # 上游合并静默丢块，先修再滚合。
@@ -903,11 +894,6 @@ jobs:
       # pre-fix=10坏链+6失效引用全红 见 workspace tl1822 实施报告。
       - name: docs links check
         run: node scripts/check-docs-links.mjs
-
-      - name: wails version pin
-        run: |
-          bash scripts/check-wails-pin.sh
-          bash scripts/check-wails-pin.test.sh
 
       # `make lint-install` reads the same file, so a local run and this job
       # cannot drift onto different linter versions.
@@ -954,6 +940,71 @@ jobs:
           node --test scripts/desktop-release-artifacts.test.mjs scripts/ci-workflow.test.mjs scripts/check-architecture.test.mjs scripts/check-fork-integrity.test.mjs scripts/check-known-failures.test.mjs
           bash scripts/release-workflows.test.sh
           node scripts/check-single-release-public-contract.mjs
+
+      # Keep lint's verdict covering the split gates: failed or cancelled gate
+      # jobs turn lint red; "skipped" is the legitimate docs-only-PR path where
+      # the gate jobs' change filter parked them. Placed last so the steps
+      # above still run when a gate is red.
+      - name: Verify split gates succeeded or were change-skipped
+        env:
+          ARCH_RESULT: ${{ needs.gate-architecture.result }}
+          INJECTION_RESULT: ${{ needs.gate-injection.result }}
+          WAILS_RESULT: ${{ needs.gate-wails-pin.result }}
+        run: |
+          for pair in "gate-architecture $ARCH_RESULT" "gate-injection $INJECTION_RESULT" "gate-wails-pin $WAILS_RESULT"; do
+            read -r gate result <<< "$pair"
+            if [ "$result" != success ] && [ "$result" != skipped ]; then
+              echo "$gate job ended as $result - see its own job for the log"
+              exit 1
+            fi
+          done
+
+  # Split out of the serial lint chain in tl1828 (slop audit F5-1): in a single
+  # job, the first red step skipped every later step, so a repolint failure hid
+  # these gates from PRs indefinitely. Each gate is its own cheap job (no Go
+  # toolchain; the same change filter as lint gates them off docs-only PRs),
+  # and lint's final aggregate step still folds their verdict into lint.
+  gate-architecture:
+    needs: changes
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' || needs.changes.outputs.desktop != 'false' || needs.changes.outputs.sdk != 'false')
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 任务 392：模块注册表结构门禁（依赖方向/testutil 隔离/internal 禁环/禁深导入）。
+      # 存量登记在 architecture-baseline.json，这里只挡新增违规；与 repolint 等既有
+      # 防线的分工见 architecture-policy.json 的 _division-of-labor。
+      - name: architecture registry check
+        run: node scripts/check-architecture.mjs
+
+  gate-injection:
+    needs: changes
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' || needs.changes.outputs.desktop != 'false' || needs.changes.outputs.sdk != 'false')
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # tl1650 阶段 1：注入通道拦点断言——user 形态消息写入转录/事件流的合法
+      # 入口清单固化，新增旁路写入点（新文件构造/新文件发射 user_input/reducer
+      # 分叉）即红。白名单与锚清单在脚本内，枚举对照表在 workspace docs 的
+      # tl1650 拦点枚举文档。
+      - name: injection entrypoints check
+        run: node scripts/check-injection-entrypoints.mjs
+
+  gate-wails-pin:
+    needs: changes
+    if: always() && (github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' || needs.changes.outputs.desktop != 'false' || needs.changes.outputs.sdk != 'false')
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: wails version pin
+        run: |
+          bash scripts/check-wails-pin.sh
+          bash scripts/check-wails-pin.test.sh
 
   # The site/ Astro job (auth-client node:test) was removed in tl1824 when the
   # upstream-legacy site/ directory moved to docs/_archive/site/ (deployment
