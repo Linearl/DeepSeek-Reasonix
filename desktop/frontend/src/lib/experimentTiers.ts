@@ -73,6 +73,9 @@ export type TierFeatureId =
   | "compactionParallel"
   | "traceAsState"
   | "outputStyle"
+  // tl1817: 朗读 MiMo TTS 传输层（「交互与呈现」卡成员行，可选档，默认关=
+  // 系统 TTS 逐字节一致；配 key+开开关才走 MiMo，失败自动降级回系统链）。
+  | "mimoTts"
   | "cacheTuning"
   // tl1487 一组④：冷缓存压缩（compressOpt 主开关的附属开关行，pane 内
   // 冷缓存压缩+触发上下文下限+闲置触发时长三行并一卡；本件起主行挂独立
@@ -286,6 +289,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   traceAsState: "optional",
   // tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单）。
   outputStyle: "recommended",
+  // tl1817: 朗读 MiMo TTS 传输层（可选档，默认关）。
+  mimoTts: "optional",
   cacheTuning: "optional",
   // tl1733：记忆注入瘦身（默认关=默认瘦身注入管线；开=应急旁路仅 pinned）。
   memoryIndexSlim: "optional",
@@ -623,11 +628,13 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * Go-only 豁免同步收回两条；并集解基数含 tl1772 的 optional+1）。
  * tl1787 续作：prepairAutosplice（pre-repair 分叉后台元信息拼接，未稳定档）
  * 入表——未稳定 6→7、总数 93→94（两侧共享；并集解 20261124 撞 tl1772
- * 实测定稿）。 */
+ * 实测定稿）。
+ * tl1817：mimoTts（朗读 MiMo TTS 传输层，「交互与呈现」卡成员行，可选档）
+ * 入表——可选 27→28、总数 94→95（Go 渲染表同步 73→74，两侧共享）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
-  optional: 27,
+  optional: 28,
   unstable: 7,
   retired: 0,
 };

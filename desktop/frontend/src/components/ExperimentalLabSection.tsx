@@ -3706,6 +3706,24 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   ))}
                 </SettingsOptions>
               </SettingsField>
+              {/* tl1817：朗读 MiMo TTS 传输层——默认关=系统 TTS（tl1709/tl1815
+                  链路）逐字节一致；开且配置了 MiMo key（tp-/sk- 任一）才走 MiMo
+                  chat/completions TTS，失败自动降级回系统链并可见提示。保存即
+                  生效（朗读点击时现读开关与凭据，免重启）。 */}
+              <SettingsField testId="lab-toggle-mimoTts" label={labLabel("mimoTts", t("settings.mimoTts"))} hint={t("settings.mimoTtsHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalMimoTts) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalMimoTts(on))}
+                    >
+                      {t(on ? "settings.mimoTts.on" : "settings.mimoTts.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
               <SettingsField testId="lab-toggle-outputStyle" label={labLabel("outputStyle", t("settings.outputStyle"))} hint={t("settings.outputStyleLabHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (

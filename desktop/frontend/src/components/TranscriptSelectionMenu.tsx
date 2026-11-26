@@ -18,6 +18,10 @@ import {
   MAX_SPEAK_CHARS,
   type SpeakLang,
 } from "../lib/speech";
+// tl1817: MiMo TTS transport (lab-gated). The tl1815 system chain above is
+// untouched and stays the standing fallback for every MiMo failure.
+import { cancelMimoTts, speakViaMimo } from "../lib/mimoTts";
+import { useMimoTtsEnabled } from "../lib/mimoTtsPreference";
 import {
   detectShortcutPlatform,
   formatShortcutCombo,
@@ -195,6 +199,12 @@ export function TranscriptSelectionMenu({
     speakingRef.current = value;
     setSpeaking(value);
   }, []);
+  // tl1817: the MiMo TTS lab gate mirrors into a ref so the click handler
+  // never acts on a stale closure while a read is in flight (speakingRef
+  // pattern above).
+  const mimoTtsEnabled = useMimoTtsEnabled();
+  const mimoTtsRef = useRef(mimoTtsEnabled);
+  mimoTtsRef.current = mimoTtsEnabled;
   const quickActionRef = useRef<((action: string, text: string, contextText: string) => Promise<string>) | null>(null);
   const addShortcut = useMemo(
     () => formatShortcutCombo(resolvedShortcutCombo("selection.addToChat", shortcutPlatform), shortcutPlatform),
@@ -249,7 +259,9 @@ export function TranscriptSelectionMenu({
     // tl1709: closing the card always stops the read-aloud — the speaking
     // card is the read-aloud surface, so Escape / click-away / a new action
     // all double as "stop" without hunting for the toolbar button.
+    // tl1817: the MiMo playback element cancels with the same close.
     cancelSpeech();
+    cancelMimoTts();
     setQuickAction(null);
     setQuickResult("");
     setQuickError(false);
@@ -282,6 +294,68 @@ export function TranscriptSelectionMenu({
         setQuickResult(t("selection.quickAction.unavailable"));
         return;
       }
+      const truncated = text.length > MAX_SPEAK_CHARS;
+      const body = truncated ? text.slice(0, MAX_SPEAK_CHARS) : text;
+      const segments = segmentSpeakText(body);
+      // Degradation guidance: every segment language without an installed
+      // pack still reads (engine lang-hint best effort) but must say so in
+      // the card — the user learns how to get the proper voice.
+      const missingLangs = [...new Set<SpeakLang>(segments.map((segment) => segment.lang))]
+        .filter((lang) => !findVoiceFor(lang));
+      const settleSpeaking = () => {
+        // Natural end or error: settle the toggle and drop the speaking card.
+        if (speakingRef.current) {
+          setSpeakingState(false);
+          closeQuickCard();
+        }
+      };
+      // tl1817: MiMo transport rides AHEAD of the system availability ladder
+      // — a machine with zero system voices can still read via MiMo. The
+      // whole (capped) selection rides ONE chat/completions request: a single
+      // bilingual voice makes the tl1815 per-language runs moot on this path,
+      // while the segment queue below stays untouched as the standing
+      // fallback (same segments, same voice ladder, gate-off path unchanged).
+      if (mimoTtsRef.current) {
+        setQuickAction("speak");
+        setQuickError(false);
+        setQuickResult([
+          t("selection.quickAction.speaking"),
+          truncated ? t("selection.quickAction.truncated") : "",
+        ].filter(Boolean).join("\n"));
+        setSpeakingState(true);
+        const outcome = await speakViaMimo(body);
+        if (outcome === "played") {
+          settleSpeaking();
+          return;
+        }
+        if (outcome === "cancelled") return;
+        // failed (no key / 401 / network / malformed): visible degrade line,
+        // then the pre-existing system ladder — never a silent drop.
+        const degradedAvailability = speechAvailability();
+        if (degradedAvailability !== "ready") {
+          setQuickError(true);
+          setQuickResult(t(
+            degradedAvailability === "unsupported"
+              ? "selection.quickAction.speechUnsupported"
+              : "selection.quickAction.speechNoVoices",
+          ));
+          setSpeakingState(false);
+          return;
+        }
+        setSpeakingState(true);
+        setQuickError(false);
+        setQuickResult([
+          t("selection.quickAction.speaking"),
+          t("selection.quickAction.mimoDegraded"),
+          truncated ? t("selection.quickAction.truncated") : "",
+          ...missingLangs.map((lang) => t(
+            "selection.quickAction.speechVoiceMissingHint",
+            { lang: speakLangDisplayName(lang) },
+          )),
+        ].filter(Boolean).join("\n"));
+        speakSegments(segments, settleSpeaking);
+        return;
+      }
       const availability = speechAvailability();
       if (availability !== "ready") {
         setQuickAction("speak");
@@ -293,14 +367,6 @@ export function TranscriptSelectionMenu({
         ));
         return;
       }
-      const truncated = text.length > MAX_SPEAK_CHARS;
-      const body = truncated ? text.slice(0, MAX_SPEAK_CHARS) : text;
-      const segments = segmentSpeakText(body);
-      // Degradation guidance: every segment language without an installed
-      // pack still reads (engine lang-hint best effort) but must say so in
-      // the card — the user learns how to get the proper voice.
-      const missingLangs = [...new Set<SpeakLang>(segments.map((segment) => segment.lang))]
-        .filter((lang) => !findVoiceFor(lang));
       setQuickAction("speak");
       setQuickError(false);
       // Same notice contract as the translate/explain paths: a capped payload
@@ -316,13 +382,7 @@ export function TranscriptSelectionMenu({
       ].filter(Boolean);
       setQuickResult(notices.join("\n"));
       setSpeakingState(true);
-      speakSegments(segments, () => {
-        // Natural end or error: settle the toggle and drop the speaking card.
-        if (speakingRef.current) {
-          setSpeakingState(false);
-          closeQuickCard();
-        }
-      });
+      speakSegments(segments, settleSpeaking);
     })();
   }, [closeQuickCard, resolveLogical, setSpeakingState, t]);
 
@@ -331,7 +391,11 @@ export function TranscriptSelectionMenu({
   // playback when the menu unmounts (tab switch, session close).
   useEffect(() => {
     primeSpeechVoices();
-    return () => cancelSpeech();
+    // tl1817: the MiMo playback element stops with the menu surface too.
+    return () => {
+      cancelSpeech();
+      cancelMimoTts();
+    };
   }, []);
 
   useEffect(() => {

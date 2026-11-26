@@ -366,6 +366,7 @@ import { topicShortcutIndexFromEvent, useTopicShortcuts, type TopicShortcutEntry
 import { composerDraftKeyForTab } from "./lib/composerDraftKey";
 import { setComposerDraftPersistenceEnabled } from "./lib/composerDraftPersistence";
 import { setSelectionActionsEnabled } from "./lib/selectionActionsPreference";
+import { setMimoTtsEnabled } from "./lib/mimoTtsPreference";
 import { continueDelivery } from "./lib/deliveryContinue";
 import { activateGoalAndSubmitOnTab } from "./lib/goalSubmit";
 import { isChannelSession, taskSessionIDFromPath } from "./app-runtime/sidebarImProjection";
@@ -1669,7 +1670,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalMimoTts?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1703,6 +1704,10 @@ export default function App() {
       // no writes for the whole session; flips live on the settings refresh.
       setComposerDraftPersistenceEnabled(Boolean(settings.experimentalComposerDraft));
       setSelectionActionsEnabled(Boolean(settings.experimentalSelectionActions));
+      // tl1817: the MiMo TTS speak gate rides the same boot snapshot (task
+      // 514 rule); the speak path re-checks the credential server-side per
+      // click, so the flip lands on the next read-aloud without restart.
+      setMimoTtsEnabled(Boolean(settings.experimentalMimoTts));
       // Task 265/262 lab intake: the render-surface flags ride the same boot
       // snapshot (nil-means-on resolved server-side); the agent-side three are
       // consumed in Go and only feed the lab pane from the settings view.

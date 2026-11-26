@@ -538,6 +538,16 @@ type DesktopConfig struct {
 	// keeps reading [agent] output_style, so a hand-written toml entry still
 	// applies without this switch.
 	ExperimentalOutputStyleUI bool `toml:"experimental_output_style_ui"`
+	// ExperimentalMimoTts gates the read-aloud MiMo TTS transport (tl1817).
+	// Ships OFF (铁律 2): with the zero value the selection read-aloud path is
+	// byte-for-byte the system speechSynthesis chain (tl1709/tl1815). When ON
+	// AND a MiMo credential exists (config providers carrying MIMO_API_KEY /
+	// MIMO_TOKEN_PLAN_API_KEY, tp- or sk- prefix), read-aloud synthesizes via
+	// the MiMo TTS chat/completions transport; any failure degrades back to
+	// the system chain with a visible notice — the system path remains the
+	// standing fallback either way. Live read: the speak path resolves the
+	// gate and the credential at click time, so a flip applies without restart.
+	ExperimentalMimoTts bool `toml:"experimental_mimo_tts"`
 	// ExperimentalACPListen is the task-790 lab switch for the resident ACP
 	// listener. It ships OFF (铁律 2): with the zero value the desktop starts
 	// no listener at all — no port bound, no goroutine, byte-for-byte the

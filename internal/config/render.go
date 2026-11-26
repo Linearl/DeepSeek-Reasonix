@@ -138,6 +138,9 @@ var labFeatureTiers = []labFeatureTier{
 	{"zeroSummaryCompact", LabTierUnstable, []string{"experimental_zero_summary_compact"}},
 	// tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单；前端同步）。
 	{"outputStyle", LabTierRecommended, []string{"experimental_output_style_ui"}},
+	// tl1817：朗读 MiMo TTS 传输层（交互与呈现卡成员行，可选档，默认关=
+	// 系统 TTS 逐字节一致；配 key+开开关才走 MiMo，失败自动降级回系统链）。
+	{"mimoTts", LabTierOptional, []string{"experimental_mimo_tts"}},
 	{"cacheTuning", LabTierOptional, []string{"experimental_cache_tuning", "experimental_active_tab_resident"}}, // resident 为 task 192/347 家族子键
 	// tl1741：collabHub 条目随撤开关退役（用户 20261121 三拍）——协作中心
 	// 入口常显，decode 侧 legacy 继承（task-856③）一并删除，deprecated 清单
@@ -694,6 +697,9 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// Task 385a: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_output_style_ui = %v   # desktop: gate the lab 回答风格 (output style) section (task 385a; UI surface only)\n", c.Desktop.ExperimentalOutputStyleUI)
+		// tl1817: fixed-key-set rule — an unlisted key would be dropped on
+		// every save and the lab switch would flip itself back off.
+		fmt.Fprintf(&b, "experimental_mimo_tts = %v   # desktop: read-aloud MiMo TTS transport (tl1817; off = system speechSynthesis unchanged; click-time credential check)\n", c.Desktop.ExperimentalMimoTts)
 		// Task 790: fixed-key-set rule — an unlisted key would be dropped on
 		// every save and the lab switch would flip itself back off.
 		fmt.Fprintf(&b, "experimental_acp_listen = %v   # desktop: resident ACP listener (task 790; loopback-only TCP, one client surface per connection; restart to apply)\n", c.Desktop.ExperimentalACPListen)

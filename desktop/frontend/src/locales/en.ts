@@ -144,6 +144,9 @@ export const en = {
   "selection.quickAction.speechUnsupported": "Speech playback is not available in this environment",
   "selection.quickAction.speechNoVoices": "No system speech voices were found",
   "selection.quickAction.speechVoiceMissingHint": "No {lang} voice pack was found — reading falls back to the current voice. Add voices under Windows Settings → Time & Language → Speech for better playback",
+  // tl1817: MiMo TTS synthesis failed — visible degrade notice, never a
+  // silent voice swap.
+  "selection.quickAction.mimoDegraded": "MiMo speech synthesis failed (no key configured, key rejected, or network error) — continuing with the system voice",
   "common.cut": "Cut",
   "common.paste": "Paste",
   "common.selectAll": "Select all",
@@ -3044,6 +3047,10 @@ export const en = {
 "settings.traceAsStateHint": "Injects prior traces before the question — trace, then question, then reading material — which improves model performance over the usual question-first order. Compaction summaries carry reasoning traces, and bottleneck routes may re-read the original transcript. Maps to [agent] trace_as_state. Experimental, off by default; with it off the compaction path matches upstream.",
 "settings.traceAsState.on": "On",
 "settings.traceAsState.off": "Off",
+"settings.mimoTts": "MiMo TTS read-aloud",
+"settings.mimoTtsHint": "Read-aloud switches to Xiaomi MiMo TTS (mimo-v2.5-tts, server-default Chinese female voice) instead of the system speech engine — more natural audio, mixed zh/en reads in one voice. Requires a configured MiMo connection in Settings → Models (a tp- or sk- prefixed key, either counts); with no key, or when synthesis fails (401/network/timeout), it degrades back to the system voice with a visible notice and never blocks reading. Maps to [desktop] experimental_mimo_tts. Experimental, off by default; with it off read-aloud behaves exactly as before.",
+"settings.mimoTts.on": "On",
+"settings.mimoTts.off": "Off",
 "settings.perfMonitor": "Performance monitor",
 "settings.perfMonitorHint": "Samples every 5s while on: process memory/IO, session-store and event-log bytes, and key file sizes, appended to logs/perf/perf-sample-<date>.jsonl (7-day retention, 20MB per file); a Go heap profile is also dumped every 60s (newest 3 kept). With the experimental threshold heap snapshot on, crossing the threshold (default 6GB) additionally writes a heap-high-<MB>MB-<time>.pprof immediately (kept 7 days, never rotated away by the 3-file pool). Use them to pin down a memory or disk anomaly. Takes effect after a restart.",
 "settings.perfMonitorMode.on": "on",

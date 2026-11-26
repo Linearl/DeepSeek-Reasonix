@@ -1535,6 +1535,14 @@ func (c *Config) SetExperimentalDecisionPatterns(enabled bool) error {
 	return nil
 }
 
+// SetExperimentalMimoTts toggles the tl1817 read-aloud MiMo TTS transport.
+// The speak path resolves the gate and the credential at click time (no boot
+// snapshot), so the flip applies to the next read-aloud without restart.
+func (c *Config) SetExperimentalMimoTts(enabled bool) error {
+	c.Desktop.ExperimentalMimoTts = enabled
+	return nil
+}
+
 // SetExperimentalDecisionPatternsLayered toggles the tl1772 injection-layering
 // lab switch (decisionPatterns 档位族伴生开关). ON = autopilot 注入只带索引
 // 行 + 按需读全文硬指令（解析不出索引行时静默回退全文形态）；OFF = 原全量

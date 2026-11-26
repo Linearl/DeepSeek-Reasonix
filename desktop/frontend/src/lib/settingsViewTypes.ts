@@ -302,6 +302,8 @@ export interface SettingsView {
   experimentalComposerDraft?: boolean;
   /** Task 369: selection quick-actions floating card (translate/explain). */
   experimentalSelectionActions?: boolean;
+  /** tl1817: read-aloud MiMo TTS transport (interactionPresentation lab member; off = system speechSynthesis). */
+  experimentalMimoTts?: boolean;
   // Task 297: cold-cache compact pass (lab storage cost card).
   experimentalColdCacheCompact?: boolean;
   coldCacheCompactMinBytes?: number;

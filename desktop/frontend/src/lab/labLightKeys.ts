@@ -72,6 +72,8 @@ export const LAB_LIGHT_KEYS = {
   experimentalActiveTabResident: (s: SettingsView) => Boolean(s.experimentalActiveTabResident),
   experimentalQuickCommands: (s: SettingsView) => Boolean(s.experimentalQuickCommands),
   experimentalTraceAsState: (s: SettingsView) => Boolean(s.experimentalTraceAsState),
+  // tl1817：朗读 MiMo TTS 传输层（默认关=系统 TTS 不变；灯=开关开即亮）。
+  experimentalMimoTts: (s: SettingsView) => Boolean(s.experimentalMimoTts),
   experimentalOutputStyleUI: (s: SettingsView) => Boolean(s.experimentalOutputStyleUI),
   // tl1746：任务面板灯——实验开关开即亮（命令面板入口与实验室卡同源）。
   tasklistPanel: (s: SettingsView) => Boolean(s.experimentalTasklistPanel),
