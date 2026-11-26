@@ -7,15 +7,15 @@ import (
 
 func TestContextBudgetBlockShapes(t *testing.T) {
 	regular := ContextBudgetBlock(41_000, 102_400, 128_000)
-	if !strings.Contains(regular, "<context-state>window occupancy 41k/128k (32%); compaction cycles at 80%") {
+	if !strings.Contains(regular, "<context-state>上下文 41k/128k (32%)；压缩进度 80%") {
 		t.Fatalf("regular block = %q", regular)
 	}
-	if strings.Contains(regular, "approaching") {
+	if strings.Contains(regular, "上下文接近上限") {
 		t.Fatalf("regular block must not warn: %q", regular)
 	}
 
 	near := ContextBudgetBlock(95_000, 102_400, 128_000)
-	if !strings.Contains(near, "compaction is approaching — that is the mechanism working, not a problem ") {
+	if !strings.Contains(near, "上下文接近上限，将自动压缩并继续，无需处理") {
 		t.Fatalf("near-trigger block missing guidance: %q", near)
 	}
 	if !strings.HasPrefix(near, "<context-state>") {
