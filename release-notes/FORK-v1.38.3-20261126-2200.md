@@ -1,9 +1,9 @@
 # 包117 release notes — v1.38.3-20261126-2200
 
 > 基线：包116（v1.38.3-20261125-2259，构建点 `5efd3ebd91`）
-> 构建点：随棘轮 commit 后 tip（notes commit 后现查校准）
-> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`
-> 执行线：zcode 开发线（9 支 merge 全量本包，zcode 滚合；Reasonix 侧包117开发1 交接续作）
+> 构建点：`6a1c4af1ee`（main-v2-stable，含棘轮 raw 线+四钉类型修补两 commit；其后无其他提交）
+> 产物：`desktop/build/bin/reasonix-desktop-amd64-installer.exe`（74,235,526 B）
+> 执行线：zcode 开发线（9 支 merge 全量本包，zcode 滚合；Reasonix 侧包117开发1 交接续作；五轮构建=一轮双门禁拦(fork-integrity 三锚换代+四钉类型修补)→二轮 pnpm install .pnpm 损坏→重装→三/四轮 E1 收敛→五轮 rc=0）
 > <!-- claims: feat-tl1831,feat-tl1818,feat-tl1793r4,feat-tl1823,feat-tl1816,feat-tl1817,feat-tl1813-web,feat-tl1820-701,feat-tl1832 -->
 
 ## 一、P1 修复/机制（交接续作四件）
