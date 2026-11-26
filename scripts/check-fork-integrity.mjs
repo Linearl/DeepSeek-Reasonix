@@ -410,12 +410,12 @@ export const CHECKS = [
   // 全部读合并键。丢任一半边即报警。
   { feature: "任务517 安全/成本控制合并键（配置字段）", file: "internal/config/config.go", patterns: ["experimental_safety_cost_control", "migrateSafetyCostControlMerge"] },
   { feature: "任务517 安全/成本控制合并键（union 迁移）", file: "internal/config/load.go", patterns: ["func migrateSafetyCostControlMerge", "migrateSafetyCostControlMerge(cfg)"] },
-  { feature: "任务517 安全/成本控制合并键（渲染面 + legacy 三行）", file: "internal/config/render.go", patterns: ["experimental_safety_cost_control = %v", "legacy key, migrated into experimental_safety_cost_control (task 517)"] },
+  { feature: "任务517 安全/成本控制合并键（渲染面 legacy 三行；主键赋值行随 tl1816 总开关退役不再渲染）", file: "internal/config/render.go", patterns: ["legacy key, migrated into experimental_safety_cost_control (task 517)", "master retired tl1816 (sub-switches carry the state)"] },
   { feature: "任务517 三个运行时门读合并键（B1 心跳/B2 循环/B3 事件复查）", file: "internal/boot/boot.go", patterns: ["cfg.SafetyLoopStreakNoteEnabled()", "cfg.SafetyEventWaitRecheckEnabled()"] },
   { feature: "任务517 B1 心跳门读合并键（call-time 评估）", file: "desktop/app_lifecycle.go", patterns: ["cfg.SafetyIdleTerminateEnabled()"] },
   { feature: "任务517 实验室单卡 UI（总开关+三子态行；tl1309 迁 efficiency 组，1134 迁 ExperimentalLabSection）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["safetyCostControl", "SetExperimentalSafetyCostControl", "selected === \"safetyCostControl\""] },
   { feature: "任务517 档位注册表单键化（48→46）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["safetyCostControl: \"optional\""] },
-  { feature: "任务517 三语文案（总开关+子项说明）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.safetyCostControl\": \"安全 / 成本控制\"", "settings.safetyCostControlHint"] },
+  { feature: "任务517 三语文案（tl1816 后=卡名+子开关 B1 文案；总开关 hint 随退役删）", file: "desktop/frontend/src/locales/zh.ts", patterns: ["\"settings.safetyCostControl\": \"安全 / 成本控制\"", "settings.autonomousIdleTerminate"] },
   { feature: "任务517 迁移语义测试", file: "internal/config/safety_cost_control_merge_test.go", patterns: ["TestSafetyCostControlMergeFoldsLegacyAgentTrues", "TestSafetyCostControlAllOffStaysOff"] },
   { feature: "任务244 B6 工具并发分级表文档化", file: "internal/agent/execute_batch.go", patterns: ["task 244 B6", "admission table", "no FIFO queue"] },
   { feature: "任务244 B7 心跳等待阈值推导注释", file: "desktop/heartbeat.go", patterns: ["task 244 B7: threshold-derivation note", "43,120"] },
@@ -1487,7 +1487,7 @@ export const CHECKS = [
   { feature: "任务562 设置页 rail+成员开关接线（774 徽章聚合 + 1134 rail 迁 ExperimentalLabSection；tl1487 一组③撤 modelCapabilityFilter retired 只读行，第三锚随之退役）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["labEntryBadgeTier(labLayoutResolved.layout, entry.id)", "labLabel(\"autopilot\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；tl1787 续作后计数 9/51/27/7/0=94，锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.stable === 9 && counts.recommended === 51 && counts.optional === 27 && counts.unstable === 7 && counts.retired === 0", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；tl1787 续作后计数 9/51/29/7/0=96（tl1817 mimoTts+tl1816 fallbackModel），锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.stable === 9 && counts.recommended === 51 && counts.optional === 29 && counts.unstable === 7 && counts.retired === 0", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（1134 迁 ExperimentalLabSection；tl1487 coldCacheCompact 转 labLabel 主控行，裸 label 兄弟行减一）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.perfMonitor\")}", "label={t(\"settings.collabGuidanceMerge\")}", "labLabel(\"tabModeTint\"", "labLabel(\"coldCacheCompact\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },
