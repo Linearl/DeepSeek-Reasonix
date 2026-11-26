@@ -89,6 +89,39 @@ export const TRANSIENT_EXCURSION_REASON = "transient-counter-excursion";
 // reported as its own blocker instead of being judged as displacement.
 export const BASELINE_NOT_SETTLED_REASON = "baseline-not-settled";
 
+// a+c mixed semantics (task 117-D, user decision 20261126): the settled tail
+// is judged from a MAJORITY of same-context readings instead of one sample.
+// Layer c absorbs single-sample noise (>=3 readings, >=2 must agree); layer a
+// keeps both anchors in one resting context (geometry -> full) so a phase
+// mismatch can never masquerade as drift. A settled tail with no majority is
+// reported as its own blocker rather than being relaxed away: systematic
+// displacement after settling IS real drift and must stay red.
+export const SETTLED_NOT_SETTLED_REASON = "settled-not-settled";
+export const RESTING_CONTEXT_MISMATCH_REASON = "resting-context-mismatch";
+
+// Majority vote over complete settled readings ({nodes, jsEventListeners,
+// activeSubscriptions}): a reading only agrees when every counter agrees, so
+// one metric's blip cannot borrow another metric's agreement. >=2 identical
+// readings out of >=3 win; anything else returns null (no majority).
+export function settledMajority(readings) {
+  if (!Array.isArray(readings) || readings.length < 3) return null;
+  const counts = new Map();
+  for (const reading of readings) {
+    if (!reading || !Number.isSafeInteger(reading.nodes) || !Number.isSafeInteger(reading.jsEventListeners)
+      || !Number.isSafeInteger(reading.activeSubscriptions)) return null;
+    const key = `${reading.nodes}|${reading.jsEventListeners}|${reading.activeSubscriptions}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  let winner = null;
+  let winnerCount = 0;
+  for (const [key, count] of counts) {
+    if (count > winnerCount) { winner = key; winnerCount = count; }
+  }
+  if (winnerCount < 2) return null;
+  const [nodes, jsEventListeners, activeSubscriptions] = winner.split("|").map(Number);
+  return { nodes, jsEventListeners, activeSubscriptions, agree: winnerCount, total: readings.length };
+}
+
 // Reasons the automated gate must block on. Observations (the offline
 // attribution duty, fully-recovered excursions) are recorded on every report
 // but are not screening failures.
@@ -101,9 +134,12 @@ export function screeningBlockers(reasons) {
 // kept as observations so they still get an offline explanation. When the
 // bench ends with an explicit "settled" resting-state sample, that sample is
 // the authoritative tail and every earlier checkpoint is intermediate.
-function counterDriftReason(values, phases, baselineStable = true) {
+// finalOverride (a+c layer c) replaces the single tail reading with the
+// settled majority value when one exists; the caller passes undefined when
+// no majority exists so the raw reading still judges (never relaxed).
+function counterDriftReason(values, phases, baselineStable = true, finalOverride) {
   const baseline = values[0];
-  const final = values.at(-1);
+  const final = finalOverride !== undefined ? finalOverride : values.at(-1);
   const settledTail = phases.at(-1) === "settled";
   if (baselineStable && final !== baseline) return "persistent";
   if (!settledTail) {
@@ -125,13 +161,27 @@ export function attributeRetention(samples, cohorts = retainedCohorts(samples)) 
   if (retained) reasons.push("persistent-render-cohort");
   if (!nativeCountersValid) reasons.push("invalid-native-counters");
   if (!baselineStable) reasons.push(BASELINE_NOT_SETTLED_REASON);
+  // a+c layer c: judge the settled tail by same-context majority reading.
+  const settledSample = phases.at(-1) === "settled" ? samples.at(-1) : null;
+  const majority = settledSample ? settledMajority(settledSample.settledReadings) : undefined;
+  if (settledSample && !majority) reasons.push(SETTLED_NOT_SETTLED_REASON);
+  // a+c layer a: baseline and settled must name the same resting context;
+  // a mismatch means the comparison is across phases and cannot judge drift.
+  // Reports without explicit contexts (pre-117D evidence) skip this check.
+  const baselineContext = samples[0]?.context;
+  const settledContext = settledSample?.context;
+  if (settledSample && typeof baselineContext === "string" && typeof settledContext === "string"
+    && baselineContext !== settledContext) reasons.push(RESTING_CONTEXT_MISMATCH_REASON);
+  const finalOverride = majority ? {
+    nodes: majority.nodes, jsEventListeners: majority.jsEventListeners, subscriptions: majority.activeSubscriptions,
+  } : undefined;
   if (nativeCountersValid) {
-    const nodeDrift = counterDriftReason(samples.map((sample) => sample.dom.nodes), phases, baselineStable);
-    const listenerDrift = counterDriftReason(samples.map((sample) => sample.dom.jsEventListeners), phases, baselineStable);
+    const nodeDrift = counterDriftReason(samples.map((sample) => sample.dom.nodes), phases, baselineStable, finalOverride?.nodes);
+    const listenerDrift = counterDriftReason(samples.map((sample) => sample.dom.jsEventListeners), phases, baselineStable, finalOverride?.jsEventListeners);
     if (nodeDrift === "persistent" || listenerDrift === "persistent") reasons.push("post-gc-dom-or-listener-drift");
     else if (nodeDrift === "transient" || listenerDrift === "transient") reasons.push(TRANSIENT_EXCURSION_REASON);
   }
-  const subscriptionDrift = counterDriftReason(samples.map((sample) => sample.lifecycle.activeSubscriptions), phases);
+  const subscriptionDrift = counterDriftReason(samples.map((sample) => sample.lifecycle.activeSubscriptions), phases, undefined, finalOverride?.subscriptions);
   if (subscriptionDrift === "persistent") reasons.push("subscription-population-drift");
   else if (subscriptionDrift === "transient") reasons.push(TRANSIENT_EXCURSION_REASON);
   if (!released) reasons.push("active-operations");
