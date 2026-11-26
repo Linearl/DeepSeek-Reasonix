@@ -74,3 +74,17 @@ done
 
 echo "==> Done. Artifacts in dist/:"
 ls -lh dist/
+
+# tl1820: repo hygiene warning at end of packaging. Interrupted/concurrent git
+# operations leave tmp_pack_* garbage in .git/objects/pack; a large loose count
+# bloats the repo. Non-zero warnings mean: run `git gc --prune=now` (after
+# confirming no concurrent git processes) before the next build.
+GC_STATS="$(git count-objects -v)"
+GARBAGE="$(printf '%s\n' "$GC_STATS" | sed -n 's/^garbage: *//p')"
+LOOSE="$(printf '%s\n' "$GC_STATS" | sed -n 's/^count: *//p')"
+if [ "${GARBAGE:-0}" -gt 0 ]; then
+  echo "==> WARNING: git count-objects reports ${GARBAGE} garbage entries (likely tmp_pack_* from interrupted git ops) — run git gc --prune=now (first confirm no concurrent git processes)" >&2
+fi
+if [ "${LOOSE:-0}" -gt 10000 ]; then
+  echo "==> WARNING: git count-objects reports ${LOOSE} loose objects — consider git gc before next build" >&2
+fi
