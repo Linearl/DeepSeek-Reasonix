@@ -1,7 +1,14 @@
 # Security Policy
 
-> ⚠️ **上游原文保留（2026-11-21 文档审计标注）**：上游已于 2026-11-12 停止维护并退役
-> 官方反馈通道；本 fork 的安全问题走内部流程（tasklist 立项处理），不向上游报告。
+> ## ⚠️ fork 实际流程（tl1825 2026-11-26 定稿；读正文前必读）
+>
+> 本文件正文是**上游原文**；上游已于 2026-11-12 停止维护并退役官方反馈通道。
+> **本 fork（main-v2-stable）的安全问题处置**：
+>
+> 1. **安全议题 → 在本仓（origin = `Linearl/DeepSeek-Reasonix`）按本文件 SECURITY 流程报告**：
+>    优先 GitHub private vulnerability reporting；不可用时开最小公开 issue 索要私下联系通道
+>    （**不带漏洞细节**）。
+> 2. **不向上游报告、不向上游发 PR** —— 上游已停止维护；fork 侧处置走内部流程（tasklist 立项）。
 
 ## Supported Versions
 

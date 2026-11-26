@@ -1,8 +1,15 @@
 # Contributing to Reasonix
 
-> ⚠️ **上游原文保留（2026-11-21 文档审计标注）**：本文件继承自上游 esengine/DeepSeek-Reasonix，
-> 其贡献流程指向上游语境；上游已于 2026-11-12 停止维护，本 fork 的改动走内部开发流程
-> （tasklist 立项 → 留言板派单 → 合并出包），不按本文件向上游提交。
+> ## ⚠️ fork 实际流程（tl1825 2026-11-26 定稿；读正文前必读）
+>
+> 本文件正文是**上游原文**（esengine/DeepSeek-Reasonix，上游已于 2026-11-12 停止维护），描述的是上游贡献流程。
+> **本 fork（main-v2-stable）的实际流程**：
+>
+> 1. **问题 / 建议 → 在本仓提 issue**（origin = `Linearl/DeepSeek-Reasonix`）。fork 内部开发走
+>    tasklist 立项 → 留言板派单 → 合并出包，不按正文工作流执行。
+> 2. **不向上游发 PR** —— fork 已独立演进、不再 merge 上游（见 `CONSTITUTION.md`），且**用户明确不需要发上游 PR**；
+>    正文「Submitting changes」一节的 fork + PR 流程**仅存档、不执行**。
+> 3. 正文其余内容（构建 / 测试 / 目录结构 / 代码风格）仍可作为 fork 开发参考。
 
 Thank you for your interest in contributing to Reasonix! This guide covers
 everything you need to get started.
