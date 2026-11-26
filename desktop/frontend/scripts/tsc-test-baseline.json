@@ -1267,9 +1267,6 @@
     "src/__tests__/transcript-measurement-revision.test.tsx": [
       "TS6133"
     ],
-    "src/__tests__/transcript-residency.test.ts": [
-      "TS6133"
-    ],
     "src/__tests__/transcript-row-render-storm.test.tsx": [
       "TS2322",
       "TS6133"
