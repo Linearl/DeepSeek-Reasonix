@@ -205,6 +205,7 @@ assertOrdered(menuSlice, [
   ['key: "markAllRead"', "markAllRead"],
   ['key: "ctx-sep-group"', "separator before grouping"],
   ['key: "grouping"', "grouping submenu"],
+  ['key: "move-to-project"', "move-to-project submenu (tl1711)"],
   ['key: "ctx-sep-copy"', "separator before copy"],
   ['key: "copy-info"', "copy submenu"],
   ['key: "open-with"', "open-with submenu"],
@@ -253,15 +254,17 @@ ok(treeSource.includes("void trashTopicForceableAny(topicId)"), "the trash item'
 ok(/key: "trash",[\s\S]*?danger: true/.test(menuSlice), "trash keeps the danger styling (the only danger row left in the topic menu)");
 ok(!/key: "forceArchive"/.test(treeSource), "no second danger row (force) remains");
 
-// 一级项数与全量键账（验收：一级 ≤10 + 18 功能每项可触达）。菜单源码里所有
+// 一级项数与全量键账（验收：一级 ≤10 + 19 功能每项可触达）。菜单源码里所有
 // `key:` 值构成一个封闭账本：任何新增一级行、或把二级叶误提到一级，都会撞红。
-// 账本口径（顶层功能行 9 = 置顶（条件项，key 由三元表达式给出，不入正则捕获）/
-// 重命名 / AI 重命名 / 标为已读 / 分组 ▸ / 复制 ▸ / 打开方式 ▸ / 编辑职责 / 移到回收站，
-// 3 条分隔线不计行数；捕获集另含复制 ▸ 的 4 个二级叶与打开方式 ▸ 的模板键）。
-// 18 功能账：置顶① 重命名② AI重命名③ 标为已读④ 移动到分组⑤ 移出分组⑥（⑤⑥由
+// tl1832 代补：tl1711「移动到项目 ▸」落地时未同步本账本（新增键 + 一级行数 9→10），
+// 在 tip 上留了预存红（账本键账、行数账双 FAIL）——此处补齐，归属 tl1711、随 tl1832 清零。
+// 账本口径（顶层功能行 10 = 置顶（条件项，key 由三元表达式给出，不入正则捕获）/
+// 重命名 / AI 重命名 / 标为已读 / 分组 ▸ / 移动到项目 ▸ / 复制 ▸ / 打开方式 ▸ / 编辑职责 / 移到回收站，
+// 3 条分隔线不计行数；捕获集另含复制 ▸ 的 4 个二级叶、移动到项目 ▸ 与打开方式 ▸ 的模板键）。
+// 19 功能账：置顶① 重命名② AI重命名③ 标为已读④ 移动到分组⑤ 移出分组⑥（⑤⑥由
 // organizationItems 承载、行为回归由 organization-races 钉）对话名称⑦（tl1832）
-// 复制路径⑧ 日志⑨ 会话ID⑩ 打开方式×5⑪-⑫⑬⑭⑮（同一发现列表派生）编辑职责⑯
-// 回收站⑰ 强制归档（二次确认可触达）⑱——上方断言逐项覆盖。
+// 复制路径⑧ 日志⑨ 会话ID⑩ 移动到项目⑪（tl1711）打开方式×5⑫-⑬⑭⑮⑯（同一发现列表派生）
+// 编辑职责⑰ 回收站⑱ 强制归档（二次确认可触达）⑲——上方断言逐项覆盖。
 const menuKeys = [...menuSlice.matchAll(/key: ("[^"]+"|`[^`]+`)/g)].map((match) => match[1]);
 eq(new Set(menuKeys).size, menuKeys.length, "no duplicate keys in the topic menu ledger");
 // default sort keeps double-quoted keys ahead of the backtick template key.
@@ -278,16 +281,18 @@ eq(menuKeys.slice().sort(), [
   '"editPurpose"',
   '"grouping"',
   '"markAllRead"',
+  '"move-to-project"',
   '"open-with"',
   '"rename"',
   '"trash"',
+  "`move-topic:${target.root ?? \"global\"}`",
   "`open:${opener.id}`",
 ], "the topic menu's closed key ledger (a new level-1 row or a wrongly promoted leaf breaks this)");
 // 顶层功能行 = 双引号键 − 3 条分隔线 − 复制 ▸ 的 4 个二级叶，再加条件项置顶行。
 const nestedLeafKeys = new Set(['"copy-session-name"', '"copy-session-path"', '"copy-log-path"', '"copy-session-id"']);
 const topLevelRows = menuKeys.filter((key) => key.startsWith('"') && !key.includes("sep-") && !nestedLeafKeys.has(key)).length + 1;
 ok(topLevelRows <= 10, `acceptance: level-1 stays within 10 rows (got ${topLevelRows})`);
-eq(topLevelRows, 9, "acceptance: level-1 functional rows = 9 exactly (the spec table)");
+eq(topLevelRows, 10, "acceptance: level-1 functional rows = 10 exactly (tl1103 spec 9 + tl1711 move-to-project)");
 
 // App 装配：logDirectory prop 注入
 ok(appSource.includes("logDirectory={topicbarLogDirectory}"), "App wires the assembly-layer log directory into ProjectTree");
