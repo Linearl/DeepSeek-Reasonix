@@ -83,12 +83,6 @@ export function getResolvedTheme(theme: Theme = getTheme()): ResolvedTheme {
   return "dark";
 }
 
-// Direction is orthogonal to theme, but keep this helper so callers that
-// stored values in the old "style implies theme" model can still ask.
-export function defaultStyleForTheme(_theme: Theme = getTheme()): ThemeStyle {
-  return DEFAULT_THEME_STYLE;
-}
-
 // themeForStyle previously returned the dark/light forced by the style. Style
 // is now independent of theme, so we keep the current theme.
 export function themeForStyle(_style: ThemeStyle): ResolvedTheme {

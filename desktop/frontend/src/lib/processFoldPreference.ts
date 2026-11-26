@@ -3,7 +3,6 @@ import { applySessionExperience } from "./sessionExperience";
 export type ProcessFoldPreference = "auto" | "expanded";
 
 const PROCESS_FOLD_KEY = "reasonix-process-fold";
-const PROCESS_FOLD_EVENT = "reasonix:process-fold";
 
 export function getProcessFoldPreference(): ProcessFoldPreference {
   if (typeof localStorage !== "undefined") {
@@ -22,10 +21,4 @@ export function setProcessFoldPreference(pref: ProcessFoldPreference): void {
   // through the canonical two-state store so this API cannot create a third
   // production state.
   applySessionExperience(pref === "expanded" ? "deep" : "standard");
-}
-
-export function onProcessFoldPreferenceChange(cb: (pref: ProcessFoldPreference) => void): () => void {
-  const handler = (e: Event) => cb((e as CustomEvent).detail as ProcessFoldPreference);
-  window.addEventListener(PROCESS_FOLD_EVENT, handler);
-  return () => window.removeEventListener(PROCESS_FOLD_EVENT, handler);
 }

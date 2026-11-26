@@ -163,11 +163,6 @@ export function useWorkspaceRefresh(tabId: string, scopeKey: string, enabled: bo
   return snapshot;
 }
 
-export function markWorkspaceRefresh(tabId: string, scopeKey: string): void {
-  const previous = snapshots.get(key(tabId, scopeKey)) ?? emptySnapshot();
-  replace(tabId, scopeKey, { ...previous, allPaths: true, source: "reconcile", sequence: previous.sequence + 1 });
-}
-
 export async function reconcileWorkspaceRefresh(
   tabId: string,
   scopeKey: string,
