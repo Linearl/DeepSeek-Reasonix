@@ -3827,6 +3827,7 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairSpliceFailed": "拼接登記失敗",
   "settings.recoveryCopiesPreRepairSplicedManual": "已登記拼接（手動）",
   "settings.recoveryCopiesPreRepairSplicedAuto": "已登記拼接（自癒）",
+  "settings.recoveryCopiesPreRepairSplicedDegraded": "已登記拼接（降級·投影未生成，僅元資訊不可重複合併）",
   "settings.recoveryCopiesPreRepairCleanSelected": "清理所選（{n}）",
   "settings.recoveryCopiesPreRepairCleanAll": "清理全組",
   "settings.recoveryCopiesPreRepairCleanTitle": "清理改寫前備份",

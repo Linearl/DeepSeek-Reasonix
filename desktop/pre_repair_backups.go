@@ -55,6 +55,11 @@ type PreRepairBackupView struct {
 	// 并入口——面板行内标注按它区分两种触发（历史档案袋无来源字段时为空，
 	// 徽标维持素形态）。
 	SplicedBy string `json:"splicedBy,omitempty"`
+	// SplicedDegraded（tl117A/包117-A）是该条登记的降级读侧标记（tl1674c
+	// 口径："owner"/"backup"/"owner backup"，空=两侧严格快照）——行内徽标
+	// 据它如实披露「已登记但投影未生成」（降级登记=纯元信息操作、不重生成
+	// 任何投影），并明示降级只可登记不可重复合并。
+	SplicedDegraded string `json:"splicedDegraded,omitempty"`
 	// Label 是展示名：备份内 meta sidecar 的会话标题优先，回退 stem。
 	Label string `json:"label"`
 	// Stamp 是目录名携带的 UTC 紧凑时间戳（20060102T150405）。
@@ -125,18 +130,25 @@ func preRepairBackupViewsIn(roots []string) []PreRepairBackupView {
 			if info, err := os.Stat(owner); err == nil && !info.IsDir() {
 				view.OwnerPath = owner
 				view.OwnerArchived = preRepairOwnerArchived(owner)
-				// tl1787 续作：拼接档案袋登记读数（后台自愈/手动合并的元信息
-				// 拼接是否已覆盖这条备份）；tl1674b：登记来源一并读出（面板
-				// 行内标注按它区分自动/手动触发；多条登记理论不存在——幂等
-				// 闸同一备份只记一次，取首条来源即可）。
-				view.Spliced = agent.HasPreRepairSplice(owner, path)
-				if view.Spliced {
-					if entries, lerr := agent.ReadPreRepairSpliceLedger(owner); lerr == nil {
-						for _, entry := range entries {
-							if entry.BackupDir == path {
-								view.SplicedBy = entry.Source
-								break
-							}
+			}
+			// tl1787 续作：拼接档案袋登记读数（后台自愈/手动合并的元信息
+			// 拼接是否已覆盖这条备份）；tl1674b：登记来源一并读出（面板
+			// 行内标注按它区分自动/手动触发；多条登记理论不存在——幂等
+			// 闸同一备份只记一次，取首条来源即可）。
+			//
+			// tl117A（包117-A 读取链修复）：这段读数原在 os.Stat(owner) 成功
+			// 分支内——宿主文件不在（孤儿/被移动）时 Spliced 永远不读，已登记
+			// 状态在行上凭空消失（无徽标）。档案袋 <stem>.splices.json 与备份
+			// 同目录、路径只由 parent+stem 推导，不依赖宿主文件在场，故移出
+			// 条件：有无宿主都读，孤儿行同样显示「已登记拼接」。
+			view.Spliced = agent.HasPreRepairSplice(owner, path)
+			if view.Spliced {
+				if entries, lerr := agent.ReadPreRepairSpliceLedger(owner); lerr == nil {
+					for _, entry := range entries {
+						if entry.BackupDir == path {
+							view.SplicedBy = entry.Source
+							view.SplicedDegraded = entry.Degraded
+							break
 						}
 					}
 				}

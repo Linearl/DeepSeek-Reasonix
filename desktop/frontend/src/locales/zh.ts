@@ -5407,6 +5407,7 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairSpliceFailed": "拼接登记失败",
   "settings.recoveryCopiesPreRepairSplicedManual": "已登记拼接（手动）",
   "settings.recoveryCopiesPreRepairSplicedAuto": "已登记拼接（自愈）",
+  "settings.recoveryCopiesPreRepairSplicedDegraded": "已登记拼接（降级·投影未生成，仅元信息不可重复合并）",
   "settings.recoveryCopiesPreRepairCleanSelected": "清理所选（{n}）",
   "settings.recoveryCopiesPreRepairCleanAll": "清理全组",
   "settings.recoveryCopiesPreRepairCleanTitle": "清理改写前备份",

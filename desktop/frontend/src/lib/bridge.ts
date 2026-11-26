@@ -517,6 +517,13 @@ export interface PreRepairBackupView {
    *  self-heal) or "manual" (the panel entry). Empty on legacy ledger files
    *  written before the source marker existed; the badge stays plain then. */
   splicedBy?: string;
+  /** tl117A/包117-A: the degraded read-side marker of this registration
+   *  (tl1674c semantics: "owner"/"backup"/"owner backup"; empty = both sides
+   *  strict). Non-empty means the splice was registered as pure metadata on a
+   *  load-repaired view — no projection was regenerated — so the badge must
+   *  disclose "degraded" and state that a degraded registration can be
+   *  registered but not merged again. */
+  splicedDegraded?: string;
   label: string;
   stamp: string;
   bytes: number;
