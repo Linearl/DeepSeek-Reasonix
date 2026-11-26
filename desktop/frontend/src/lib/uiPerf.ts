@@ -4,30 +4,6 @@ import { app } from "./bridge";
 // the streaming render pipeline. Everything reported is a bounded (signal,
 // bucket) pair — no message text, no timings tied to content — matching the
 // existing desktop metrics privacy posture.
-//
-// The targets below are performance budgets, not hard standards; recalibrate
-// them against the supported machine population before treating a breach as a
-// regression gate.
-export const UI_PERF_BUDGETS = {
-  bridgeEventsPerSec: 120, // Go→WebView stream event rate; ideally < 60
-  stateCommitsPerSec: 60, // stream store updates; at most display FPS
-  streamPaintP95Ms: 50, // token dispatch → next frame
-  frameP95Ms: 16.7,
-  slowFramePct: 1, // frames > 33ms
-  inputLatencyP95Ms: 100, // typing while streaming
-  markdownRenderP95Ms: 10,
-  longTasks: 0, // main-thread tasks > 50ms per turn
-  // Session-switch/history pipeline gates (Phase F). Not turn-scoped: these
-  // are enforced by the real-DOM harness in bench/ (REASONIX_BENCH_* env
-  // overrides), not by the per-turn signal path below.
-  sessionFirstPaintP95Ms: 100, // cold open → surface first paint
-  sessionInteractiveP95Ms: 300, // cold open → input enabled + first slice rendered
-  inpP95Ms: 200, // interaction-to-next-paint probes during switching
-  mainThreadTaskP95Ms: 50, // long-task P95 while switching
-  mainThreadTaskMaxMs: 500, // hard cap on any single main-thread task
-  markdownWorkerMaxParseMs: 3_000, // 500KiB markdown-heavy fixture, cold Worker parse
-  switchHeapGrowthMiB: 20, // 100× alternating-switch retained-heap growth over warmup baseline
-} as const;
 
 export interface UIPerfSummary {
   turnMs: number;
