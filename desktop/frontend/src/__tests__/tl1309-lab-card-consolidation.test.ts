@@ -58,8 +58,10 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   // 分析范围四组：散条全部并卡。
   ok(membersOf("contextGovernance").includes("optimisticParallel"),
     "① efficiency: optimisticParallel rides contextGovernance (任务书①)");
-  ok(membersOf("runtimeObservability").join(",") === "monitoring,eventsRotation,trajectoryView",
-    "① observability: 监控+events 瘦身+轨迹观测 ride runtimeObservability (任务书②)");
+  // tl1787 续作：prepairAutosplice 成员行入卡——本精确清单 pin 当时漏跟
+  // （基点 bd0046978f 预存红，tl1816 双树对照实锤后顺手收口）。
+  ok(membersOf("runtimeObservability").join(",") === "monitoring,eventsRotation,trajectoryView,prepairAutosplice",
+    "① observability: 监控+events 瘦身+轨迹观测+pre-repair 拼接 ride runtimeObservability (任务书②+tl1787)");
   // tl1741 打回返修（20261122 用户裁定）：资源治理合并卡卡体回归（无主开关
   // 卡——runtimeReuse 主键退役不回，成员行回归六枚：复用池=无开关展示行）。
   ok(membersOf("resourceGovernance").join(",") === "runtimeReuse,orphanHandling,idleReleaseMinutes,gcPercent,acpListen,localServer",
@@ -76,9 +78,12 @@ const membersOf = (id: string) => findLabEntry(LAB_LAYOUT_DEFAULT_DATA, id)?.mem
   //   infra: pathRules 已随 tl1487 七组③（tl134 用户裁决）整卡移除——组内
   //     仅余资源治理/工具优化两卡；
   //   storage: homePointer（846 独立迁移向导 pane）/jsonlZstd（冷压缩独立开关）；
-  //   dev-debug / memory-context：单卡组（任务书⑤维持现状）。
-  ok(entryIdsOf("dev-debug").join(",") === "devDebug" && entryIdsOf("memory-context").join(",") === "pinnedIndex",
-    "① dev-debug/memory-context stay single-card groups (任务书⑤)");
+  //   dev-debug：单卡组（任务书⑤维持现状）。
+  //   tl1816：memory-context 组随 pinnedIndex 移组安全/成本控制卡成员行退役
+  //   （组内仅此一卡；tl1772 memoryIndexSlim 移组同款）——单卡组断言随件
+  //   摘除，改钉该组不再存在。
+  ok(entryIdsOf("dev-debug").join(",") === "devDebug" && entryIdsOf("memory-context").length === 0,
+    "① dev-debug stays a single-card group; memory-context retired by tl1816 (pinnedIndex re-homed)");
   ok(entryIdsOf("infra").join(",") === "resourceGovernance,toolOptimizations" &&
      entryIdsOf("storage").join(",") === "sessionStore,homePointer,jsonlZstd",
     "① infra/storage residual standalone entries (tl1741r2: governance card body restored)");

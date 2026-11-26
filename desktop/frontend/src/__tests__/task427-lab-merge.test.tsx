@@ -114,6 +114,10 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
     "experimentalContextBudget",
     "experimentalResearchBudget",
     "experimentalProactiveCompact",
+    // tl1787 件⑤/A：ranges 主动局部压缩族两灯（本 pin 当时漏跟——基点
+    // bd0046978f 预存红，tl1816 双树对照实锤后顺手收口）。
+    "experimentalRangesCompact",
+    "experimentalModelRangesCompact",
     "experimentalColdCacheCompact",
     "experimentalCurateContext",
     "experimentalReviewHint",
@@ -124,7 +128,7 @@ ok(panel.includes('{selected === "contextGovernance" && ('), "pane branch render
     "experimentalBashHeavyGuard",
   ];
   ok(JSON.stringify(familyEntry?.entry.onKeys ?? []) === JSON.stringify(expected),
-    "family entry onKeys are exactly the member switches + tl1309 optimistic pair + tl1378附属行两灯");
+    "family entry onKeys are exactly the member switches + tl1787 ranges pair + tl1309 optimistic pair + tl1378附属行两灯");
   // lightKeys 谓词逐键读原配置键（④ 的「原名读取」在灯侧同样成立）。
   // tl1309 卡①：optimisticWrite 是嵌套字段派生谓词（s.sandbox?.optimisticWrite，
   // 724「判亮规则收拢在谓词里」的非布尔键先例）——单独钉派生形态。

@@ -87,7 +87,9 @@ var labFeatureTiers = []labFeatureTier{
 	// 任务 517：B1/B2/B3 三开关合并为「安全 / 成本控制」单键；三个 legacy 键
 	// 仍渲染（迁移后读 false），归入本特性 renderKeys（task 449 先例）。
 	// 任务 722：三个细粒度子开关（条件渲染，nil=跟随总开关不落盘）同归本卡。
-	{"safetyCostControl", LabTierOptional, []string{"experimental_safety_cost_control", "safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
+	// tl1816：总开关键退役出 renderKeys（渲染面不再写该行；字段保留 decode-only
+	// 供一次性迁移 materialize），三子开关+三 legacy 键仍归本卡。
+	{"safetyCostControl", LabTierOptional, []string{"safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
 	// 四采样点 ≥21 天持续开启零报障，子代理族 4 件报障均非本开关语义（前端同步）。
 	{"subagentPolicy", LabTierOptional, []string{"experimental_subagent_policy"}},
@@ -339,6 +341,9 @@ var labNonFeatureKeys = map[string]string{
 	"experimental_session_selfheal":            "task 1011：会话自愈修复动作（选中头被更长新链支配时切链+超窗投影本地瘦身，逐步备份可逆）——默认开 nil=ON（1010 检测常在、1011 只补修复），显式 false 回 1010 只读姿态；config-only 逃生阀键",
 	"experimental_session_reminders":           "task 1001：会话延时自提醒工具（session_remind set|cancel|list+到期注入+任务 579 空闲桥）——默认开 nil=ON（拍板 commit 9457057：纯增量实验默认开以便发现），工具注册面开关，无独立实验室卡",
 	"experimental_reasoning_only_continuation": "tl1166：reasoning-only 终局修复（仅含推理的空答案回合一次提醒直答+双思考段合成展示，每回合有界）——默认开 nil=ON（只改已破回正常回合逐字节），经 ReasoningOnlyContinuationEnabled() helper 读；config-only 逃生阀键",
+	// tl1816：任务517 总开关键退役（方案A 一次性迁移——load 把旧值写实到
+	// 722 三子键后不再渲染；字段 decode-only 承接迁移，无 setter 无消费面）。
+	"experimental_safety_cost_control": "task 517 合并键：tl1816 总开关退役（load 一次性写实到 safety_* 三子键，渲染面不再写；decode-only 墓碑字段）",
 	// 任务 979：experimental_capability_groups 自本豁免表转正入表A（见
 	// tool-opt 段 capabilityGroups 条目）——953/954/955 设置页入口补齐。
 }
@@ -1054,32 +1059,33 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	fmt.Fprintf(&b, "experimental_auto_load_older = %v   # fork task 160: load older history by scrolling up at the transcript top\n", c.Agent.ExperimentalAutoLoadOlder)
 	fmt.Fprintf(&b, "experimental_perf_monitor = %v   # task 184: host performance monitor (5s samples of memory/IO/key files)\n", c.Agent.ExperimentalPerfMonitor)
 
-	// Task 517: the merged unattended-safety switch — one「安全 / 成本控制」
-	// knob for the three task-244 B-group guards (B1 idle terminate, B2 loop
-	// streak note, B3 event-wait recheck).
-	fmt.Fprintf(&b, "experimental_safety_cost_control = %v   # task 517: merged safety/cost switch — B1 heartbeat self-disables after 3 consecutive runs with no conversation history + B2 bounded neutral Continue. note instead of an immediate second text-repeat pause + B3 re-evaluate the event_wait checker before returning (recheckSatisfied field)\n", c.Agent.ExperimentalSafetyCostControl)
+	// tl1816: the task-517 master switch is retired — the render face no longer
+	// writes experimental_safety_cost_control (the field stays decode-only for
+	// the one-shot materialization; the next save drops the line). The three
+	// task-722 sub-switches below are the only control surface.
 
 	// Task 517: legacy B1/B2/B3 keys stay rendered (post-migration they read
 	// false) so the render face keeps the pinned task-244 round-trip and an
 	// older binary never sees a stale on (task 449 precedent).
-	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalAutonomousIdleTerminate)
-	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalLoopStreakNote)
-	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: legacy key, migrated into experimental_safety_cost_control (task 517)\n", c.Agent.ExperimentalEventWaitRecheck)
+	fmt.Fprintf(&b, "experimental_autonomous_idle_terminate = %v   # task 244 B1: legacy key, migrated into experimental_safety_cost_control (task 517); master retired tl1816 (sub-switches carry the state)\n", c.Agent.ExperimentalAutonomousIdleTerminate)
+	fmt.Fprintf(&b, "experimental_loop_streak_note = %v   # task 244 B2: legacy key, migrated into experimental_safety_cost_control (task 517); master retired tl1816 (sub-switches carry the state)\n", c.Agent.ExperimentalLoopStreakNote)
+	fmt.Fprintf(&b, "experimental_event_wait_recheck = %v   # task 244 B3: legacy key, migrated into experimental_safety_cost_control (task 517); master retired tl1816 (sub-switches carry the state)\n", c.Agent.ExperimentalEventWaitRecheck)
 
-	// Task 722: the fine-grained safety/cost sub-switches render CONDITIONALLY
-	// — nil means "follow experimental_safety_cost_control" and must stay
-	// absent from the file. An unconditional false line would silently convert
-	// every follower into an explicit off on the next save (the 81/123
-	// lost-save lesson, inverted): flipping the master on would then leave the
-	// guards off despite the user never touching a sub-switch.
+	// Task 722 + tl1816: the fine-grained safety/cost sub-switches render
+	// CONDITIONALLY — nil stays absent from the file. Pre-retirement nil meant
+	// "follow the master"; tl1816 retires the master, so load materializes
+	// every nil with the master's value (plan A one-shot) and a hand-deleted
+	// line afterwards reads off (the retired master's own default). Keeping
+	// the render conditional still honors an explicit hand-edit choice to
+	// delete a line rather than pinning an unrequested value.
 	if c.Agent.SafetyIdleTerminate != nil {
-		fmt.Fprintf(&b, "safety_idle_terminate = %v   # task 722: B1 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyIdleTerminate)
+		fmt.Fprintf(&b, "safety_idle_terminate = %v   # task 722: B1 sub-switch (tl1816: master retired — absent reads off, load materializes the retired master value once)\n", *c.Agent.SafetyIdleTerminate)
 	}
 	if c.Agent.SafetyLoopStreakNote != nil {
-		fmt.Fprintf(&b, "safety_loop_streak_note = %v   # task 722: B2 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyLoopStreakNote)
+		fmt.Fprintf(&b, "safety_loop_streak_note = %v   # task 722: B2 sub-switch (tl1816: master retired — absent reads off, load materializes the retired master value once)\n", *c.Agent.SafetyLoopStreakNote)
 	}
 	if c.Agent.SafetyEventWaitRecheck != nil {
-		fmt.Fprintf(&b, "safety_event_wait_recheck = %v   # task 722: B3 sub-switch override (absent = follow experimental_safety_cost_control)\n", *c.Agent.SafetyEventWaitRecheck)
+		fmt.Fprintf(&b, "safety_event_wait_recheck = %v   # task 722: B3 sub-switch (tl1816: master retired — absent reads off, load materializes the retired master value once)\n", *c.Agent.SafetyEventWaitRecheck)
 	}
 
 	// tl-1166: the reasoning-only continuation switch renders CONDITIONALLY —

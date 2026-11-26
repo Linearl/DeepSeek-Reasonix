@@ -313,11 +313,10 @@ export interface SettingsView {
   // tl1378: review-hint prompt layer (boot snapshot).
   experimentalReviewHint?: boolean;
   // tl1741：experimentalSessionCollab 随撤开关退役（跨会话协作常开）。
-  // 任务 517: merged safety/cost switch (one「安全 / 成本控制」knob for the
-  // task-244 B1/B2/B3 guards).
-  experimentalSafetyCostControl?: boolean;
-  // 任务 722: fine-grained sub-switch overrides. null/absent = follow the
-  // master; an explicit value wins over it (开总关子 / 关总开子).
+  // tl1816：任务517 总开关键随总开关退役——「安全 / 成本控制」唯一控制面=
+  // 三个细粒度子开关（Go 侧 load 已把 nil 全部写实，读数即显式态）。
+  // 任务 722: fine-grained sub-switch overrides. null/absent = 缺席（tl1816
+  // 后读 off）；显式值即生效值。
   safetyIdleTerminate?: boolean | null;
   safetyLoopStreakNote?: boolean | null;
   safetyEventWaitRecheck?: boolean | null;

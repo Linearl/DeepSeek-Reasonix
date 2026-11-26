@@ -61,6 +61,8 @@ export type TierFeatureId =
   | "subagentPolicy"
   // tl1193b: plan-E pinned standing-tier index mode (实验室「记忆与上下文」
   // 新组首卡；未稳定档，默认关——关时常驻注入与引入前逐字节一致)。
+  // tl1816：卡移组安全/成本控制卡成员行（tl1772 memoryIndexSlim 同款），
+  // 注册表标注保留（562 展示面），档位不动。
   | "pinnedIndex"
   // tl1733: 记忆注入瘦身（实验室「提效」组新卡；可选档，默认关——关=默认
   // 瘦身注入管线；开=应急旁路仅注入 pinned）。boot 快照消费，重启生效。
@@ -70,6 +72,10 @@ export type TierFeatureId =
   | "messageMerge"
   | "quickCommands"
   | "highSpeedModel"
+  // tl1816：备用模型开关行（722 点1 迁入模型策略卡；键 experimental_fallback_model）
+  // 挂独立「可选」徽章——三档徽章体系对齐任务书③。Go 渲染表无条目（前端
+  // 独有，562 测试 ③ feOnly 豁免清单收录——模型目标行在设置→模型偏好）。
+  | "fallbackModel"
   | "compactionParallel"
   | "traceAsState"
   | "outputStyle"
@@ -285,6 +291,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   messageMerge: "recommended",
   quickCommands: "recommended",
   highSpeedModel: "optional",
+  // tl1816：备用模型开关行挂「可选」徽章（任务书③；行在模型策略卡 pane，
+  // labLabel("fallbackModel") 承载）。
+  fallbackModel: "optional",
   compactionParallel: "optional",
   traceAsState: "optional",
   // tl1487 一组②：回答风格可选→推荐（用户 20261107 八组清单）。
@@ -630,11 +639,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * 入表——未稳定 6→7、总数 93→94（两侧共享；并集解 20261124 撞 tl1772
  * 实测定稿）。
  * tl1817：mimoTts（朗读 MiMo TTS 传输层，「交互与呈现」卡成员行，可选档）
- * 入表——可选 27→28、总数 94→95（Go 渲染表同步 73→74，两侧共享）。 */
+ * 入表——可选 27→28、总数 94→95（Go 渲染表同步 73→74，两侧共享）。
+ * tl1816：fallbackModel（备用模型开关行，可选档）入表——可选 28→29、总数
+ * 95→96（前端独有，Go 渲染表无条目，feOnly 豁免同步）。pinnedIndex 同件
+ * 移组（记忆与上下文组独立卡 → 安全/成本控制卡成员行），档位与键不动、
+ * 注册表计数不变。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
   recommended: 51,
-  optional: 28,
+  optional: 29,
   unstable: 7,
   retired: 0,
 };

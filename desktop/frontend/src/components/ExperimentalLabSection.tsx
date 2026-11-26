@@ -363,14 +363,17 @@ const LabRailItem = memo(function LabRailItem({ feature, active, onSelect, trans
       id={`lab-entry-${feature.id}`}
       // tl1791：CDP 稳定锚点——rail 卡行 testid 与 lab-layout.yaml 卡 key 对齐
       // （与上方 id 同模板；选择器 `[data-testid=lab-entry-<卡id>]`）。
+      // tl1816：关态行不再挂 --off 整行变灰（用户实测点得动=纯视觉观感差；
+      // on/off 区分保留在状态点），徽章与标签保持正常色。
+      // tl1741r2 alwaysOn 折入 on 的语义保留（状态点恒亮+排序恒启用）。
       data-testid={`lab-entry-${feature.id}`}
-      className={`experimental-rail__item${active ? " experimental-rail__item--active" : ""}${feature.on || feature.kind === "param" || feature.kind === "action" ? "" : " experimental-rail__item--off"}`}
+      className={`experimental-rail__item${active ? " experimental-rail__item--active" : ""}`}
       aria-current={active ? "true" : undefined}
       onClick={() => onSelect(feature.id)}
     >
-      {/* 任务 775：参数卡无开关——空心态点代替开/关状态点，
-          且不参与 --off 变灰（参数卡不存在「关」态）。
-          tl1227：动作卡（action）同语义，复用同一空心态点（零新增 CSS 类）。 */}
+      {/* 任务 775：参数卡无开关——空心态点代替开/关状态点。
+          tl1227：动作卡（action）同语义，复用同一空心态点（零新增 CSS 类）。
+          tl1816：--off 整行灰退役后，状态点是 on/off 的唯一视觉区分。 */}
       <span className={`experimental-rail__dot${feature.on ? " experimental-rail__dot--on" : feature.kind === "param" || feature.kind === "action" ? " experimental-rail__dot--param" : ""}`} aria-hidden="true" />
       <span className="experimental-rail__label">{feature.label}</span>
       {/* 任务 774: the rail row (card head) renders exactly ONE
@@ -678,10 +681,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
         id: entry.id as ExperimentFeatureId,
         group,
         label: t(entry.labelKey),
-        // tl1741r2 尾项（用户裁定 20261122：常开不该置灰）：alwaysOn 常开卡
-        // 折入 on——rail 行不挂 --off 变灰、状态点恒亮、enabled-first 排序恒
-        // 视为启用（无主开关卡不存在「关」态，观感与有开关卡一致；
-        // fullAccess 等真开关卡不打标记，关态照常变灰）。
+        // tl1741r2 尾项（用户裁定 20261122：常开不该置灰）→ tl1816 全 rail
+        // 去关态灰（--off 类退役）：alwaysOn 常开卡折入 on——状态点恒亮、
+        // enabled-first 排序恒视为启用（无主开关卡不存在「关」态）；关态行
+        // 的 on/off 区分只落在状态点。
         on: Boolean(entry.alwaysOn) || labEntryLightOn(entry, s),
         // 任务 774：卡头徽章聚合为单枚最高档（max(卡, members)，推荐>可选
         // >未稳定>已退役）；成员徽章只在卡内详情行可见，不再上卡头。
@@ -2422,26 +2425,10 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
             </SettingsField>
           )}
-          {selected === "pinnedIndex" && (
-            /* tl1193b: plan-E pinned standing-tier index mode. Memory-context
-               group, unstable tier, default off; boot resolves the saved
-               switch into the memory gate before the first Load, so a flip
-               applies on restart. Off = legacy full-body injection unchanged. */
-            <SettingsField testId="lab-toggle-pinnedIndex" label={labLabel("pinnedIndex", t("settings.pinnedIndex"))} hint={t("settings.pinnedIndex.hint")} icon={<Sparkles size={18} />}>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${Boolean(s.experimentalPinnedIndex) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(() => app.SetExperimentalPinnedIndex(on))}
-                  >
-                    {t(on ? "settings.pinnedIndex.on" : "settings.pinnedIndex.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-            </SettingsField>
-          )}
+          {/* tl1816：pinnedIndex 独立 pane 退役——开关行并入 safetyCostControl
+              卡（用户拍板「置顶记忆索引化归组安全/成本控制」；键/setter 零变化，
+              tl1772 memoryIndexSlim 先例）。tl1193b：plan-E pinned standing-tier
+              index mode——boot 快照消费重启生效，关=常驻层全量注入逐字节一致。 */}
           {/* tl134/tl1487 七组③：pathRules pane（564/551 retired 只读展示块）
               随整卡移除——结构化路径作用域判定为过时技术（从未接线，生产走
               confine+allow_write+写入审批），用户 20261107 裁决移除；机制存档
@@ -2454,43 +2441,28 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               tl1309 卡③：orphanHandling/runtimeReuse 两独立 pane 同款退役——
               并入「资源治理」合并卡（resourceGovernance）成员行承载。 */}
           {/* 任务 517:「安全 / 成本控制」— one switch for all three task-244
-              B-group guards (this absorbs the 561 M1 autonomousRunGuard card
-              and the standalone eventWaitRecheck entry; the config side is a
+              B-group guards (this absorbed the 561 M1 autonomousRunGuard card
+              and the standalone eventWaitRecheck entry; the config side was a
               key-level merge into experimental_safety_cost_control, task 449
-              precedent). The three member rows are read-only STATE rows —
-              每个子项状态可见（随总开关同开同关），不可单独写。 */}
-          {/* 任务 517+722:「安全 / 成本控制」——总开关保留（键
-              experimental_safety_cost_control 不变），三个 B 组守护从只读状态行
-              升级为细粒度子开关（722 点6）：未拨动过=跟随总开关（nil，配置里
-              不落盘，旧配置行为逐位不变），拨动后写显式子键、独立生效。
+              precedent). */}
+          {/* 任务 517+722+tl1816:「安全 / 成本控制」——722 点6 把三个 B 组守护
+              升级为细粒度子开关；tl1816（方案A 一次性迁移）移除顶部总开关——
+              Go 侧 load 把旧总开关值写实到全部 nil 子键（行为逐位不变），本卡
+              唯一控制面=细粒度子开关。
               任务 722 点5/点6：指定压缩模型与消息合并的行迁入本卡；任务 727：
               心跳会话轮换开关桥接 heartbeat-rotation.json 的 enabled。 */}
           {selected === "safetyCostControl" && (
             <>
-              <SettingsField testId="lab-toggle-safetyCostControl" label={labLabel("safetyCostControl", t("settings.safetyCostControl"))} hint={t("settings.safetyCostControlHint")} icon={<Sparkles size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalSafetyCostControl(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.safetyCostControl.on" : "settings.safetyCostControl.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              <p className="settings-field__hint-line">{t("settings.safetyCostControl.subHint")}</p>
+              {/* tl1816（方案A 一次性迁移）：总开关 UI 行退役——Go 侧 load 已把
+                  旧总开关值写实到全部 nil 子键（行为逐位不变），此后本卡唯一
+                  控制面=下方细粒度子开关（722 口径）；SetExperimentalSafetyCostControl
+                  与灯键 experimentalSafetyCostControl 同步退役。 */}
               <SettingsField label={t("settings.autonomousIdleTerminate")} hint={t("settings.autonomousIdleTerminateHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${(s.safetyIdleTerminate ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${(s.safetyIdleTerminate ?? false) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
                         await app.SetSafetyIdleTerminate(on);
@@ -2506,7 +2478,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${(s.safetyLoopStreakNote ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${(s.safetyLoopStreakNote ?? false) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
                         await app.SetSafetyLoopStreakNote(on);
@@ -2523,7 +2495,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   {[false, true].map((on) => (
                     <button
                       key={String(on)}
-                      className={`set-seg__btn${(s.safetyEventWaitRecheck ?? s.experimentalSafetyCostControl) === on ? " set-seg__btn--on" : ""}`}
+                      className={`set-seg__btn${(s.safetyEventWaitRecheck ?? false) === on ? " set-seg__btn--on" : ""}`}
                       disabled={busy}
                       onClick={() => void apply(async () => {
                         await app.SetSafetyEventWaitRecheck(on);
@@ -2663,6 +2635,25 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                       onClick={() => void apply(() => app.SetExperimentalDecisionPatternsLayered(on))}
                     >
                       {t(on ? "settings.decisionPatternsLayered.on" : "settings.decisionPatternsLayered.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* tl1816（原「记忆与上下文」组独立卡移组）：置顶记忆索引化——
+                  本卡成员行（tl1772 memoryIndexSlim 同款三件套；键
+                  experimental_pinned_index 与 setter 零变化）。tl1193b：pinned
+                  常驻层索引化——boot 快照消费，重启生效；默认关=常驻层 body
+                  全量注入与引入前逐字节一致（铁律 2）。 */}
+              <SettingsField testId="lab-toggle-pinnedIndex" label={labLabel("pinnedIndex", t("settings.pinnedIndex"))} hint={t("settings.pinnedIndex.hint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.experimentalPinnedIndex) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetExperimentalPinnedIndex(on))}
+                    >
+                      {t(on ? "settings.pinnedIndex.on" : "settings.pinnedIndex.off")}
                     </button>
                   ))}
                 </SettingsOptions>
@@ -3137,8 +3128,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsField>
               {/* 任务 722 点1：备用模型自跨会话协作卡迁入「提效-模型策略」
                   （键 experimental_fallback_model 不变；模型目标行仍在
-                  「设置 → 模型 → 模型偏好」）。 */}
-              <SettingsField label={t("settings.fallbackModelSwitch")} hint={t("settings.fallbackModelSwitchHint")} icon={<Sparkles size={18} />}>
+                  「设置 → 模型 → 模型偏好」）。tl1816：开关行挂「可选」徽章
+                  （三档徽章体系；fallbackModel 注册档经 labLabel 承载）。 */}
+              <SettingsField label={labLabel("fallbackModel", t("settings.fallbackModelSwitch"))} hint={t("settings.fallbackModelSwitchHint")} icon={<Sparkles size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
                     <button
@@ -3898,27 +3890,6 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
-            {/* 任务 943 multi_edit 直注（971 聚合入页为成员行，独立 pane 退役）。
-                显示走与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
-                默认开）：存量族键开的用户拆分前后显示不跳变。键/setter 零变化。 */}
-            <SettingsField testId="lab-toggle-multiEditInjection" label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
-              <SettingsOptions layout="field" className="set-seg">
-                {[false, true].map((on) => (
-                  <button
-                    key={String(on)}
-                    className={`set-seg__btn${(s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)) === on ? " set-seg__btn--on" : ""}`}
-                    disabled={busy}
-                    onClick={() => void apply(async () => {
-                      await app.SetExperimentalMultiEditInjection(on);
-                      setRestartNeeded(true);
-                    })}
-                  >
-                    {t(on ? "settings.multiEditInjection.on" : "settings.multiEditInjection.off")}
-                  </button>
-                ))}
-              </SettingsOptions>
-              <p className="approval-mode-hint">{t("settings.multiEditInjection.risk")}</p>
-            </SettingsField>
             {/* tl1805（20261125）：restart_update 行归位回界面组「更新与反馈」卡
                 （992 裁定的渲染面补同步）——本聚合页不再承载该行；键/setter
                 零变化，testId 随行迁走（锚点跟 id 不跟卡）。 */}
@@ -3926,7 +3897,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 占位键位（954/955 已合入 149491604，占位从未挂接）。一键覆盖
                 953（use_capability 组行/组卡/体积闸/call_hint）、954（session_hub
                 L0 聚合件注册+可见面）、969（常驻目录组归属）；boot 快照，重启
-                （或新会话）生效。默认关=零行为（铁律 2），九件协作工具直挂不变。 */}
+                （或新会话）生效。默认关=零行为（铁律 2），九件协作工具直挂不变。
+                tl1816：本行上移至族卡之前——能力组披露非 multi_edit 工具优化，
+                不入族卡；四条 multi_edit 行自此连排聚合一卡。 */}
             <SettingsField testId="lab-toggle-capabilityGroups" label={labLabel("capabilityGroups", t("settings.capabilityGroups"))} hint={t("settings.capabilityGroupsHint")} icon={<Sparkles size={18} />} stacked>
               <SettingsOptions layout="field" className="set-seg">
                 {[false, true].map((on) => (
@@ -3945,9 +3918,36 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
               </SettingsOptions>
               <p className="approval-mode-hint">{t("settings.capabilityGroups.risk")}</p>
             </SettingsField>
+            {/* tl1816：multi_edit 族卡——同一工具（multi_edit）的多项优化聚合
+                为一张 LabSectionCard（决策模式族卡 1099 同款形态；任务书④，
+                现状同一工具四条散列占位）。纯视觉分组：各成员行仍读自己的键、
+                写自己的 setter，徽章语义不变（621 成员徽章留行、774 rail 聚合
+                徽章不动）。族内=直注（943）+三条增强（tl-1218）。
+                任务 943 multi_edit 直注（971 聚合入页为成员行，独立 pane 退役）。
+                显示走与 Go 侧同一条回落链（键缺省跟随旧族键，族键也缺省按面板层
+                默认开）：存量族键开的用户拆分前后显示不跳变。键/setter 零变化。 */}
+            <LabSectionCard title={t("settings.lab.family.multiEdit")} hint={t("settings.lab.family.multiEditHint")}>
+            <SettingsField testId="lab-toggle-multiEditInjection" label={labLabel("multiEditInjection", t("settings.multiEditInjection"))} hint={t("settings.multiEditInjectionHint")} icon={<Sparkles size={18} />} stacked>
+              <SettingsOptions layout="field" className="set-seg">
+                {[false, true].map((on) => (
+                  <button
+                    key={String(on)}
+                    className={`set-seg__btn${(s.experimentalMultiEditInjection ?? (s.experimentalToolOptimizations ?? true)) === on ? " set-seg__btn--on" : ""}`}
+                    disabled={busy}
+                    onClick={() => void apply(async () => {
+                      await app.SetExperimentalMultiEditInjection(on);
+                      setRestartNeeded(true);
+                    })}
+                  >
+                    {t(on ? "settings.multiEditInjection.on" : "settings.multiEditInjection.off")}
+                  </button>
+                ))}
+              </SettingsOptions>
+              <p className="approval-mode-hint">{t("settings.multiEditInjection.risk")}</p>
+            </SettingsField>
             {/* tl-1218：multi_edit 三条增强（①错误详情增强 ②证据门连坐收窄
                 ③跳过失败项模式）——三个独立开关的卡内成员行，与 multi_edit
-                直注成组成员行。boot 快照，重启生效；默认关=与基线逐字节一致
+                直注同族连排。boot 快照，重启生效；默认关=与基线逐字节一致
                 （铁律 2）。 */}
             <SettingsField testId="lab-toggle-multiEditErrorDetail" label={labLabel("multiEditErrorDetail", t("settings.multiEditErrorDetail"))} hint={t("settings.multiEditErrorDetailHint")} icon={<Sparkles size={18} />}>
               <SettingsOptions layout="field" className="set-seg">
@@ -4000,6 +4000,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                 ))}
               </SettingsOptions>
             </SettingsField>
+            </LabSectionCard>
             </>
           )}
         </div>

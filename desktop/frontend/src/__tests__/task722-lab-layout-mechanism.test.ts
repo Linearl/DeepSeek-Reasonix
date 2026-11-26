@@ -149,18 +149,22 @@ items:
   // 组键受控词表。任务 992：工具优化并入 infra、原独立 tool-opt 组退役——
   // 词表保留 tool-opt（旧词表兼容），但 yaml 只承载现役组（本 pin 随
   // 1005 窗口补同步，992 合组时漏跟）。tl1193b：增「记忆与上下文」组
-  // （pinnedIndex 卡落位）——现役 7 组 → 8 组。
+  // （pinnedIndex 卡落位）——现役 7 组 → 8 组。tl1816：pinnedIndex 移组
+  // 安全/成本控制卡成员行，「记忆与上下文」组退役（组键保留词表）——
+  // 现役 8 组 → 7 组。
   const groupKeys = [...yamlText.matchAll(/^  - key: (\w[-\w]*)$/gm)].map((m) => m[1]);
-  ok(groupKeys.length === 8 && groupKeys.every((k) => (LAB_GROUP_KEYS as readonly string[]).includes(k)),
-    "yaml group keys are the controlled vocabulary, carrying the 8 active groups");
+  ok(groupKeys.length === 7 && groupKeys.every((k) => (LAB_GROUP_KEYS as readonly string[]).includes(k)),
+    "yaml group keys are the controlled vocabulary, carrying the 7 active groups (tl1816 retired memory-context)");
 }
 
-// ── ④ 722 点6：三子键 wire 面 ──
+// ── ④ 722 点6 + tl1816：三子键 wire 面（总开关退役，显式子键唯一真相）──
 {
   ok(view.includes("safetyIdleTerminate?: boolean | null") && view.includes("safetyLoopStreakNote?: boolean | null") &&
      view.includes("safetyEventWaitRecheck?: boolean | null"),
-    "SettingsView exposes the three sub-switch overrides (null = follow master)");
+    "SettingsView exposes the three sub-switch overrides (null = absent, reads off after tl1816)");
   ok(types.includes("safetyIdleTerminate?: boolean | null"), "config-mirror type carries the same trio");
+  ok(!view.includes("experimentalSafetyCostControl") && !types.includes("experimentalSafetyCostControl"),
+    "tl1816: the master field is gone from both frontend types");
   for (const b of [
     "SetSafetyIdleTerminate(enabled: boolean): Promise<void>;",
     "SetSafetyLoopStreakNote(enabled: boolean): Promise<void>;",
@@ -171,15 +175,17 @@ items:
   const settingsApp = readFileSync(`${repoRoot}/desktop/settings_app.go`, "utf8");
   // \s+ 容忍 gofmt 的字段对齐空格（锁死单空格会在 gofmt -w 后假红，742 实测）。
   ok((settingsApp.match(/SafetyIdleTerminate\s+\*bool\s+`json:"safetyIdleTerminate"`/g) ?? []).length === 2,
-    "both Go settings views carry safetyIdleTerminate (JSON null = inherit)");
+    "both Go settings views carry safetyIdleTerminate (JSON null = absent)");
   ok((settingsApp.match(/SafetyEventWaitRecheck\s+\*bool\s+`json:"safetyEventWaitRecheck"`/g) ?? []).length === 2,
     "both Go settings views carry safetyEventWaitRecheck");
-  // 卡内行：跟随读数 + 独立 setter。
-  ok(panel.includes("s.safetyIdleTerminate ?? s.experimentalSafetyCostControl") &&
+  ok(!settingsApp.includes("experimentalSafetyCostControl"),
+    "tl1816: the master field is gone from both Go settings views");
+  // 卡内行：显式值读数（nil 兜底=false）+ 独立 setter。
+  ok(panel.includes("s.safetyIdleTerminate ?? false") &&
      panel.includes("app.SetSafetyIdleTerminate(on)") &&
-     panel.includes("s.safetyLoopStreakNote ?? s.experimentalSafetyCostControl") &&
+     panel.includes("s.safetyLoopStreakNote ?? false") &&
      panel.includes("app.SetSafetyLoopStreakNote(on)"),
-    "sub-switch rows read (override ?? master) and write their own keys");
+    "sub-switch rows read (override ?? false, tl1816) and write their own keys");
 }
 
 // ── ⑤ 727 heartbeatRotation ──
@@ -199,14 +205,16 @@ items:
   // 成员的徽章只在卡内详情行可见，不再重复上卡头。
   ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "safetyCostControl") === "recommended",
     "safetyCostControl rail badge aggregates to the single strongest tier");
-  // 三语键。
+  // 三语键。tl1816：settings.safetyCostControl.subHint 随总开关退役同删。
   for (const locale of ["zh", "en", "zh-TW"]) {
     const dict = readFileSync(`${frontendRoot}/src/locales/${locale}.ts`, "utf8");
     const keys = ["settings.heartbeatRotation", "settings.heartbeatRotationHint", "settings.heartbeatRotation.on",
-      "settings.heartbeatRotation.off", "settings.safetyCostControl.subHint"];
+      "settings.heartbeatRotation.off"];
     const missing = keys.filter((k) => !dict.includes(`"${k}"`));
     ok(missing.length === 0, `${locale} carries the 722/727 keys (missing: ${JSON.stringify(missing)})`);
     ok(!dict.includes("settings.safetyCostControl.memberState"), `${locale} drops the retired memberState key`);
+    ok(!dict.includes("settings.safetyCostControl.subHint") && !dict.includes("settings.safetyCostControlHint"),
+      `tl1816: ${locale} drops the retired master hint keys`);
   }
 }
 

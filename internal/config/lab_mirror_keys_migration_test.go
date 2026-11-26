@@ -231,7 +231,8 @@ func TestLabMirrorSettersSingleWrite(t *testing.T) {
 			func() bool { return c.Agent.ExperimentalHeapHighProfile },
 			func() bool { return c.Desktop.ExperimentalHeapHighProfile }},
 		// 任务 517：B1/B2/B3 三个 setter 撤销，写路径并入 SetExperimentalSafetyCostControl
-		// （safety_cost_control_merge_test.go 覆盖）。
+		// （safety_cost_control_merge_test.go 覆盖）。tl1816：总开关 setter 亦
+		// 退役——「安全 / 成本控制」唯一控制面=三个细粒度子开关（722 口径）。
 		{"SetExperimentalOrphanHandling", c.SetExperimentalOrphanHandling,
 			func() bool { return c.Agent.ExperimentalOrphanHandling },
 			func() bool { return c.Desktop.ExperimentalOrphanHandling }},

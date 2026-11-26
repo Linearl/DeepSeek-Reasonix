@@ -836,6 +836,9 @@ func normalizeConfigForEdit(cfg *Config) bool {
 	changed = migrateOrphanHandlingMerge(cfg) || changed
 	changed = migrateLabMirrorKeysToAgent(cfg) || changed
 	changed = migrateSafetyCostControlMerge(cfg) || changed
+	// tl1816（方案A 一次性迁移）：总开关退役——把总开关现值写实到全部 nil
+	// 子键，行为逐位不变；此后渲染面不再写总开关行。
+	changed = migrateSafetyCostControlMasterRetire(cfg) || changed
 	freezeProviderBillingCurrencies(cfg)
 	applyDeepSeekOfficialDefaultPricing(cfg)
 	backfillDeepSeekOfficialPrices(cfg)
@@ -937,6 +940,41 @@ func migrateSafetyCostControlMerge(c *Config) bool {
 	c.Agent.ExperimentalLoopStreakNote = false
 	c.Agent.ExperimentalEventWaitRecheck = false
 	return true
+}
+
+// migrateSafetyCostControlMasterRetire materializes the retired task-517
+// master switch into the task-722 fine-grained sub-switches (tl1816 方案A,
+// one-shot): every nil sub-switch is written the master's current value, so
+// post-migration behaviour is bit-identical to the pre-retirement inherit
+// semantics (总开关 true + 子键 nil ⇒ 三子键 true；false 同理). The master
+// field itself stays decode-only and the next save drops the line (the render
+// face no longer writes it). Runs AFTER migrateSafetyCostControlMerge so a
+// legacy B-group true has already folded into the master before
+// materialization. Idempotent: once the sub-switches are explicit, later
+// loads see no nils and change nothing. Returns true when anything changed so
+// loadForEditStrict can persist the materialized state.
+func migrateSafetyCostControlMasterRetire(c *Config) bool {
+	if c == nil {
+		return false
+	}
+	master := c.Agent.ExperimentalSafetyCostControl
+	changed := false
+	if c.Agent.SafetyIdleTerminate == nil {
+		v := master
+		c.Agent.SafetyIdleTerminate = &v
+		changed = true
+	}
+	if c.Agent.SafetyLoopStreakNote == nil {
+		v := master
+		c.Agent.SafetyLoopStreakNote = &v
+		changed = true
+	}
+	if c.Agent.SafetyEventWaitRecheck == nil {
+		v := master
+		c.Agent.SafetyEventWaitRecheck = &v
+		changed = true
+	}
+	return changed
 }
 
 // normalizeRetiredMultiThresholdCompaction clears retired multi-threshold keys

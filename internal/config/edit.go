@@ -1677,55 +1677,46 @@ func (c *Config) SetBackgroundJobWakeIdleSession(enabled bool) error {
 
 // tl1741：SetExperimentalSessionCollab 随撤开关退役——协作工具/信件泵无条件
 // 启用（键自 struct 退役，deprecated 清单承接存量手写键）。
+// tl1816：SetExperimentalSafetyCostControl 随总开关退役——「安全 / 成本控制」
+// 的唯一控制面=三个细粒度子开关（SetSafetyIdleTerminate/SetSafetyLoopStreakNote/
+// SetSafetyEventWaitRecheck）；总开关键 decode-only 承接一次性迁移（方案A），
+// load 时写实到 nil 子键，此后渲染面不再写该行。
 
-// SetExperimentalSafetyCostControl toggles the merged unattended-safety
-// switch (task 517): one「安全 / 成本控制」knob for all three task-244 B-group
-// guards (B1 heartbeat idle self-terminate, B2 loop neutral continue note,
-// B3 event-wait return-time recheck). Single-writes the [agent] key; the
-// legacy B1/B2/B3 keys and their retired [desktop] mirrors are only cleared
-// here, so a save never resurrects a folded legacy true.
-func (c *Config) SetExperimentalSafetyCostControl(enabled bool) error {
-	c.Agent.ExperimentalSafetyCostControl = enabled
-	c.Agent.ExperimentalAutonomousIdleTerminate = false
-	c.Agent.ExperimentalLoopStreakNote = false
-	c.Agent.ExperimentalEventWaitRecheck = false
-	c.Desktop.ExperimentalAutonomousIdleTerminate = false
-	c.Desktop.ExperimentalLoopStreakNote = false
-	c.Desktop.ExperimentalEventWaitRecheck = false
-	return nil
-}
-
-// SafetyIdleTerminateEnabled reports the effective B1 gate (task 722): an
-// explicit safety_idle_terminate sub-switch wins; an absent key inherits the
-// merged master, so pre-722 configs read exactly experimental_safety_cost_control.
+// SafetyIdleTerminateEnabled reports the effective B1 gate (task 722): the
+// explicit safety_idle_terminate sub-switch wins. tl1816 retired the task-517
+// master (plan A: load materializes every nil with the master's last value),
+// so an absent key reads off — the retired master's own default — keeping
+// hand-edited configs and fresh defaults on the pre-retirement all-off
+// baseline.
 func (c *Config) SafetyIdleTerminateEnabled() bool {
 	if c.Agent.SafetyIdleTerminate != nil {
 		return *c.Agent.SafetyIdleTerminate
 	}
-	return c.Agent.ExperimentalSafetyCostControl
+	return false
 }
 
 // SafetyLoopStreakNoteEnabled reports the effective B2 gate (task 722);
-// nil sub-switch inherits the merged master.
+// absent key reads off after the tl1816 master retirement (see B1).
 func (c *Config) SafetyLoopStreakNoteEnabled() bool {
 	if c.Agent.SafetyLoopStreakNote != nil {
 		return *c.Agent.SafetyLoopStreakNote
 	}
-	return c.Agent.ExperimentalSafetyCostControl
+	return false
 }
 
 // SafetyEventWaitRecheckEnabled reports the effective B3 gate (task 722);
-// nil sub-switch inherits the merged master.
+// absent key reads off after the tl1816 master retirement (see B1).
 func (c *Config) SafetyEventWaitRecheckEnabled() bool {
 	if c.Agent.SafetyEventWaitRecheck != nil {
 		return *c.Agent.SafetyEventWaitRecheck
 	}
-	return c.Agent.ExperimentalSafetyCostControl
+	return false
 }
 
 // SetSafetyIdleTerminate writes the B1 sub-switch explicitly (task 722). The
-// value is an override: once written it no longer follows the master. Clearing
-// back to "follow" is a hand-edit of config.toml (delete the line).
+// value is explicit: it is the only control surface since tl1816 retired the
+// master. Clearing back to "absent" is a hand-edit of config.toml (delete the
+// line; reads off).
 func (c *Config) SetSafetyIdleTerminate(enabled bool) error {
 	c.Agent.SafetyIdleTerminate = &enabled
 	return nil

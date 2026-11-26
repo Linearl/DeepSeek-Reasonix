@@ -650,12 +650,12 @@ type SettingsView struct {
 	// Task 449: merged orphan switch (settings-view mirror of [agent]; folds
 	// the task 244 B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
-	// Task 517: merged safety/cost switch (settings-view mirror of [agent];
-	// one「安全 / 成本控制」knob for the task-244 B1/B2/B3 guards).
-	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
+	// tl1816: the task-517 master switch retired — the settings view no longer
+	// carries it; the three task-722 sub-switches below are the only surface
+	// (load materializes every nil with the retired master's value, so a
+	// non-null JSON value here is always the explicit effective state).
 	// Task 722: fine-grained sub-switch overrides. nil (= JSON null) means
-	// "follow the master", so the UI can render the effective value while
-	// still distinguishing an untouched follower from an explicit choice.
+	// "absent from config" (reads off after the tl1816 master retirement).
 	SafetyIdleTerminate    *bool `json:"safetyIdleTerminate"`
 	SafetyLoopStreakNote   *bool `json:"safetyLoopStreakNote"`
 	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
@@ -999,11 +999,11 @@ type DesktopStartupSettingsView struct {
 	// Task 449: merged orphan switch (mirror of [agent]; folds the task 244
 	// B5 lease reclaim + B4 recovery sweep into one key).
 	ExperimentalOrphanHandling bool `json:"experimentalOrphanHandling"`
-	// Task 517: merged safety/cost switch (mirror of [agent]; one「安全 / 成本
-	// 控制」knob for the task-244 B1/B2/B3 guards).
-	ExperimentalSafetyCostControl bool `json:"experimentalSafetyCostControl"`
-	// Task 722: fine-grained sub-switch overrides (nil = JSON null = follow
-	// the master; both-views lesson applies to the override face too).
+	// tl1816: the task-517 master switch retired — the settings view no longer
+	// carries it (see the startup view twin above).
+	// Task 722: fine-grained sub-switch overrides (nil = JSON null = absent
+	// from config, reads off after the tl1816 master retirement; both-views
+	// lesson applies to the override face too).
 	SafetyIdleTerminate    *bool `json:"safetyIdleTerminate"`
 	SafetyLoopStreakNote   *bool `json:"safetyLoopStreakNote"`
 	SafetyEventWaitRecheck *bool `json:"safetyEventWaitRecheck"`
@@ -1836,8 +1836,8 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		// 任务 1069：模型提前结束判定器续轮提醒 readback（stalled_intent_nudge）。
 		view.StalledIntentNudge = cfg.Agent.StalledIntentNudge
-		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
-		view.ExperimentalSafetyCostControl = cfg.Agent.ExperimentalSafetyCostControl
+		// tl1816: master-switch readback retired — the three sub-switch readbacks
+		// below are the only surface (load materializes every nil).
 		// Task 722: sub-switch override readback (nil stays nil = inherit).
 		view.SafetyIdleTerminate = cfg.Agent.SafetyIdleTerminate
 		view.SafetyLoopStreakNote = cfg.Agent.SafetyLoopStreakNote
@@ -2156,9 +2156,9 @@ func (a *App) Settings() SettingsView {
 		InterruptedAutoResume: cfg.Agent.InterruptedAutoResume,
 		// Task 979: capability-group disclosure lab switch readback (953/954/955 shared).
 		ExperimentalCapabilityGroups: cfg.Agent.ExperimentalCapabilityGroups,
-		// Task 517: merged safety/cost switch readback (folds task-244 B1/B2/B3).
-		ExperimentalSafetyCostControl: cfg.Agent.ExperimentalSafetyCostControl,
-		// Task 722: sub-switch override readback (nil stays nil = inherit).
+		// tl1816: master-switch readback retired — the three sub-switch readbacks
+		// below are the only surface (load materializes every nil).
+		// Task 722: sub-switch override readback (nil stays nil = absent).
 		SafetyIdleTerminate:    cfg.Agent.SafetyIdleTerminate,
 		SafetyLoopStreakNote:   cfg.Agent.SafetyLoopStreakNote,
 		SafetyEventWaitRecheck: cfg.Agent.SafetyEventWaitRecheck,

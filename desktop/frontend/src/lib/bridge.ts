@@ -2296,9 +2296,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ResourceSnapshot(): Promise<ResourceSnapshotView>;
   // Task 19: multi-session collaboration tools (experimental).
   SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
-  // 任务 517: merged safety/cost switch (one knob for task-244 B1/B2/B3).
-  SetExperimentalSafetyCostControl(enabled: boolean): Promise<void>;
-  // 任务 722: fine-grained safety/cost sub-switch overrides (nil = follow master).
+  // 任务 517 → tl1816: the merged safety/cost master switch retired — the
+  // fine-grained sub-switch declarations below are the only surface.
+  // 任务 722: fine-grained safety/cost sub-switch overrides.
   SetSafetyIdleTerminate(enabled: boolean): Promise<void>;
   SetSafetyLoopStreakNote(enabled: boolean): Promise<void>;
   SetSafetyEventWaitRecheck(enabled: boolean): Promise<void>;
@@ -7609,7 +7609,6 @@ function makeMockApp(): AppBindings {
       };
     },
     async SetExperimentalSessionCollab() {},
-    async SetExperimentalSafetyCostControl() {},
     async SetSafetyIdleTerminate() {},
     async SetSafetyLoopStreakNote() {},
     async SetSafetyEventWaitRecheck() {},
