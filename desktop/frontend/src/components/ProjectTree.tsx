@@ -2125,8 +2125,10 @@ export function ProjectTree({
           })),
         }] : []),
         { type: "separator" as const, key: "ctx-sep-copy" },
-        // tl 1103 新增「复制 ▸」：会话路径 / 日志路径 / 会话 ID，取值口径与
-        // topicbar 复制菜单（lib/sessionInfoCopy）一致；嵌套叶子点击后菜单
+        // tl 1103 新增「复制 ▸」：对话名称 / 会话路径 / 日志路径 / 会话 ID，
+        // 取值口径与 topicbar 复制菜单（lib/sessionInfoCopy）一致；tl1832 补
+        // 「对话名称」叶（复制行显示名，= 剥掉 ● 活动前缀的 label，与树上所见
+        // 一致；disabled 同组口径 = 取值源缺失即置灰）；嵌套叶子点击后菜单
         // 自动关闭（ContextMenu 契约），无需再调 closeMenu。
         ...(!node.remoteSession ? [{
           type: "submenu" as const,
@@ -2134,6 +2136,13 @@ export function ProjectTree({
           icon: <Copy size={13} />,
           label: t("projectTree.copyInfo"),
           items: [
+            {
+              key: "copy-session-name",
+              icon: <MessageSquare size={13} />,
+              label: t("topicBar.copyName"),
+              disabled: !label,
+              onSelect: () => copyToClipboard(label),
+            },
             {
               key: "copy-session-path",
               icon: <Folder size={13} />,

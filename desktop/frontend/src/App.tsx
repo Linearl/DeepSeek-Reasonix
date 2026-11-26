@@ -6371,7 +6371,7 @@ export default function App() {
                   prefetchTerminal={prefetchTerminalPanel}
                   openSessionSummary={() => setTasksOpen((open) => open ? false : "session")}
                   tasksOpen={Boolean(tasksOpen)}
-                  activeTab={activeTab ? { id: activeTab.id, scope: activeTab.scope, topicId: activeTab.topicId, sessionPath: activeTab.sessionPath } : undefined}
+                  activeTab={activeTab ? { id: activeTab.id, scope: activeTab.scope, topicId: activeTab.topicId, sessionPath: activeTab.sessionPath, topicTitle: activeTab.topicTitle } : undefined}
                   logDirectory={topicbarLogDirectory}
                   surfaceView={
                     trajectoryViewEnabled && Boolean(activeTabId) && !activeTab?.remote && !sidebarImDetailConnection
