@@ -57,8 +57,9 @@ export interface TopicbarMoreMenuContentProps {
   initialFocus: "first" | "last";
   onClose: (restoreFocus: boolean) => void;
   onCopied: () => void;
-  /** 当前会话 tab（复制 ▸ 与打开方式 ▸ 都按它取值；缺失时对应二级项退化为空）。 */
-  activeTab?: Pick<TabMeta, "id" | "scope" | "topicId" | "sessionPath">;
+  /** 当前会话 tab（复制 ▸ 与打开方式 ▸ 都按它取值；缺失时对应二级项退化为空）。
+   *  tl1832：补 topicTitle——「对话名称」叶的取值源（重命名草稿同字段，即会话显示名）。 */
+  activeTab?: Pick<TabMeta, "id" | "scope" | "topicId" | "sessionPath" | "topicTitle">;
   /** 日志目录（复制 ▸ 的「日志路径」，由装配层给出）。 */
   logDirectory?: string;
   /** 转录|轨迹 视图（任务 704 的能力移入菜单；缺失时这两项不渲染）。 */
@@ -323,7 +324,9 @@ export function TopicbarMoreMenuContent({
         <span>{t("summary.session")}</span>
       </button>
       {/* tl 1120：复制和导出 ▸——原一级「复制会话」「导出会话 ▸」「复制 ▸」三项合并为一项，
-          二级覆盖：复制会话 / 导出 MD·JSON·PDF·图片 / 会话路径 / 日志路径 / 会话ID。 */}
+          二级覆盖：复制会话 / 导出 MD·JSON·PDF·图片 / 会话路径 / 日志路径 / 会话ID；
+          tl1832：信息区头部补「对话名称」（取值 = activeTab.topicTitle，与项目树
+          复制 ▸ 同步补齐，防两处子菜单漂移）。 */}
       <div className={`topicbar__more-submenu-host${submenu === "copyExport" ? " topicbar__more-submenu-host--open" : ""}`}>
         <SubmenuTrigger
           triggerRef={copyExportTriggerRef}
@@ -367,6 +370,17 @@ export function TopicbarMoreMenuContent({
                 <span>{label}</span>
               </button>
             ))}
+            <button
+              tabIndex={-1}
+              className="topicbar__more-submenu-item"
+              type="button"
+              role="menuitem"
+              disabled={!activeTab?.topicTitle}
+              onClick={() => closeAndRun(() => { void copyInfoValue(activeTab?.topicTitle || ""); })}
+            >
+              <MessageSquareText size={13} />
+              <span>{t("topicBar.copyName")}</span>
+            </button>
             <button
               tabIndex={-1}
               className="topicbar__more-submenu-item"

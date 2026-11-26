@@ -4715,6 +4715,7 @@ export const zhTW: Record<DictKey, string> = {
   "topicBar.exportFailed": "匯出失敗：{error}",
   "topicBar.openIn": "開啟方式",
   "topicBar.copyInfo": "複製",
+  "topicBar.copyName": "對話名稱",
   "topicBar.copySessionPath": "會話路徑",
   "topicBar.copyLogPath": "日誌路徑",
   "topicBar.copySessionId": "會話 ID",

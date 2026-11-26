@@ -134,7 +134,7 @@ async function render(options?: { terminalEnabled?: boolean }) {
           initialFocus="first"
           onClose={() => { calls.push("close"); }}
           onCopied={() => { calls.push("copied"); }}
-          activeTab={{ id: "one", scope: "local", topicId: "topic-1", sessionPath: "/session/one" }}
+          activeTab={{ id: "one", scope: "local", topicId: "topic-1", sessionPath: "/session/one", topicTitle: "会话一" }}
           logDirectory="/logs/one"
           surfaceView={{ value: "transcript", setView: (view) => { calls.push(`view:${view}`); } }}
           openers={openersFixture()}
@@ -192,10 +192,11 @@ ok(openedCopyExportIndicator?.classList.contains("lucide-chevron-right") === fal
   "tl1148 打开态：复制和导出 触发项箭头不再是 ▷");
 const copyExportItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-submenu [role="menuitem"]'));
 const copyExportLabels = copyExportItems.map((item) => item.textContent?.trim() ?? "");
-ok(copyExportItems.length === 8, `复制和导出 ▸ 二级覆盖 8 项（实际 ${copyExportItems.length}: ${copyExportLabels.join(" | ")}）`);
+ok(copyExportItems.length === 9, `复制和导出 ▸ 二级覆盖 9 项（tl1832 补对话名称；实际 ${copyExportItems.length}: ${copyExportLabels.join(" | ")}）`);
 ok(copyExportLabels.includes("复制会话"), "复制会话 保留在二级");
 ok(copyExportLabels.includes("导出 Markdown") && copyExportLabels.includes("导出 JSON")
   && copyExportLabels.includes("导出 PDF") && copyExportLabels.includes("导出图片"), "导出 MD/JSON/PDF/图片 四项保留在二级");
+ok(copyExportLabels.includes("对话名称"), "对话名称 保留在二级（tl1832）");
 ok(copyExportLabels.includes("会话路径") && copyExportLabels.includes("日志路径") && copyExportLabels.includes("会话 ID"), "路径/日志路径/会话ID 保留在二级");
 
 // 二级每一项都必须可达（enabled）或显式 disabled——不可达 = 丢失。
@@ -216,6 +217,22 @@ const reopenedItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>
 await act(async () => { click(reopenedItems[0]!); });
 await waitFor("copySession callback", () => calls.includes("copy:# Session") || calls.includes("copied"));
 ok(calls.includes("copy:# Session") || calls.includes("copied"), "二级首项「复制会话」触发 getSessionMarkdown 复制回调");
+
+// ---- tl1832：二级「对话名称」点击复制 activeTab.topicTitle（行为断言，不只钉结构） ----
+// 上一段 closeAndRun 已关菜单，重渲染后重开复制和导出 ▸，按文案定位该叶再点击。
+resetRoot();
+await render();
+await untilRendered("copyName reopen render");
+const copyNameTopItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-menu .topicbar__menu-item'));
+await act(async () => { copyNameTopItems[1]!.click(); });
+await waitFor("copyExport submenu reopened for copy-name", () => rootElement.querySelector('.topicbar__more-menu [role="menu"][aria-label="复制和导出"]') !== null);
+const copyNameItems = Array.from(rootElement.querySelectorAll<HTMLButtonElement>('.topicbar__more-submenu [role="menuitem"]'));
+const copyNameRow = copyNameItems.find((item) => item.textContent?.trim() === "对话名称");
+ok(copyNameRow !== undefined, "复制和导出 ▸ 含「对话名称」二级项（tl1832）");
+ok(copyNameRow !== undefined && !copyNameRow.disabled, "「对话名称」二级项可达（activeTab.topicTitle 有值时不禁用）");
+await act(async () => { if (copyNameRow) click(copyNameRow); });
+await waitFor("copyName callback", () => calls.includes("copy:会话一"));
+ok(calls.includes("copy:会话一"), "点击「对话名称」复制 activeTab.topicTitle 到剪贴板");
 
 // ---- 二级可达零丢失（tl 1120）：会话视图 ▸（含转录/轨迹） ----
 // 上一段已 closeAndRun 整菜单关闭，需重渲染取最新一级项引用。
