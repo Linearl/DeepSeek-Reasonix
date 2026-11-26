@@ -11,8 +11,6 @@ import { useStartupDegradeStore } from "../store/startupDegrade";
 
 export const STARTUP_CATALOG_DEGRADED_EVENT = "app:startup-degraded";
 
-export type StartupCatalogDegradedEvent = { deferred: number };
-
 /** Subscribes to the Go degrade event and latches it into the store. Idempotent:
  *  both consumers (splash, project tree) may call it on mount. */
 export function installStartupDegradeListener(): () => void {

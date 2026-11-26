@@ -46,15 +46,6 @@ function codePointColumns(codePoint: number): number {
   return 1;
 }
 
-/** Display-column width of text, ignoring newline handling. */
-export function eastAsianWidthColumns(text: string): number {
-  let columns = 0;
-  for (const char of text) {
-    columns += codePointColumns(char.codePointAt(0) ?? 0);
-  }
-  return columns;
-}
-
 /**
  * Estimated rendered height for a block of text. Each explicit line segment
  * wraps independently at TRANSCRIPT_ESTIMATED_LINE_COLUMNS display columns;

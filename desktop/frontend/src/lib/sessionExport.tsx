@@ -498,10 +498,6 @@ async function renderSessionImages<T>(markdown: string, encode: (blob: Blob) => 
   }
 }
 
-export function renderSessionImageBlobs(markdown: string): Promise<Blob[]> {
-  return renderSessionImages(markdown, async (blob) => blob);
-}
-
 export function renderSessionImageBase64Payloads(markdown: string): Promise<string[]> {
   return renderSessionImages(markdown, blobToBase64);
 }
