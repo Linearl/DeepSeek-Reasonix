@@ -41,7 +41,9 @@ input,textarea{font:inherit;color:inherit}
 
 .app{display:grid;grid-template-columns:220px 1fr;grid-template-rows:1fr auto;height:100vh}
 .sidebar{grid-row:1/3;background:var(--bg-2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
-.transcript{overflow-y:auto;padding:24px 28px}
+/* min-height:0 lets the 1fr grid row shrink below the content's min-height,
+   otherwise overflow-y:auto never engages and entries stack past the footer. */
+.transcript{min-height:0;overflow-y:auto;padding:24px 28px}
 .footer{border-top:1px solid var(--border);background:var(--bg);padding:12px 28px 16px;display:flex;flex-direction:column;gap:8px;position:relative}
 .footer::before{content:'';position:absolute;inset:-20px 0 auto 0;height:20px;background:linear-gradient(to top,var(--bg),transparent);pointer-events:none}
 
@@ -83,6 +85,36 @@ input,textarea{font:inherit;color:inherit}
 .msg__text{white-space:pre-wrap;word-break:break-word;font-weight:500;line-height:1.65}
 .msg--assistant{color:var(--fg);line-height:1.7}
 .msg--assistant .msg__text{font-weight:400}
+/* markdown content (tl1813): block rendering replaces pre-wrap; soft breaks
+   inside a paragraph arrive as <br> from the renderer instead. */
+.msg__text.md{white-space:normal;display:block}
+.msg__text.md>*:first-child{margin-top:0}
+.msg__text.md>*:last-child{margin-bottom:0}
+.msg__text.md p{margin:0 0 8px}
+.msg__text.md h1,.msg__text.md h2,.msg__text.md h3,.msg__text.md h4,.msg__text.md h5,.msg__text.md h6{font-family:var(--heading);margin:14px 0 8px;line-height:1.35}
+.msg__text.md h1{font-size:1.35em}
+.msg__text.md h2{font-size:1.22em}
+.msg__text.md h3{font-size:1.1em}
+.msg__text.md h4,.msg__text.md h5,.msg__text.md h6{font-size:1em}
+.msg__text.md pre{background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;overflow-x:auto;margin:8px 0;font-family:var(--mono);font-size:12.5px;line-height:1.55;white-space:pre}
+.msg__text.md code{font-family:var(--mono);font-size:.92em;background:var(--panel-2);border-radius:4px;padding:1px 5px}
+.msg__text.md pre code{background:none;padding:0;font-size:inherit}
+.msg__text.md a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+.msg__text.md ul,.msg__text.md ol{margin:6px 0 8px;padding-left:22px}
+.msg__text.md li{margin:2px 0}
+.msg__text.md li>p{margin:0}
+.msg__text.md blockquote{border-left:3px solid var(--border-strong);padding:2px 12px;margin:8px 0;color:var(--fg-2)}
+.msg__text.md blockquote p{margin:4px 0}
+.md-table-wrap{overflow-x:auto;margin:8px 0}
+.msg__text.md table{border-collapse:collapse;font-size:.95em}
+.msg__text.md th,.msg__text.md td{border:1px solid var(--border);padding:4px 10px;text-align:left}
+.msg__text.md th{background:var(--panel-2);font-weight:600}
+.msg__text.md hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+.msg__text.md img{max-width:100%;border-radius:var(--radius)}
+/* in-message attachment images (tl1813) */
+.msg-imgs{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.msg-imgs a{display:inline-flex}
+.msg-imgs img{max-width:min(280px,100%);max-height:200px;border-radius:var(--radius);border:1px solid var(--border);display:block;background:var(--bg-2)}
 .msg--system{font-size:13px;color:var(--fg-2);border-left:2px solid var(--border);padding:4px 12px;margin:8px auto}
 .msg--error{font-size:13px;color:var(--danger);border-left:2px solid var(--danger);padding:6px 12px;margin:8px auto;background:var(--danger-soft);border-radius:0 var(--radius) var(--radius) 0}
 .reasoning{margin-bottom:6px}
@@ -224,6 +256,9 @@ input,textarea{font:inherit;color:inherit}
 .composer__btn--send:disabled{background:var(--panel-2);color:var(--muted);cursor:default;transform:none}
 .composer__btn--stop{background:var(--panel-2);color:var(--danger)}
 .composer__btn--stop:hover{background:var(--danger-soft)}
+.composer__btn--attach{color:var(--muted)}
+.composer__btn--attach:hover{color:var(--fg-2);background:var(--panel-2)}
+.composer__btn--attach:disabled{color:var(--muted-2);opacity:.5;cursor:default}
 /* goal chip */
 .goal-chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:99px;background:var(--accent-soft);border:1px solid var(--accent);font-size:12px;color:var(--accent);font-weight:500;cursor:pointer;transition:all .18s ease;max-width:320px;overflow:hidden}
 .goal-chip:hover{background:oklch(68% .16 38/.25)}
@@ -299,7 +334,9 @@ input,textarea{font:inherit;color:inherit}
 .session-search__input{width:100%;height:28px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--fg);padding:0 9px;font-size:12px;outline:none}
 .session-search__input::placeholder{color:var(--muted-2)}
 .session-search__input:focus{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
-.session-item{display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--fg-2);transition:background .15s ease,color .15s ease;overflow:hidden}
+/* flex-shrink:0 keeps each entry at its natural height; without it the fixed
+   flex column squeezes all items (issue #110: 47 sessions at ~14px each). */
+.session-item{flex-shrink:0;display:flex;align-items:center;gap:7px;padding:7px 8px;border-radius:6px;cursor:pointer;font-size:12px;color:var(--fg-2);transition:background .15s ease,color .15s ease;overflow:hidden}
 .session-item:hover{background:var(--panel);color:var(--fg)}
 .session-item--active{background:var(--accent-soft);color:var(--accent)}
 .session-item__icon{flex-shrink:0;opacity:.5}
@@ -505,6 +542,10 @@ input,textarea{font:inherit;color:inherit}
     <div class="composer">
       <span class="composer__caret">&#8250;</span>
       <textarea class="composer__input" id="in" placeholder="__('placeholder')" rows="1" autofocus></textarea>
+      <button class="composer__btn composer__btn--attach" id="btn-attach" title="__('attach_images')" aria-label="__('attach_images')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+      </button>
+      <input type="file" id="file-in" accept="image/png,image/jpeg,image/gif,image/webp" multiple style="display:none" tabindex="-1" aria-hidden="true">
       <button class="composer__btn composer__btn--send" id="btn-send" title="__('send')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
       </button>
@@ -720,6 +761,10 @@ const __T = {
     'goal_btn': 'Goal',
     'yolo': 'YOLO',
     'send': 'Send (Enter)',
+    'attach_images': 'Attach images',
+    'attach_failed': 'Attachment upload failed',
+    'attach_too_large': 'Image too large (max 64 MiB)',
+    'attach_images_only': 'Only image files are supported',
     'cancel': 'Cancel (Esc)',
     'cancel_plain': 'Cancel',
     'delete': 'Delete',
@@ -875,6 +920,10 @@ const __T = {
     'goal_btn': '目标',
     'yolo': 'YOLO',
     'send': '发送 (Enter)',
+    'attach_images': '附加图片',
+    'attach_failed': '附件上传失败',
+    'attach_too_large': '图片过大（上限 64 MiB）',
+    'attach_images_only': '仅支持图片文件',
     'cancel': '取消 (Esc)',
     'cancel_plain': '取消',
     'delete': '删除',
@@ -989,7 +1038,7 @@ window.fetch = (...args) => __authReady.then(() => __nativeFetch(...args));
 // ── state ──
 let running = false, planMode = false, bypassMode = false, toolApprovalMode = 'ask', yoloRestoreMode = 'ask';
 let goalMode = false, goalActive = false, goalText = '';
-let currentMsg = null, currentText = null, currentReasoning = null;
+let currentMsg = null, currentText = null, currentReasoning = null, currentRawText = '';
 let turnStartAt = 0, turnTokens = 0, tickTimer = null, retryStatus = null;
 let toolCards = {};
 let escTimer = null;
@@ -1171,12 +1220,195 @@ function setConnState(state) {
   statusDotSidebar.style.background=colors[state]||'';
 }
 
+// ── markdown (tl1813 batch 2) ──
+// GFM-subset renderer for assistant output: fenced code, headings, lists,
+// tables, blockquotes, rules, bold/italic/strike, inline code, links, images.
+// Every model-authored character is HTML-escaped before any transform runs and
+// only renderer-generated tags reach innerHTML, so streamed text can never
+// inject markup. Links/images accept http(s)/mailto URLs and saved workspace
+// attachment refs only; a full desktop parity (remark-gfm) is intentionally
+// not attempted — this is the reading-focused subset.
+const MD_ATTACHMENT_RE = /^\.reasonix\/attachments\/[A-Za-z0-9._/-]+\.(?:png|jpe?g|gif|webp)$/i;
+function mdSafeUrl(url) {
+  const u = String(url).trim();
+  if (/^https?:\/\//i.test(u) || /^mailto:/i.test(u)) return u;
+  const rel = u.replace(/^\.\//, '');
+  if (MD_ATTACHMENT_RE.test(rel) && !rel.includes('..')) return '/attachment?path=' + encodeURIComponent(rel);
+  return null;
+}
+function mdInline(s) {
+  // code spans go through a placeholder stash so emphasis transforms cannot
+  // touch their content (e.g. `a_b_c` or `**not bold**`)
+  const stash = [];
+  let out = s.replace(/`([^`\n]+)`/g, (_, code) => {
+    stash.push('<code>' + code + '</code>');
+    return '\x00' + (stash.length - 1) + '\x00';
+  });
+  out = out.replace(/!\[([^\]\n]*)\]\(([^)\s]+)\)/g, (m, alt, url) => {
+    const safe = mdSafeUrl(url.replace(/&amp;/g, '&'));
+    if (!safe) return m;
+    return '<img src="' + escAttr(safe) + '" alt="' + alt + '" loading="lazy">';
+  });
+  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (m, text, url) => {
+    const safe = mdSafeUrl(url.replace(/&amp;/g, '&'));
+    if (!safe) return m;
+    return '<a href="' + escAttr(safe) + '" target="_blank" rel="noopener noreferrer">' + text + '</a>';
+  });
+  out = out.replace(/\*\*(?=\S)([\s\S]*?\S)\*\*/g, '<strong>$1</strong>');
+  out = out.replace(/(?<![\w\\])__(?=\S)([\s\S]*?\S)__(?!\w)/g, '<strong>$1</strong>');
+  out = out.replace(/\*(?=\S)([^*\n]*?\S)\*/g, '<em>$1</em>');
+  out = out.replace(/(?<![\w\\])_(?=\S)([^_\n]*?\S)_(?!\w)/g, '<em>$1</em>');
+  out = out.replace(/~~(?=\S)([\s\S]*?\S)~~/g, '<del>$1</del>');
+  return out.replace(/\x00(\d+)\x00/g, (_, n) => stash[+n]);
+}
+function mdInlineEsc(s) { return mdInline(escHtml(s)); }
+function mdAlignAttr(c) { return c && c !== 'left' ? ' style="text-align:' + c + '"' : ''; }
+function mdParseList(lines, start, indent) {
+  const first = lines[start].match(/^(\s*)([-*+]|\d{1,9}[.)])\s+/);
+  const ordered = /\d/.test(first[2]);
+  let html = ordered ? '<ol>' : '<ul>';
+  let i = start;
+  while (i < lines.length) {
+    if (lines[i].trim() === '') {
+      // blank line stays inside the list only when an item follows at the same indent
+      if (i + 1 < lines.length) {
+        const nm = lines[i + 1].match(/^(\s*)([-*+]|\d{1,9}[.)])\s+/);
+        if (nm && nm[1].length === indent && (/\d/.test(nm[2])) === ordered) { i++; continue; }
+      }
+      break;
+    }
+    const m = lines[i].match(/^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/);
+    if (!m || m[1].length < indent || (/\d/.test(m[2])) !== ordered) break;
+    if (m[1].length > indent) break; // defensive: deeper marker without a parent item
+    let content = m[3];
+    i++;
+    // absorb continuation lines: anything indented deeper than the marker
+    const inner = [];
+    while (i < lines.length) {
+      const l = lines[i];
+      if (l.trim() === '') {
+        if (i + 1 < lines.length && (lines[i + 1].length - lines[i + 1].replace(/^\s+/, '').length) > indent) { inner.push(''); i++; continue; }
+        break;
+      }
+      if ((l.length - l.replace(/^\s+/, '').length) > indent) { inner.push(l); i++; continue; }
+      break;
+    }
+    if (inner.length) {
+      const sm = inner[0].match(/^(\s*)([-*+]|\d{1,9}[.)])\s+/);
+      if (sm) {
+        const sub = mdParseList(inner, 0, sm[1].length);
+        html += '<li>' + mdInlineEsc(content) + sub.html + '</li>';
+      } else {
+        const strip = Math.min(indent + 2, inner[0].length);
+        html += '<li>' + mdInlineEsc(content) + '<br>' + renderMarkdown(inner.map(l => l.trim() === '' ? '' : l.slice(Math.min(strip, l.length))).join('\n')) + '</li>';
+      }
+    } else {
+      html += '<li>' + mdInlineEsc(content) + '</li>';
+    }
+  }
+  return { html: html + (ordered ? '</ol>' : '</ul>'), next: i };
+}
+function renderMarkdown(src) {
+  const lines = String(src).replace(/\r\n?/g, '\n').split('\n');
+  const out = [];
+  let i = 0;
+  const isListItem = l => /^\s*(?:[-*+]|\d{1,9}[.)])\s+\S/.test(l);
+  const isHr = l => /^\s{0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/.test(l);
+  const isTableRow = l => /^\s{0,3}\|?.*\|/.test(l) && l.includes('|');
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') { i++; continue; }
+    // fenced code block
+    const fence = line.match(/^\s{0,3}(`{3,}|~{3,})\s*([^`\s]*)/);
+    if (fence) {
+      const close = new RegExp('^\\s{0,3}' + (fence[1][0] === '`' ? '`' : '~') + '{' + fence[1].length + ',}\\s*$');
+      const body = [];
+      i++;
+      while (i < lines.length && !close.test(lines[i])) { body.push(lines[i]); i++; }
+      if (i < lines.length) i++;
+      const lang = fence[2] || '';
+      out.push('<pre><code' + (lang ? ' class="language-' + escAttr(lang) + '"' : '') + '>' + escHtml(body.join('\n')) + '</code></pre>');
+      continue;
+    }
+    // ATX heading
+    const h = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+    if (h) { out.push('<h' + h[1].length + '>' + mdInlineEsc(h[2]) + '</h' + h[1].length + '>'); i++; continue; }
+    // horizontal rule
+    if (isHr(line)) { out.push('<hr>'); i++; continue; }
+    // pipe table: header row + separator row
+    if (isTableRow(line) && i + 1 < lines.length && /^\s{0,3}\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1])) {
+      const cells = r => r.replace(/^\s{0,3}\|/, '').replace(/\|\s*$/, '').split('|').map(c => c.trim());
+      const head = cells(line);
+      const align = cells(lines[i + 1]).map(c => (c.startsWith(':') && c.endsWith(':')) ? 'center' : c.endsWith(':') ? 'right' : 'left');
+      i += 2;
+      const rows = [];
+      while (i < lines.length && isTableRow(lines[i]) && lines[i].trim() !== '') { rows.push(cells(lines[i])); i++; }
+      out.push('<div class="md-table-wrap"><table><thead><tr>' + head.map((c, k) => '<th' + mdAlignAttr(align[k]) + '>' + mdInlineEsc(c) + '</th>').join('') + '</tr></thead><tbody>'
+        + rows.map(r => '<tr>' + r.map((c, k) => '<td' + mdAlignAttr(align[k]) + '>' + mdInlineEsc(c) + '</td>').join('') + '</tr>').join('')
+        + '</tbody></table></div>');
+      continue;
+    }
+    // blockquote (recursive — markers may nest)
+    if (/^\s{0,3}>/.test(line)) {
+      const body = [];
+      while (i < lines.length && /^\s{0,3}>/.test(lines[i])) { body.push(lines[i].replace(/^\s{0,3}>\s?/, '')); i++; }
+      out.push('<blockquote>' + renderMarkdown(body.join('\n')) + '</blockquote>');
+      continue;
+    }
+    // list
+    if (isListItem(line)) {
+      const r = mdParseList(lines, i, line.length - line.replace(/^\s+/, '').length);
+      out.push(r.html); i = r.next; continue;
+    }
+    // paragraph: consume until a blank line or the next block construct
+    const para = [line]; i++;
+    while (i < lines.length && lines[i].trim() !== ''
+      && !/^\s{0,3}(?:#{1,6}\s|>|`{3,}|~{3,})/.test(lines[i])
+      && !isListItem(lines[i]) && !isHr(lines[i])
+      && !(isTableRow(lines[i]) && i + 1 < lines.length && /^\s{0,3}\|?[\s:|-]*-[\s:|-]*\|?\s*$/.test(lines[i + 1]))) {
+      para.push(lines[i]); i++;
+    }
+    out.push('<p>' + para.map(mdInlineEsc).join('<br>') + '</p>');
+  }
+  return out.join('');
+}
+function renderMarkdownSafe(el, raw) {
+  try { el.innerHTML = renderMarkdown(raw); }
+  catch { el.textContent = raw; el.classList.remove('md'); }
+}
+
 // ── messages ──
-function addUserMsg(text) { hasVisibleHistory=true; updateActionAvailability(); hideWelcome(); const d=el('div','msg msg--user'); d.appendChild(el('span','msg__caret','›')); d.appendChild(el('div','msg__text',text)); log.appendChild(d); scrollDown(true); currentMsg=null;currentText=null;currentReasoning=null; }
+// In-message image display (tl1813 batch 2): user messages carry @ref tokens
+// pointing at saved attachments; render them inline via GET /attachment and
+// drop quietly if the file has since been deleted.
+function attachmentImageSrc(ref){return '/attachment?path='+encodeURIComponent(String(ref).replace(/^\.\//,''));}
+function extractAttachmentRefs(text){
+  const re=/\.reasonix\/attachments\/[A-Za-z0-9._/-]+\.(?:png|jpe?g|gif|webp)/gi;
+  const seen=new Set(),refs=[];
+  String(text||'').replace(re,m=>{const p=m.replace(/^\.\//,'');if(p.includes('..'))return m;const k=p.toLowerCase();if(!seen.has(k)){seen.add(k);refs.push(p);}return m;});
+  return refs;
+}
+function appendMessageImages(d,text){
+  const refs=extractAttachmentRefs(text);
+  if(!refs.length)return;
+  const wrap=el('div','msg-imgs');
+  refs.forEach(ref=>{
+    const a=document.createElement('a');
+    a.href=attachmentImageSrc(ref);a.target='_blank';a.rel='noopener noreferrer';
+    const img=document.createElement('img');
+    img.src=attachmentImageSrc(ref);
+    img.alt=ref.split('/').pop();
+    img.loading='lazy';
+    img.onerror=()=>{a.remove();if(!wrap.firstElementChild)wrap.remove();};
+    a.appendChild(img);wrap.appendChild(a);
+  });
+  d.appendChild(wrap);
+}
+function addUserMsg(text) { hasVisibleHistory=true; updateActionAvailability(); hideWelcome(); const d=el('div','msg msg--user'); d.appendChild(el('span','msg__caret','›')); d.appendChild(el('div','msg__text',text)); appendMessageImages(d,text); log.appendChild(d); scrollDown(true); currentMsg=null;currentText=null;currentReasoning=null; }
 function ensureMsg() { if(!currentMsg){hasVisibleHistory=true; updateActionAvailability(); hideWelcome();currentMsg=el('div','msg msg--assistant');log.appendChild(currentMsg);} return currentMsg; }
-function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('span');currentText.className='msg__text'; const old=m.querySelector('.cursor');if(old)old.remove(); m.appendChild(currentText); m.appendChild(el('span','cursor'));} currentText.textContent+=t; scrollDown(); }
+function appendText(t) { const m=ensureMsg(); if(!currentText){currentText=document.createElement('div');currentText.className='msg__text md';currentRawText=''; const old=m.querySelector('.cursor');if(old)old.remove(); m.appendChild(currentText); m.appendChild(el('span','cursor'));} currentRawText+=t; renderMarkdownSafe(currentText,currentRawText); scrollDown(); }
 function appendReasoning(t) { const m=ensureMsg(); if(!currentReasoning){const w=el('div','reasoning'); const b=el('button','reasoning__toggle'); b.innerHTML='<span class="reasoning__chevron">▶</span> '+__('thinking'); const body=el('div','reasoning__body'); body.style.display='none'; b.onclick=()=>{body.style.display=body.style.display==='none'?'':'none';b.querySelector('.reasoning__chevron').className='reasoning__chevron'+(body.style.display!=='none'?' reasoning__chevron--open':'');}; w.appendChild(b);w.appendChild(body); if(currentText) m.insertBefore(w,currentText); else m.appendChild(w); currentReasoning=body;} currentReasoning.textContent+=t; scrollDown(); }
-function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();} currentMsg=null;currentText=null;currentReasoning=null; }
+function finalizeMsg() { if(currentMsg){const c=currentMsg.querySelector('.cursor');if(c)c.remove();} currentMsg=null;currentText=null;currentReasoning=null;currentRawText=''; }
 
 // ── tool cards (v1 pattern) ──
 function toolIcon(kind) {
@@ -1892,6 +2124,57 @@ async function send(){
   addUserMsg(v);
   post('/submit',{input:submitInput}).then(r=>{if(r.ok&&r.status===204){fetchStatus();loadSessions();}});
   input.value='';input.style.height='';closeSlashMenu();
+}
+
+// ── attachment upload (tl1813 batch 2) ──
+// POST /attachments already exists (base64 image, 64 MiB ceiling, returns a
+// workspace-relative ref); this is the web entry point the backend never had.
+// The returned ref is inserted as an @ref token into the composer, which the
+// agent's existing multimodal @ref pipeline resolves — display in the
+// transcript is handled by the image renderer.
+const ATTACH_MAX_BYTES=64*1024*1024;
+const btnAttach=$('#btn-attach'), fileIn=$('#file-in');
+function insertAttachRef(ref){
+  const token='@'+ref+' ';
+  const cur=input.value;
+  input.value=cur&&!cur.endsWith(' ')&&cur!==''?cur+' '+token:(cur||'')+token;
+  input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';
+  input.focus();
+}
+async function uploadAttachmentFile(f){
+  if(!f.type.startsWith('image/')){showNotice(__('attach_images_only'),'warn');return;}
+  if(f.size>ATTACH_MAX_BYTES){showNotice(__('attach_too_large'),'warn');return;}
+  btnAttach.disabled=true;
+  try{
+    const data=await new Promise((resolve,reject)=>{
+      const r=new FileReader();
+      r.onload=()=>resolve(String(r.result).slice(String(r.result).indexOf(',')+1));
+      r.onerror=()=>reject(r.error||new Error('read failed'));
+      r.readAsDataURL(f);
+    });
+    const resp=await post('/attachments',{data,mime:f.type});
+    if(!resp.ok)throw new Error((await resp.text()).trim()||('HTTP '+resp.status));
+    const j=await resp.json();
+    if(!j||!j.ref)throw new Error('no ref returned');
+    insertAttachRef(j.ref);
+  }catch(err){
+    showNotice(__('attach_failed')+(err&&err.message?' — '+err.message:''),'warn');
+  }finally{
+    btnAttach.disabled=false;
+  }
+}
+async function uploadAttachmentFiles(files){
+  for(const f of Array.from(files||[]))await uploadAttachmentFile(f);
+}
+if(btnAttach&&fileIn){
+  btnAttach.onclick=()=>fileIn.click();
+  fileIn.onchange=()=>{const fs=fileIn.files;uploadAttachmentFiles(fs);fileIn.value='';};
+  // screenshot paste: intercept only when the clipboard carries files, so
+  // normal text paste is untouched
+  input.addEventListener('paste',e=>{
+    const fs=e.clipboardData&&e.clipboardData.files;
+    if(fs&&fs.length){e.preventDefault();uploadAttachmentFiles(fs);}
+  });
 }
 
 input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';updateSlashMenu();});

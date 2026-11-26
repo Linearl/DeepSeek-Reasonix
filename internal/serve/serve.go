@@ -663,6 +663,7 @@ func (s *Server) handler() http.Handler {
 	s.registerBusRoutes(mux)
 	mux.HandleFunc("GET /projects", s.listProjects)
 	mux.HandleFunc("POST /attachments", s.uploadAttachment)
+	mux.HandleFunc("GET /attachment", s.attachmentImage)
 	mux.HandleFunc("POST /cancel", s.foregroundMutation(s.cancel))
 	mux.HandleFunc("POST /approve", s.foregroundMutation(s.approve))
 	mux.HandleFunc("POST /plan-decision", s.foregroundMutation(s.planDecision))
