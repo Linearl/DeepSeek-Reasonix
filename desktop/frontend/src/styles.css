@@ -28758,11 +28758,17 @@ button.statusbar__mcp:focus-visible {
 
 /* tl1744: 问号帮助菜单按钮——常驻窗口控件左侧的标题栏入口。尺寸/层级/拖拽豁免
    全部对齐 .windows-window-controls（right 用同一宽度变量，改控件宽度按钮跟着
-   走）；背景透明融入标题栏，与窗口控件在无面板态的透明规则一致。 */
+   走）；背景透明融入标题栏，与窗口控件在无面板态的透明规则一致。
+   tl1817: 右缘加 --windows-window-controls-gap 组间距（与 topicbar 让位窗口
+   控件的口径同源——此前右缘紧贴控件盒分隔线，「ⓘ 与窗口控件更挤」即此）；
+   hover 底色对齐面板按钮家族（.app-chrome__panel-toggle 同款 fg-faint 10%，
+   原为 fg 8%——两个色号体系未对齐）。主题风格档（data-theme-style）下整只
+   按钮换 30px 圆角档位（--chrome-panel-control-size，与 ⊞ 同款几何/hover/
+   open 态），见下方同名段落。 */
 .help-menu-button {
   position: fixed;
   top: 0;
-  right: var(--windows-window-controls-width, 138px);
+  right: calc(var(--windows-window-controls-width, 138px) + var(--windows-window-controls-gap, 18px));
   z-index: var(--z-dock);
   width: 34px;
   height: var(--windows-window-controls-height, 48px);
@@ -28781,7 +28787,31 @@ button.statusbar__mcp:focus-visible {
 .help-menu-button:focus-visible,
 .help-menu-button--open {
   color: var(--fg);
-  background: color-mix(in srgb, var(--fg) 8%, transparent);
+  background: color-mix(in srgb, var(--fg-faint) 10%, transparent);
+}
+/* tl1817: 主题风格档——问号按钮并入面板按钮组同款档位（30px 圆角 pill、
+   hover=bg-elev+描边、open=accent 微底），与 ⊞（panel-toggle）四态同型。 */
+:root[data-theme-style] .help-menu-button {
+  top: calc((var(--windows-window-controls-height, 48px) - var(--chrome-panel-control-size, 30px)) / 2);
+  width: var(--chrome-panel-control-size, 30px);
+  height: var(--chrome-panel-control-size, 30px);
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--r-s);
+  color: var(--fg-faint);
+  line-height: 1;
+}
+:root[data-theme-style] .help-menu-button:hover,
+:root[data-theme-style] .help-menu-button:focus-visible {
+  color: var(--fg);
+  border-color: var(--border);
+  background: var(--bg-elev);
+}
+:root[data-theme-style] .help-menu-button--open {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
 }
 .help-menu-button:focus-visible {
   outline: 1px solid color-mix(in srgb, var(--fg) 40%, transparent);
