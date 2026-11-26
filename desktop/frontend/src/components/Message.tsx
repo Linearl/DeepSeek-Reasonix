@@ -271,7 +271,6 @@ import { useTick } from "../lib/workStatus";
 import { useCollabDisplayStore } from "../store/collabDisplay";
 export {
   USER_MSG_FOLD_LINE_THRESHOLD,
-  USER_MSG_FOLD_CLAMP_HEIGHT_PX,
   estimateUserMessageLines,
 } from "../lib/messageFold";
 

@@ -9,7 +9,6 @@
 // screen is never folded. Estimated lines weight CJK/fullwidth chars double
 // because they render ≈2× wider than Latin glyphs at the bubble's font size.
 export const USER_MSG_FOLD_LINE_THRESHOLD = 14;
-export const USER_MSG_FOLD_CLAMP_HEIGHT_PX = 200;
 const USER_MSG_FOLD_UNITS_PER_LINE = 110;
 
 // 任务 705: the cross-session auto-fold collapses the body into a summary bar
