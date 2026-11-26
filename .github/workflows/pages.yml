@@ -1,10 +1,20 @@
-name: Deploy site
+name: Deploy site（tl1824 已停用——site/ 已归档至 docs/_archive/site/，见 docs-site/README.md 分工）
 
-on:
-  push:
-    branches: [main-v2]
-    paths: ['site/**', 'release-notes/**', '.github/workflows/pages.yml']
-  workflow_dispatch:
+# [tl1824 停用 2026-11-26] 本 workflow 部署的是上游遗留 Astro 官网 site/
+# （reasonix.io，内容指向上游仓库），fork 不维护。site/ 已整体移入
+# docs/_archive/site/（只移不删），fork 的 Pages 发布源由 docs-site-pages.yml
+# 独占（两站分工见 docs-site/README.md）。
+# 恢复路径：git revert 本提交并把 docs/_archive/site/ 移回 site/ 即可；
+# 恢复前先解决与 docs-site 的 Pages 发布源争用（同仓 Pages 只有一个源）。
+# 下方 on: {} 使 workflow 无任何触发器（纯惰性占位，保持 YAML 合法），
+# jobs 段保留原样以便回滚。
+
+on: {}
+#  on:
+#    push:
+#      branches: [main-v2]
+#      paths: ['site/**', 'release-notes/**', '.github/workflows/pages.yml']
+#    workflow_dispatch:
 
 permissions:
   contents: read
