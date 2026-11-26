@@ -10,7 +10,8 @@
 // 口径：fork 的 web 存在面是 GitHub 上的 Linearl/DeepSeek-Reasonix 仓库 +
 // 其 GitHub Pages 文档站；上游 esengine/DeepSeek-Reasonix 与 reasonix.io
 // 官网均不属于本 fork（后者由上游 main-v2 分支的 pages.yml 部署，且站点
-// 内容仍指向上游仓库，见 site/src/pages/index.astro 的 repo 常量）。
+// 内容仍指向上游仓库；tl1824 起该站已归档到 docs/_archive/site/，见其
+// src/pages/index.astro 的 repo 常量）。
 //
 // tl1665 实测（2026-11-18，本机网络可达时）：下列 URL 全部 HTTP 200；
 // issues/new/choose 对未登录请求 302 到登录页是 GitHub 的正常行为。
