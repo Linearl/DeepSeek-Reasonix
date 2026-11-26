@@ -8,6 +8,7 @@ package main
 // 名）由实现形态保证——本测试断言枚举前后目录树逐字节不变。
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -222,5 +223,81 @@ func TestPreRepairBackupsMissingTranscript(t *testing.T) {
 	}
 	if views[0].Label != "s9" {
 		t.Fatalf("label = %q, want stem fallback", views[0].Label)
+	}
+}
+
+// TestPreRepairBackupsSplicedRead（包117-A/tl117A 读取链钉）：档案袋登记
+// 后枚举行必须带 Spliced/SplicedBy/SplicedDegraded（徽标与降级披露的数据
+// 面）；且宿主文件不在（孤儿行）时读取照常——档案袋 <stem>.splices.json
+// 与备份同目录、路径只由 parent+stem 推导，不依赖宿主在场（原实现绑在
+// os.Stat(owner) 成功分支内，孤儿行已登记状态凭空丢失）。
+func TestPreRepairBackupsSplicedRead(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "projects")
+	sessions := filepath.Join(root, "proj", "sessions")
+	if err := os.MkdirAll(sessions, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	backup := writePreRepairTree(t, sessions, "s1", "20261105T020006", 100)
+	if err := os.WriteFile(filepath.Join(sessions, "s1.jsonl"), []byte("live"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// 档案袋手写（与 agent.RegisterPreRepairSplice 的文档形态同构）。
+	ledger := fmt.Sprintf(`{
+  "schemaVersion": 1,
+  "session": "s1.jsonl",
+  "splices": [{
+    "schemaVersion": 1,
+    "backupDir": %q,
+    "backupTranscript": %q,
+    "stamp": "20261105T020006",
+    "kind": "diverged-long-chain",
+    "source": "manual",
+    "registeredAt": "2026-11-25T00:00:00Z",
+    "sharedPrefix": 1,
+    "splicePoint": 1,
+    "segmentStart": 1,
+    "segmentEnd": 3,
+    "segmentHash": "seg",
+    "ownerMessages": 3,
+    "backupDigest": "bak",
+    "degraded": "owner"
+  }]
+}`, backup, filepath.Join(backup, "s1.jsonl"))
+	if err := os.WriteFile(filepath.Join(sessions, "s1.splices.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	views := preRepairBackupViewsIn([]string{root})
+	if len(views) != 1 {
+		t.Fatalf("views = %d (%+v), want 1", len(views), views)
+	}
+	got := views[0]
+	if !got.Spliced {
+		t.Fatal("spliced = false, want true (ledger beside the backup)")
+	}
+	if got.SplicedBy != "manual" {
+		t.Fatalf("splicedBy = %q, want manual", got.SplicedBy)
+	}
+	if got.SplicedDegraded != "owner" {
+		t.Fatalf("splicedDegraded = %q, want owner", got.SplicedDegraded)
+	}
+
+	// 宿主删除后（孤儿行）登记读数仍在：读取不依赖宿主文件在场。
+	if err := os.Remove(filepath.Join(sessions, "s1.jsonl")); err != nil {
+		t.Fatal(err)
+	}
+	views = preRepairBackupViewsIn([]string{root})
+	if len(views) != 1 {
+		t.Fatalf("views = %d (%+v), want 1", len(views), views)
+	}
+	got = views[0]
+	if got.OwnerPath != "" {
+		t.Fatalf("owner = %q, want empty (orphan)", got.OwnerPath)
+	}
+	if !got.Spliced {
+		t.Fatal("orphan spliced = false, want true (ledger read must not depend on owner presence)")
+	}
+	if got.SplicedBy != "manual" {
+		t.Fatalf("orphan splicedBy = %q, want manual", got.SplicedBy)
 	}
 }

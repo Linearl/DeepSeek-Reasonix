@@ -3405,6 +3405,13 @@ export function RecoveryCopiesSection() {
                                       : view.spliced
                                         ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
                                         : null}
+                                  {/* tl117A/包117-A：降级登记的如实披露——徽标带
+                                      原因（纯元信息登记、投影未生成），并明示降级
+                                      只可登记不可重复合并（已登记行本就不给合并入口，
+                                      这里把「为什么」写在行上）。 */}
+                                  {view.spliced && view.splicedDegraded
+                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedDegraded")}`
+                                    : null}
                                   {view.transcript ? (
                                     <button
                                       className="btn btn--small"

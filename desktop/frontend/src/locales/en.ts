@@ -5448,6 +5448,7 @@ export const en = {
   "settings.recoveryCopiesPreRepairSpliceFailed": "Splice registration failed",
   "settings.recoveryCopiesPreRepairSplicedManual": "splice registered (manual)",
   "settings.recoveryCopiesPreRepairSplicedAuto": "splice registered (self-heal)",
+  "settings.recoveryCopiesPreRepairSplicedDegraded": "splice registered (degraded · projection not regenerated; metadata only, no re-merge)",
   "settings.recoveryCopiesPreRepairCleanSelected": "Clean selected ({n})",
   "settings.recoveryCopiesPreRepairCleanAll": "Clean all",
   "settings.recoveryCopiesPreRepairCleanTitle": "Clean pre-repair backups",
