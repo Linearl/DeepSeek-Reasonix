@@ -3787,6 +3787,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesGroupCollapseTip": "點擊摺疊本組",
   // tl1572: 改寫前備份分區（唯讀檢視，不承諾切回）。
   "settings.recoveryCopiesPreRepairGroup": "改寫前備份（pre-repair）",
+  // tl1834: 備份表表頭（欄名以主表既有欄為準，狀態欄是備份面新增）。
+  "settings.recoveryCopiesPreRepairColState": "狀態",
   "settings.recoveryCopiesPreRepairNone": "未發現改寫前備份——本機沒有自癒/Diet 改寫留下的備份目錄。",
   "settings.recoveryCopiesPreRepairView": "檢視",
   "settings.recoveryCopiesPreRepairPreviewTitle": "改寫前備份預覽（唯讀）",
@@ -3849,6 +3851,16 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairRepairNoop": "該會話無需修復即可清理其改寫前備份",
   "settings.recoveryCopiesPreRepairBadge": "改寫前備份",
   "settings.recoveryCopiesPreRepairCleanProgress": "正在清理… {done}/{total}",
+  // tl1834 件4: 強制刪除——刪除失敗（健康閘拒絕）後的明示出口；語義邊界與
+  // Go pre_repair_cleanup.go 閘註釋同源（force 只旁路健康保護閘，物理失敗
+  // 如實拒絕）。
+  "settings.recoveryCopiesPreRepairForceTitle": "強制刪除改寫前備份？",
+  "settings.recoveryCopiesPreRepairForceBatchLead": "本輪已刪 {ok} 項，{failed} 項刪除失敗（清單如下）。要對失敗項強制刪除嗎？",
+  "settings.recoveryCopiesPreRepairForceWarn": "強制刪除會繞過「原對話不健康」保護閘：這份備份可能已是該對話僅存的回頭路，請確認不再需要它。",
+  "settings.recoveryCopiesPreRepairForceRecycleNote": "強制刪除仍走系統資源回收桶（可還原）；回收桶也收不進的項（如超長路徑）會如實報失敗，不會靜默跳過。",
+  "settings.recoveryCopiesPreRepairForceConfirm": "強制刪除",
+  "settings.recoveryCopiesPreRepairForceDone": "已強制刪除 {n} 項",
+  "settings.recoveryCopiesPreRepairForceRefused": "強制刪除仍有 {n} 項失敗（明細見面板錯誤區）",
   "settings.recoveryCopiesPreRepairStagedNote": "其中經短路徑中轉的備份，從回收桶還原時會回到中轉目錄",
   "settings.recoveryCopiesPreRepairPermanentTitle": "永久刪除這份改寫前備份？",
   "settings.recoveryCopiesPreRepairPermanentWarn": "該備份包含超出 Windows 路徑長度上限的內容，無法放進回收桶，短路徑中轉也不可行——只能永久刪除，不可恢復。",

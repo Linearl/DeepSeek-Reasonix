@@ -109,7 +109,7 @@ func TestPreRepairDeleteLongPathStagesThenRecycles(t *testing.T) {
 	}
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err != nil {
 		t.Fatalf("delete with staging: %v", err)
 	}
@@ -180,7 +180,7 @@ func TestPreRepairDeleteLongPathStagingFailureOffersPermanentOnly(t *testing.T) 
 	t.Cleanup(func() { preRepairStagingMkdir = previousStaging })
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err != nil {
 		t.Fatalf("permanent-only is a verdict for the FE dialog, not an error: %v", err)
 	}
@@ -198,7 +198,7 @@ func TestPreRepairDeleteLongPathStagingFailureOffersPermanentOnly(t *testing.T) 
 	}
 
 	// 明示通道：确认后的永久删除。数据真消失、平台缝零调用（不再假装走回收站）。
-	if err := app.DeletePreRepairBackupPermanent(backup); err != nil {
+	if err := app.DeletePreRepairBackupPermanent(backup, false); err != nil {
 		t.Fatalf("permanent delete after explicit verdict: %v", err)
 	}
 	if len(spy.calls) != 0 {
@@ -226,7 +226,7 @@ func TestPreRepairPermanentDeleteKeepsHealthGate(t *testing.T) {
 	t.Cleanup(func() { preRepairHealthInspect = previous })
 
 	app := &App{}
-	err := app.DeletePreRepairBackupPermanent(backup)
+	err := app.DeletePreRepairBackupPermanent(backup, false)
 	if err == nil {
 		t.Fatal("the permanent-delete bridge must keep the owner-health gate")
 	}
@@ -248,7 +248,7 @@ func TestPreRepairBatchCleanupStagesLongPaths(t *testing.T) {
 	spy := withRecycleGuardSpy(t)
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{short, long})
+	run, err := app.DeletePreRepairBackups([]string{short, long}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestPreRepairBatchCleanupReportsPermanentOnlyWhenStagingFails(t *testing.T)
 	t.Cleanup(func() { preRepairStagingMkdir = previousStaging })
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{short, long})
+	run, err := app.DeletePreRepairBackups([]string{short, long}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}

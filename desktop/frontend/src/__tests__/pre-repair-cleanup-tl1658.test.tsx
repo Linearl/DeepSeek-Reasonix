@@ -484,7 +484,7 @@ console.log("\npre-repair cleanup feedback + long-path verdict (tl1658)");
   ok(zhLine.includes("不可恢复"), "⑥ zh permanent warning carries 不可恢复");
   ok(twLine.includes("不可恢復"), "⑥ zh-TW permanent warning carries 不可恢復");
   const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
-  ok(bridgeSource.includes("DeletePreRepairBackupPermanent(dir: string): Promise<void>;"), "⑥ AppBindings declares DeletePreRepairBackupPermanent");
+  ok(bridgeSource.includes("DeletePreRepairBackupPermanent(dir: string, force: boolean): Promise<void>;"), "⑥ AppBindings declares DeletePreRepairBackupPermanent");
   ok(bridgeSource.includes("permanentOnly?: boolean;"), "⑥ PreRepairDeleteView carries the permanentOnly verdict");
   ok(bridgeSource.includes('"permanent-only"'), "⑥ PreRepairCleanupFailureReason carries the permanent-only token");
   const sectionSource = readFileSync(resolve(testDir, "../components/RecoveryCopiesSection.tsx"), "utf8");

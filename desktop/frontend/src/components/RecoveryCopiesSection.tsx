@@ -163,6 +163,9 @@ function volumeDeltaText(before: number, after: number, t: Translator): string {
  *  移出已合入组，仍多副本时它（重新扫描后）回到待处理组。 */
 type Phase = "todo" | "merged";
 
+/** tl1834: 备份表排序键——名称/时间/大小三键（表头点击生效）。 */
+type PreRepairSortKey = "name" | "time" | "size";
+
 /** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
  *
  *  An orphan copy has no canonical transcript to be compared against, so it can
@@ -663,6 +666,10 @@ export function RecoveryCopiesSection() {
   // tl1674b 阶段二：手动拼接的在途标记按行记（同口径）——预览+登记两次桥
   // 调用期间只禁自己那一行。
   const [preRepairSplicing, setPreRepairSplicing] = useState<Set<string>>(new Set());
+  // tl1834: 备份表排序态。null=后端原序（默认态行序零扰动——tl1603/tl1674b/
+  // tl1787 的钉按 `[data-pre-repair-list] > li` 行序取行，不点表头不动行序）。
+  // 点击表头按键生效、同键再点切换方向。
+  const [preRepairSort, setPreRepairSort] = useState<{ key: PreRepairSortKey; dir: "asc" | "desc" } | null>(null);
   // tl1658 现场①：批量的逐项进度（pre-repair-cleanup:progress 事件驱动）。
   // 181 项/3.4GB 的清理是分钟级阻塞桥调用，此前全程零反馈——用户无从知道
   // 是否在跑（dag-migration:progress 同一先例）。null=不在途/无进度。
@@ -807,6 +814,38 @@ export function RecoveryCopiesSection() {
     }
     return { todo, merged };
   }, [composedGroups, versionGroups]);
+
+  // tl1834: 备份表展示行——排序只重排展示序，数据层零触碰（non-goal）。
+  // 时间键解析 modifiedAt（ISO），解析失败落 0（诚实排最旧一端，不冒充新）；
+  // Array.prototype.sort 自 ES2019 起稳定，等键行保持后端原序。
+  const preRepairRows = useMemo(() => {
+    if (!preRepairSort) return preRepairs;
+    const factor = preRepairSort.dir === "asc" ? 1 : -1;
+    const rows = [...preRepairs];
+    rows.sort((a, b) => {
+      let cmp = 0;
+      if (preRepairSort.key === "name") {
+        cmp = a.label.localeCompare(b.label);
+      } else if (preRepairSort.key === "time") {
+        const ta = Date.parse(a.modifiedAt);
+        const tb = Date.parse(b.modifiedAt);
+        cmp = (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+      } else {
+        cmp = a.bytes - b.bytes;
+      }
+      return cmp * factor;
+    });
+    return rows;
+  }, [preRepairs, preRepairSort]);
+
+  // tl1834: 表头点击——首键给该键的惯用方向（名称 A→Z / 时间最新在上 /
+  // 大小最大在上），同键再点切换，换键重置为新键的惯用方向。
+  const togglePreRepairSort = (key: PreRepairSortKey) => {
+    setPreRepairSort((current) => {
+      if (current?.key !== key) return { key, dir: key === "name" ? "asc" : "desc" };
+      return { key, dir: current.dir === "asc" ? "desc" : "asc" };
+    });
+  };
 
   const toggle = (path: string) =>
     setSelected((current) => {
@@ -1008,6 +1047,10 @@ export function RecoveryCopiesSection() {
   // 其它行的删除钮/勾选框立即可用（并发点删安全：Go 侧 sessionRemovalMu 串
   // 行化，闸对每条权威复验，后删的拿到诚实结果）。错误路径同样在 finally
   // 复位——失败不卡状态（验收「状态复位钉」）。
+  // tl1834 件4（用户 20261127 令）：健康闸拒绝 → 强制删除出口。删除失败弹窗
+  // 列明后果，用户明示确认后对失败项带 force=true 重调（后端只旁路健康保护
+  // 闸：回收站语义/路径闸/物理失败如实拒绝全部原样）；拒绝强制的落回原错误
+  // 报告面。强制的语义边界与 Go 闸注释同源。
   const preRepairCanCleanup =
     typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
   // tl1787 件3/B：合并入口的能力探测（旧 harness 的 Partial stub 无此方法时
@@ -1016,6 +1059,12 @@ export function RecoveryCopiesSection() {
   // tl1674b 阶段二：手动拼接入口的能力探测（同一 typeof 守卫纪律）。
   const preRepairCanSplice =
     typeof app.MergePreRepairSplice === "function" && typeof app.PreviewPreRepairSplice === "function";
+
+  // tl1834 件4: 健康闸拒绝的识别——后端错误消息是稳定英文原文（Go 闸的拒绝
+  // 文案），前端按原文匹配；其余失败（gone/trash-failed/超长路径裁决）不走
+  // 强制出口——force 对物理失败无事可做，不给虚假「下一步」。
+  const isOwnerUnhealthyError = (err: unknown): boolean =>
+    (err instanceof Error ? err.message : String(err)).includes("owner session is not healthy");
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
     if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
@@ -1052,7 +1101,32 @@ export function RecoveryCopiesSection() {
       // 都没删，出第二段「永久删除不可恢复」明示弹窗，确认后才走永久桥；
       // 其余=错误原样上抛。旧 harness 的 void stub（undefined）按 trashed
       // 处理（既有判例零回退）。
-      const verdict: PreRepairDeleteView | undefined = await app.DeletePreRepairBackup(view.dir);
+      // tl1834 件4: 健康闸拒绝不直接落错误——出强制删除弹窗（列明失败与
+      // 后果），用户明示后带 force 重调；拒绝强制的 rethrow 落回原错误面。
+      let verdict: PreRepairDeleteView | undefined;
+      try {
+        verdict = await app.DeletePreRepairBackup(view.dir, false);
+      } catch (firstErr) {
+        if (!isOwnerUnhealthyError(firstErr)) throw firstErr;
+        const okForce = await confirm({
+          title: t("settings.recoveryCopiesPreRepairForceTitle"),
+          message: (
+            <div>
+              <p>
+                {view.label} · {formatBytes(view.bytes)} · {formatWhen(view.modifiedAt)}
+              </p>
+              <p className="rc-muted">{firstErr instanceof Error ? firstErr.message : String(firstErr)}</p>
+              <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairForceWarn")}</p>
+              <p className="rc-muted">{t("settings.recoveryCopiesPreRepairForceRecycleNote")}</p>
+            </div>
+          ),
+          confirmLabel: t("settings.recoveryCopiesPreRepairForceConfirm"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (!okForce) throw firstErr;
+        verdict = await app.DeletePreRepairBackup(view.dir, true);
+      }
       if (verdict?.permanentOnly) {
         const okPermanent = await confirm({
           title: t("settings.recoveryCopiesPreRepairPermanentTitle"),
@@ -1070,7 +1144,7 @@ export function RecoveryCopiesSection() {
           tone: "danger",
         });
         if (!okPermanent) return;
-        await app.DeletePreRepairBackupPermanent(view.dir);
+        await app.DeletePreRepairBackupPermanent(view.dir, false);
         showToast(t("settings.recoveryCopiesPreRepairPermanentDone"), "info");
       } else {
         if (verdict?.viaStaging) {
@@ -1124,7 +1198,7 @@ export function RecoveryCopiesSection() {
     if (!ok) return;
     setPreRepairBusy(true);
     try {
-      const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir));
+      const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir), false);
       // tl1658 完成回执三态（与实际行为一一对应；tl1647 聚合口径）：全成功/
       // 部分成功/全被拒各一条 toast——部分成功此前只报成功数、失败只落面板，
       // toast 层看不出「有失败」。经中转的项（staged>0）附还原位置披露。
@@ -1169,6 +1243,64 @@ export function RecoveryCopiesSection() {
       }
       if (refusedItems.length > 0) {
         setRefusals((current) => [...current, ...refusedItems]);
+      }
+      // tl1834 件4: 健康闸拒绝（owner-unhealthy）→ 强制删除出口——弹窗列明
+      // 本轮删了哪些（{ok}）与没删成哪些（清单），用户明示后对失败项带 force
+      // 重调（后端只旁路健康保护闸）。强制轮三态如实报告：成功走 toast；
+      // 仍失败的逐条落面板错误区+诚实 toast（不静默吞）。拒绝强制的情形，
+      // 上面的 refusals 警示区就是报告面（既有语义不变）。gone/trash-failed/
+      // permanent-only 不进强制清单——force 对物理失败无事可做。
+      const unhealthy = (run.failures ?? []).filter((failure) => failure.reason === "owner-unhealthy");
+      if (unhealthy.length > 0) {
+        const okForce = await confirm({
+          title: t("settings.recoveryCopiesPreRepairForceTitle"),
+          message: (
+            <div>
+              <p>
+                {t("settings.recoveryCopiesPreRepairForceBatchLead")
+                  .replace("{ok}", String(run.trashed))
+                  .replace("{failed}", String(unhealthy.length))}
+              </p>
+              <ul className="rc-errors">
+                {unhealthy.map((failure) => (
+                  <li key={failure.dir}>
+                    {failure.label}
+                    {failure.detail ? ` — ${failure.detail}` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairForceWarn")}</p>
+              <p className="rc-muted">{t("settings.recoveryCopiesPreRepairForceRecycleNote")}</p>
+            </div>
+          ),
+          confirmLabel: t("settings.recoveryCopiesPreRepairForceConfirm"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (okForce) {
+          const forced = await app.DeletePreRepairBackups(
+            unhealthy.map((failure) => failure.dir),
+            true,
+          );
+          const stagedNoteForced =
+            forced.staged > 0 ? ` · ${t("settings.recoveryCopiesPreRepairStagedNote")}` : "";
+          if (forced.trashed > 0) {
+            showToast(
+              `${t("settings.recoveryCopiesPreRepairForceDone").replace("{n}", String(forced.trashed))} · ${formatBytes(forced.trashedBytes)}${stagedNoteForced}`,
+              "info",
+            );
+          }
+          if (forced.failed > 0) {
+            for (const failure of forced.failures ?? []) {
+              const line = `${failure.label}: ${failure.detail || failure.reason}`;
+              setErrors((current) => [...current, line]);
+            }
+            showToast(
+              t("settings.recoveryCopiesPreRepairForceRefused").replace("{n}", String(forced.failed)),
+              "error",
+            );
+          }
+        }
       }
       await load();
     } finally {
@@ -3377,104 +3509,204 @@ export function RecoveryCopiesSection() {
                         preRepairs.length === 0 ? (
                           <div className="rc-muted">{t("settings.recoveryCopiesPreRepairNone")}</div>
                         ) : (
-                          <ul className="rc-versions__issues" data-pre-repair-list="">
-                            {preRepairs.map((view) => {
-                              return (
-                                <li key={view.dir} title={view.dir}>
-                                  {preRepairCanCleanup ? (
-                                    <input
-                                      type="checkbox"
-                                      data-pre-repair-check=""
-                                      checked={preRepairSelected.has(view.dir)}
-                                      disabled={busy || preRepairBusy}
-                                      onChange={() => togglePreRepairSelected(view.dir)}
-                                      aria-label={view.label}
-                                    />
-                                  ) : null}{" "}
-                                  {view.label} · {formatWhen(view.modifiedAt)} · {formatBytes(view.bytes)}
-                                  {!view.ownerPath
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
-                                    : null}
-                                  {view.ownerArchived
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairArchived")}`
-                                    : null}
-                                  {view.spliced && view.splicedBy === "manual"
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedManual")}`
-                                    : view.spliced && view.splicedBy === "auto"
-                                      ? ` · ${t("settings.recoveryCopiesPreRepairSplicedAuto")}`
-                                      : view.spliced
-                                        ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
-                                        : null}
-                                  {/* tl117A/包117-A：降级登记的如实披露——徽标带
-                                      原因（纯元信息登记、投影未生成），并明示降级
-                                      只可登记不可重复合并（已登记行本就不给合并入口，
-                                      这里把「为什么」写在行上）。 */}
-                                  {view.spliced && view.splicedDegraded
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedDegraded")}`
-                                    : null}
-                                  {view.transcript ? (
-                                    <button
-                                      className="btn btn--small"
-                                      type="button"
-                                      data-pre-repair-view=""
-                                      disabled={preRepairPreviewing !== null}
-                                      onClick={() => void previewPreRepair(view)}
-                                    >
-                                      {preRepairPreviewing === view.dir
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairView")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanSplice && view.transcript && view.ownerPath && !view.ownerArchived && !view.spliced ? (
-                                    // tl1674b 阶段二：手动拼接入口（活宿主行专属；
-                                    // 已登记行不再给——登记幂等，重复确认无意义）。
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-splice=""
-                                      disabled={preRepairSplicing.has(view.dir)}
-                                      title={t("settings.recoveryCopiesPreRepairSpliceHint")}
-                                      onClick={() => void splicePreRepair(view)}
-                                    >
-                                      {preRepairSplicing.has(view.dir)
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairSplice")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-merge=""
-                                      disabled={preRepairMerging.has(view.dir)}
-                                      title={t("settings.recoveryCopiesPreRepairMergeHint")}
-                                      onClick={() => void mergePreRepair(view)}
-                                    >
-                                      {preRepairMerging.has(view.dir)
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairMerge")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanCleanup ? (
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-delete=""
-                                      disabled={
-                                        busy ||
-                                        preRepairBusy ||
-                                        preRepairDeleting.has(view.dir)
-                                      }
-                                      title={t("settings.recoveryCopiesPreRepairDeleteHint")}
-                                      onClick={() => void deletePreRepair(view)}
-                                    >
-                                      {t("settings.recoveryCopiesPreRepairDelete")}
-                                    </button>
-                                  ) : null}
-                                </li>
-                              );
-                            })}
-                          </ul>
+                          // tl1834: 表格形态（对照分支合并主表 rc-maintable）——
+                          // 表头行 + 列对齐（名称左对齐/时间·大小右对齐）。结构
+                          // 仍是 ul/li：tl1603/tl1674b/tl1787 的钉按
+                          // `[data-pre-repair-list] > li` 直取行，行语义零改动；
+                          // 表头是 ul 的兄弟行，与行共用同一份 grid 列模板（对齐
+                          // 由模板保证）。徽标从「 · 」串联迁入状态列逐行展示。
+                          <div className="rc-pretable" data-pre-repair-table="">
+                            <div className="rc-pretable__head" data-pre-repair-head="">
+                              <span className="rc-pretable__check" aria-hidden="true" />
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--name"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "name"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                {/* tl1834 件3: 三键排序表头——点击生效（首键=名称
+                                    A→Z / 时间·大小惯用降序），同键再点切换。 */}
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="name"
+                                  onClick={() => togglePreRepairSort("name")}
+                                >
+                                  {t("settings.recoveryCopiesColLine")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "name" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
+                              </span>
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--when"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "time"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="time"
+                                  onClick={() => togglePreRepairSort("time")}
+                                >
+                                  {t("settings.recoveryCopiesColModified")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "time" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
+                              </span>
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--size"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "size"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="size"
+                                  onClick={() => togglePreRepairSort("size")}
+                                >
+                                  {t("settings.recoveryCopiesColSize")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "size" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--state" role="columnheader">
+                                {t("settings.recoveryCopiesPreRepairColState")}
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--ops" role="columnheader">
+                                {t("settings.recoveryCopiesColOps")}
+                              </span>
+                            </div>
+                            <ul className="rc-versions__issues rc-pretable__body" data-pre-repair-list="">
+                              {preRepairRows.map((view) => {
+                                return (
+                                  <li key={view.dir} className="rc-pretable__row" title={view.dir}>
+                                    <span className="rc-pretable__check">
+                                      {preRepairCanCleanup ? (
+                                        <input
+                                          type="checkbox"
+                                          data-pre-repair-check=""
+                                          checked={preRepairSelected.has(view.dir)}
+                                          disabled={busy || preRepairBusy}
+                                          onChange={() => togglePreRepairSelected(view.dir)}
+                                          aria-label={view.label}
+                                        />
+                                      ) : null}
+                                    </span>
+                                    <span className="rc-pretable__name">{view.label}</span>
+                                    <span className="rc-pretable__when rc-num">{formatWhen(view.modifiedAt)}</span>
+                                    <span className="rc-pretable__size rc-num">{formatBytes(view.bytes)}</span>
+                                    <span className="rc-pretable__state">
+                                      {[
+                                        !view.ownerPath ? t("settings.recoveryCopiesPreRepairOrphan") : "",
+                                        view.ownerArchived ? t("settings.recoveryCopiesPreRepairArchived") : "",
+                                        // tl117A/包117-A：降级登记的如实披露——徽标带
+                                        // 原因（纯元信息登记、投影未生成），并明示降级
+                                        // 只可登记不可重复合并（已登记行本就不给合并入口，
+                                        // 这里把「为什么」写在行上）。
+                                        view.spliced
+                                          ? view.splicedBy === "manual"
+                                            ? t("settings.recoveryCopiesPreRepairSplicedManual")
+                                            : view.splicedBy === "auto"
+                                              ? t("settings.recoveryCopiesPreRepairSplicedAuto")
+                                              : t("settings.recoveryCopiesPreRepairSpliced")
+                                          : "",
+                                        view.spliced && view.splicedDegraded
+                                          ? t("settings.recoveryCopiesPreRepairSplicedDegraded")
+                                          : "",
+                                      ]
+                                        .filter(Boolean)
+                                        .map((badge, index) => (
+                                          <span key={index} className="rc-pretable__badge">
+                                            {badge}
+                                          </span>
+                                        ))}
+                                    </span>
+                                    <span className="rc-pretable__ops">
+                                      {view.transcript ? (
+                                        <button
+                                          className="btn btn--small"
+                                          type="button"
+                                          data-pre-repair-view=""
+                                          disabled={preRepairPreviewing !== null}
+                                          onClick={() => void previewPreRepair(view)}
+                                        >
+                                          {preRepairPreviewing === view.dir
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairView")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanSplice && view.transcript && view.ownerPath && !view.ownerArchived && !view.spliced ? (
+                                        // tl1674b 阶段二：手动拼接入口（活宿主行专属；
+                                        // 已登记行不再给——登记幂等，重复确认无意义）。
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-splice=""
+                                          disabled={preRepairSplicing.has(view.dir)}
+                                          title={t("settings.recoveryCopiesPreRepairSpliceHint")}
+                                          onClick={() => void splicePreRepair(view)}
+                                        >
+                                          {preRepairSplicing.has(view.dir)
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairSplice")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-merge=""
+                                          disabled={preRepairMerging.has(view.dir)}
+                                          title={t("settings.recoveryCopiesPreRepairMergeHint")}
+                                          onClick={() => void mergePreRepair(view)}
+                                        >
+                                          {preRepairMerging.has(view.dir)
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairMerge")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanCleanup ? (
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-delete=""
+                                          disabled={
+                                            busy ||
+                                            preRepairBusy ||
+                                            preRepairDeleting.has(view.dir)
+                                          }
+                                          title={t("settings.recoveryCopiesPreRepairDeleteHint")}
+                                          onClick={() => void deletePreRepair(view)}
+                                        >
+                                          {t("settings.recoveryCopiesPreRepairDelete")}
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
                         )
                       ) : null}
                     </div>

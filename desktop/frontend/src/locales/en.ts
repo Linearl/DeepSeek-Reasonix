@@ -5403,6 +5403,8 @@ export const en = {
   "settings.recoveryCopiesGroupCollapseTip": "click to collapse this group",
   // tl1572: pre-repair backup section (read-only view; no adopt promise).
   "settings.recoveryCopiesPreRepairGroup": "Pre-repair backups",
+  // tl1834: backup table header (column names follow the main table; state is new here).
+  "settings.recoveryCopiesPreRepairColState": "state",
   "settings.recoveryCopiesPreRepairNone": "No pre-repair backups found — no self-heal/Diet rewrite has left a backup directory on this machine.",
   "settings.recoveryCopiesPreRepairView": "View",
   "settings.recoveryCopiesPreRepairPreviewTitle": "Pre-repair backup preview (read-only)",
@@ -5472,6 +5474,16 @@ export const en = {
   "settings.recoveryCopiesPreRepairRepairNoop": "The session needed no repair; its pre-repair backup can be cleaned up",
   "settings.recoveryCopiesPreRepairBadge": "pre-repair backups",
   "settings.recoveryCopiesPreRepairCleanProgress": "Cleaning… {done}/{total}",
+  // tl1834 item 4: force delete — the explicit exit after a health-gate refusal;
+  // semantics match the Go pre_repair_cleanup.go gate notes (force only bypasses
+  // the health protection gate; physical failures stay honest refusals).
+  "settings.recoveryCopiesPreRepairForceTitle": "Force delete pre-repair backups?",
+  "settings.recoveryCopiesPreRepairForceBatchLead": "Deleted {ok} item(s) this round; {failed} failed (listed below). Force delete the failed ones?",
+  "settings.recoveryCopiesPreRepairForceWarn": "Force delete bypasses the unhealthy-owner protection gate: this backup may be the conversation's only way back. Confirm you no longer need it.",
+  "settings.recoveryCopiesPreRepairForceRecycleNote": "Force delete still uses the system recycle bin (restorable from there); anything the recycle bin refuses (e.g. over-long paths) is reported as failed — nothing is silently skipped.",
+  "settings.recoveryCopiesPreRepairForceConfirm": "Force delete",
+  "settings.recoveryCopiesPreRepairForceDone": "Force-deleted {n} item(s)",
+  "settings.recoveryCopiesPreRepairForceRefused": "Force delete still failed on {n} item(s) — details in the panel errors",
   "settings.recoveryCopiesPreRepairStagedNote": "items that went through the short-path transit restore into the staging dir",
   "settings.recoveryCopiesPreRepairPermanentTitle": "Permanently delete this pre-repair backup?",
   "settings.recoveryCopiesPreRepairPermanentWarn": "This backup contains items beyond the Windows path-length limit: they cannot go into the recycle bin, and short-path staging is unavailable too — the only option is a permanent, unrecoverable delete.",

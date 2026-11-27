@@ -42255,6 +42255,50 @@ button.statusbar__mcp:focus-visible {
 .rc-detail__loading td { opacity: 0.6; font-style: italic; }
 
 .rc-versions__issues { margin: 0; padding-left: 18px; }
+/* tl1834: 改写前备份表——表头+列对齐（形态对照分支合并主表 rc-maintable：
+   名称左对齐/时间·大小右对齐 tabular-nums/状态列/行内操作右贴尾）。结构仍
+   是 ul/li（tl1603/tl1674b/tl1787 的钉按 `[data-pre-repair-list] > li` 直
+   取行，行语义零改动），表头是 ul 的兄弟行、与行共用同一份 grid 列模板——
+   列对齐由模板保证，不逐行手工凑；ul 的列表缩进在表格形态下归零。 */
+.rc-pretable__head,
+.rc-pretable__row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) 136px 78px minmax(0, auto) auto;
+  gap: 8px;
+  align-items: baseline;
+}
+.rc-pretable__head {
+  padding: 0;
+  font-size: 0.86em;
+  font-weight: 600;
+  color: color-mix(in srgb, currentColor 72%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+}
+.rc-pretable__body { padding-left: 0; }
+.rc-pretable__body > li {
+  border-bottom: 1px solid color-mix(in srgb, currentColor 8%, transparent);
+}
+.rc-pretable__cell--when,
+.rc-pretable__cell--size { text-align: right; }
+.rc-pretable__cell--ops { text-align: right; }
+.rc-pretable__when,
+.rc-pretable__size { text-align: right; }
+.rc-pretable__ops { text-align: right; white-space: nowrap; }
+.rc-pretable__badge { display: block; }
+/* tl1834 件3: 排序表头——列头按钮化（点击生效/同键再点切换方向），方向
+   箭头缀尾；未排序列无箭头（默认态=后端原序）。右对齐列（时间/大小）由
+   单元格 text-align 带住按钮贴右。 */
+.rc-pretable__sort {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.rc-pretable__arrow { margin-left: 3px; }
 /* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
    仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
    按钮并排，右对齐贴住列尾。 */

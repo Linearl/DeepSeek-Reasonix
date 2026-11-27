@@ -116,13 +116,20 @@ func preRepairBackupLabel(backupDir, stem string) string {
 // 的孤儿副本一律放行（前端确认弹窗承担「唯一副本、不可恢复」警示），此处
 // 只保留健康闸；宿主在不在只决定要不要体检。
 //
+// tl1834（2026-11-27 用户令）第四件：force=true 旁路**健康闸**（活宿主体检），
+// 其余一切照旧——路径闸（knownSessionDirs 包含校验+stem 形态）与回收站语义
+// 全保留。语义边界：force 服务「用户明示要清理」的健康保护豁免，不改变物理
+// 失败（gone/trash-failed/permanent-only 照实拒绝——force 不命令文件系统）。
+// 前端契约：force 只在用户对失败清单明示确认后传入（强制删除弹窗）。
+//
 // healthCache 是批量面的宿主健康读数缓存（owner→healthy；nil=单删不缓存）——
-// 同一会话的多份备份在批内只重放一次宿主日志。
+// 同一会话的多份备份在批内只重放一次宿主日志。force=true 时健康体检整段
+// 跳过，缓存不读不写。
 //
 // 路径闸与 validateSessionPath 同一纪律：会话目录包含关系（Rel 不越界）+
 // symlink 解析后的二次包含校验；目录名必须能拆出 <stem>.pre-repair-<stamp>
 // 形态。任意文件系统路径在这里全部拒绝。
-func (a *App) preRepairCleanupGate(backupDir string, healthCache map[string]bool) (stem string, bytes int64, err error) {
+func (a *App) preRepairCleanupGate(backupDir string, healthCache map[string]bool, force bool) (stem string, bytes int64, err error) {
 	backupDir = filepath.Clean(strings.TrimSpace(backupDir))
 	if backupDir == "." || filepath.VolumeName(backupDir) == backupDir {
 		slog.Warn("desktop: pre-repair delete refused", "reason", "empty path")
@@ -161,7 +168,9 @@ func (a *App) preRepairCleanupGate(backupDir string, healthCache map[string]bool
 	if oinfo, oerr := os.Lstat(owner); oerr == nil && !oinfo.IsDir() {
 		ownerLive = !preRepairOwnerArchived(owner)
 	}
-	if ownerLive {
+	// tl1834: force=true 旁路健康体检——用户对失败清单明示确认后的豁免通道
+	// （「不应该限制我删除」的强制版：保护闸可以越过，决定权仍在用户）。
+	if ownerLive && !force {
 		var report agent.SessionHealthReport
 		if cached, hit := healthCache[owner]; hit {
 			// 批内缓存只存 verdict；缓存命中即视为健康通过（未通过的宿主在第
@@ -400,14 +409,16 @@ type PreRepairDeleteView struct {
 // 入桶（tl1658①）。孤儿副本（宿主已不在）不再拒绝——删除决定权在用户，
 // 前端确认弹窗明示「唯一副本、不可恢复」（tl1646）。中转也不可行时返回
 // permanentOnly 裁决（tl1658②），由前端出明示弹窗。
-func (a *App) DeletePreRepairBackup(dir string) (PreRepairDeleteView, error) {
+// tl1834 件4：force=true 旁路健康闸（前端强制删除弹窗明示确认后传入；
+// 见 preRepairCleanupGate 的语义边界注释）。
+func (a *App) DeletePreRepairBackup(dir string, force bool) (PreRepairDeleteView, error) {
 	backupDir := filepath.Clean(strings.TrimSpace(dir))
 	if backupDir == "." {
 		return PreRepairDeleteView{}, fmt.Errorf("no backup path given")
 	}
 	a.sessionRemovalMu.Lock()
 	defer a.sessionRemovalMu.Unlock()
-	gatedStem, _, err := a.preRepairCleanupGate(backupDir, nil)
+	gatedStem, _, err := a.preRepairCleanupGate(backupDir, nil, force)
 	if err != nil {
 		return PreRepairDeleteView{}, friendlySessionFileError(err)
 	}
@@ -428,17 +439,18 @@ func (a *App) DeletePreRepairBackup(dir string) (PreRepairDeleteView, error) {
 // DeletePreRepairBackupPermanent 永久删除单个改写前备份目录（tl1658②兜底，
 // DeleteWorkspaceEntriesPermanent 同一先例：前端必须先弹「永久删除不可恢复」
 // 的明示确认再调用）。健康闸照常体检——活宿主不健康时其改写前快照是唯一的
-// 回头路，兜底不允许旁路它（tl1116 纪律在永久路径上同等生效）。任务 855 铁
-// 律的「彻底删除是独立显式操作」条款：本桥只服务明示确认后的删除，绝不作为
-// 任何删除流的默认通道。
-func (a *App) DeletePreRepairBackupPermanent(dir string) error {
+// 回头路，兜底默认不允许旁路它（tl1116 纪律在永久路径上同等生效）。
+// tl1834 件4：force=true 与回收站通道同一豁免口径——前端强制删除弹窗明示
+// 确认后传入（用户拍板优先于保护闸，契约与 DeletePreRepairBackup 一致；
+// 越过保护闸的仍是「明示确认后的删除」，不是任何流的默认通道）。
+func (a *App) DeletePreRepairBackupPermanent(dir string, force bool) error {
 	backupDir := filepath.Clean(strings.TrimSpace(dir))
 	if backupDir == "." {
 		return fmt.Errorf("no backup path given")
 	}
 	a.sessionRemovalMu.Lock()
 	defer a.sessionRemovalMu.Unlock()
-	gatedStem, _, err := a.preRepairCleanupGate(backupDir, nil)
+	gatedStem, _, err := a.preRepairCleanupGate(backupDir, nil, force)
 	if err != nil {
 		return friendlySessionFileError(err)
 	}
@@ -496,7 +508,9 @@ func (a *App) emitPreRepairCleanupProgress(index, total int, label, status strin
 // 失败不拖累其余，回执逐条可归因。逐项 emit 进度事件（tl1658 现场①）——
 // 每项开始（processing）与落定（trashed/staged/refused）各一条，前端据此
 // 渲染「已处理 n/N」。
-func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, error) {
+// tl1834 件4：force=true 旁路健康闸（前端对失败清单明示确认后的强制轮；
+// gone/trash-failed/permanent-only 等物理失败照实拒绝，见闸注释的语义边界）。
+func (a *App) DeletePreRepairBackups(dirs []string, force bool) (PreRepairBatchCleanupView, error) {
 	view := PreRepairBatchCleanupView{Failures: []PreRepairCleanupFailure{}}
 	// 去重保序：前端勾选集不会有重复，防御面仍按集合语义收口。
 	seen := map[string]bool{}
@@ -533,7 +547,7 @@ func (a *App) DeletePreRepairBackups(dirs []string) (PreRepairBatchCleanupView, 
 		}
 		label := preRepairBackupLabel(backupDir, stem)
 		a.emitPreRepairCleanupProgress(i+1, len(ordered), label, "processing")
-		_, bytes, err := a.preRepairCleanupGate(backupDir, health)
+		_, bytes, err := a.preRepairCleanupGate(backupDir, health, force)
 		if err != nil {
 			refuse(i+1, backupDir, label, preRepairFailureReason(err), err.Error())
 			continue
