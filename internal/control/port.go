@@ -369,6 +369,12 @@ type Input interface {
 // Settings covers runtime session settings that don't fit a richer domain.
 type Settings interface {
 	SetResponseLanguage(lang string)
+	// SetGoalTokenBudget (tl1835) mirrors a confirmed goal budget into this
+	// session: the desktop confirm dialog persists the config key AND calls
+	// this so the goal activated right after the dialog runs under the new
+	// ceiling without a restart. Semantics identical to the boot-time
+	// Options.GoalTokenBudget (raw tokens; 0 = unset).
+	SetGoalTokenBudget(tokens int)
 	SetReasoningLanguage(lang string)
 	SetDisplayRecorder(fn func(content, display string))
 	// SetSubagentPolicy switches the sub-agent delegation tier for

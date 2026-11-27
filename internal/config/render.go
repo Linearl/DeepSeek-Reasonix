@@ -90,6 +90,10 @@ var labFeatureTiers = []labFeatureTier{
 	// tl1816：总开关键退役出 renderKeys（渲染面不再写该行；字段保留 decode-only
 	// 供一次性迁移 materialize），三子开关+三 legacy 键仍归本卡。
 	{"safetyCostControl", LabTierOptional, []string{"safety_idle_terminate", "safety_loop_streak_note", "safety_event_wait_recheck", "experimental_autonomous_idle_terminate", "experimental_loop_streak_note", "experimental_event_wait_recheck"}},
+	// tl1835：goalMode 激活确认弹窗（goal_budget_confirm，默认关）——弹窗行
+	// 为挂「安全 / 成本控制」卡成员行（用户 20261127 指定归属）；关闭=激活
+	// 直通现状（tl1312 默认 2M 不变）。可选档（不开启零行为）。
+	{"goalBudgetConfirm", LabTierOptional, []string{"goal_budget_confirm"}},
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：未稳定→可选——
 	// 四采样点 ≥21 天持续开启零报障，子代理族 4 件报障均非本开关语义（前端同步）。
 	{"subagentPolicy", LabTierOptional, []string{"experimental_subagent_policy"}},
@@ -392,6 +396,9 @@ var labSpecialKeys = map[string]bool{
 	// 任务 1056：network_retry_budget 是 [network.retry_budget] 实验室特性键
 	// （无 experimental_ 前缀，随 networkRetryBudget 档位族登记）。
 	"network_retry_budget": true,
+	// tl1835：goal_budget_confirm 是 goalMode 激活确认弹窗的实验室特性键
+	// （无 experimental_ 前缀，随 goalBudgetConfirm 档位族登记）。
+	"goal_budget_confirm": true,
 }
 
 // RenderTOML renders the config as annotated TOML in the `reasonix setup` house style:
@@ -1088,6 +1095,12 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 	}
 	if c.Agent.SafetyEventWaitRecheck != nil {
 		fmt.Fprintf(&b, "safety_event_wait_recheck = %v   # task 722: B3 sub-switch (tl1816: master retired — absent reads off, load materializes the retired master value once)\n", *c.Agent.SafetyEventWaitRecheck)
+	}
+	// tl1835: the goalMode activation confirm dialog renders CONDITIONALLY —
+	// the default (off) keeps every pre-tl1835 rendered config byte-identical;
+	// an explicit opt-in round-trips so the dialog survives re-renders.
+	if c.Agent.GoalBudgetConfirm {
+		fmt.Fprintf(&b, "goal_budget_confirm = true   # tl1835: pop the budget confirm dialog when goalMode activates (off = activate directly on the configured/default budget)\n")
 	}
 
 	// tl-1166: the reasoning-only continuation switch renders CONDITIONALLY —

@@ -1583,6 +1583,29 @@ func (c *Config) SetStalledIntentNudge(enabled bool) error {
 	return nil
 }
 
+// SetGoalBudgetConfirm toggles the tl1835 goalMode activation confirm dialog
+// (goal_budget_confirm, default off). Config-only write: the frontend gates
+// the dialog off the live readback, so a flip applies to the very next
+// activation without a restart. Off = the pre-tl1835 direct path verbatim.
+func (c *Config) SetGoalBudgetConfirm(enabled bool) error {
+	c.Agent.GoalBudgetConfirm = enabled
+	return nil
+}
+
+// SetGoalTokenBudget writes the goal token ceiling (goal_token_budget). The
+// key keeps its raw-token semantics — the M (mega-token) unit exists only in
+// the dialog/settings display layer, so pre-tl1835 hand-written values stay
+// valid without migration. 0 restores the unset semantics (heartbeat loops
+// fall back to the tl1312 default ceiling); negative is not a budget and is
+// rejected with the stored value untouched.
+func (c *Config) SetGoalTokenBudget(tokens int) error {
+	if tokens < 0 {
+		return fmt.Errorf("goal_token_budget: 负数不是合法预算 (got %d)", tokens)
+	}
+	c.Agent.GoalTokenBudget = tokens
+	return nil
+}
+
 // SetExperimentalDraftRewrite toggles the task-1024 草稿优化 lab switch. Pure
 // frontend gate riding the boot snapshot — the settings save re-applies it, so
 // a flip shows without a restart; off = no button and no layout change.

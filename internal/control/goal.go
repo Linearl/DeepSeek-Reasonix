@@ -175,6 +175,17 @@ type goalMachine struct {
 	writeMu sync.Mutex
 }
 
+// setTokenBudget (tl1835) mirrors a confirmed goal budget into the machine so
+// the next install copies it into the fresh scope's tokensLimit, exactly like
+// a boot-time Options.GoalTokenBudget would. Called between turns (the
+// desktop confirm dialog runs before the activating submit), so the critical
+// section never races a running loop's install.
+func (g *goalMachine) setTokenBudget(tokens int) {
+	g.mu.Lock()
+	g.tokenBudget = tokens
+	g.mu.Unlock()
+}
+
 // goalState is the serializable form of a running goal. New fields are
 // safe-to-omit JSON: old readers ignore them, and restoreFromState re-derives
 // defaults when they are missing.

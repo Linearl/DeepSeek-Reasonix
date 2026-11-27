@@ -1838,6 +1838,14 @@ type AgentConfig struct {
 	// GoalTokenBudget bounds an unattended Goal loop by cumulative tokens.
 	// Off unless set: a Goal runs until it finishes or you stop it.
 	GoalTokenBudget int `toml:"goal_token_budget"`
+	// GoalBudgetConfirm (tl1835) pops the activation confirm dialog when the
+	// user activates goalMode from the composer: it shows the goal name plus
+	// the current default budget (editable, M units in the UI layer) and the
+	// activation only proceeds on confirm. Off (default) keeps the existing
+	// direct path byte-for-byte — no dialog, no budget change. The heartbeat
+	// auto-activation path never sees the dialog (non-goal: it stays on the
+	// configured/default budget without interrupting anyone).
+	GoalBudgetConfirm bool `toml:"goal_budget_confirm"`
 	// MaxSubagentConcurrency bounds how many sub-agents (task, fleet items,
 	// profile skills, nested children) may run at once in one session.
 	// 0 means the default (6). Values outside 1–32 are clamped on load.

@@ -4342,6 +4342,23 @@ func (c *Controller) SetStandardContinuation(v bool) {
 	c.mu.Unlock()
 }
 
+// SetGoalTokenBudget (tl1835) mirrors a confirmed goal budget into this
+// session: the desktop confirm dialog persists the config key AND calls this
+// so the goal activated right after the dialog runs under the new ceiling
+// without a restart. Two independent critical sections (controller field +
+// goal machine) — no nesting, no lock-ordering hazard. Semantics identical to
+// the boot-time Options.GoalTokenBudget (raw tokens; 0 = unset, which lets a
+// heartbeat loop fall back to the tl1312 default ceiling again).
+func (c *Controller) SetGoalTokenBudget(tokens int) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.goalTokenBudget = tokens
+	c.mu.Unlock()
+	c.goals.setTokenBudget(tokens)
+}
+
 // StandardContinuation reports the task-1070 Standard-flow continuation gate
 // mirrored from the lab switch.
 func (c *Controller) StandardContinuation() bool {
