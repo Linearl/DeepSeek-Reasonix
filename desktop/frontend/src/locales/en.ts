@@ -5403,6 +5403,8 @@ export const en = {
   "settings.recoveryCopiesGroupCollapseTip": "click to collapse this group",
   // tl1572: pre-repair backup section (read-only view; no adopt promise).
   "settings.recoveryCopiesPreRepairGroup": "Pre-repair backups",
+  // tl1834: backup table header (column names follow the main table; state is new here).
+  "settings.recoveryCopiesPreRepairColState": "state",
   "settings.recoveryCopiesPreRepairNone": "No pre-repair backups found — no self-heal/Diet rewrite has left a backup directory on this machine.",
   "settings.recoveryCopiesPreRepairView": "View",
   "settings.recoveryCopiesPreRepairPreviewTitle": "Pre-repair backup preview (read-only)",

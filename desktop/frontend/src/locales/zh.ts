@@ -5365,6 +5365,8 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesGroupCollapseTip": "点击折叠本组",
   // tl1572: 改写前备份分区（只读查看，不承诺切回）。
   "settings.recoveryCopiesPreRepairGroup": "改写前备份（pre-repair）",
+  // tl1834: 备份表表头（列名以主表既有列为准，状态列是备份面新增）。
+  "settings.recoveryCopiesPreRepairColState": "状态",
   "settings.recoveryCopiesPreRepairNone": "未发现改写前备份——本机没有自愈/Diet 改写留下的备份目录。",
   "settings.recoveryCopiesPreRepairView": "查看",
   "settings.recoveryCopiesPreRepairPreviewTitle": "改写前备份预览（只读）",

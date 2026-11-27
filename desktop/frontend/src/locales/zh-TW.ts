@@ -3787,6 +3787,8 @@ export const zhTW: Record<DictKey, string> = {
   "settings.recoveryCopiesGroupCollapseTip": "點擊摺疊本組",
   // tl1572: 改寫前備份分區（唯讀檢視，不承諾切回）。
   "settings.recoveryCopiesPreRepairGroup": "改寫前備份（pre-repair）",
+  // tl1834: 備份表表頭（欄名以主表既有欄為準，狀態欄是備份面新增）。
+  "settings.recoveryCopiesPreRepairColState": "狀態",
   "settings.recoveryCopiesPreRepairNone": "未發現改寫前備份——本機沒有自癒/Diet 改寫留下的備份目錄。",
   "settings.recoveryCopiesPreRepairView": "檢視",
   "settings.recoveryCopiesPreRepairPreviewTitle": "改寫前備份預覽（唯讀）",

@@ -3377,104 +3377,142 @@ export function RecoveryCopiesSection() {
                         preRepairs.length === 0 ? (
                           <div className="rc-muted">{t("settings.recoveryCopiesPreRepairNone")}</div>
                         ) : (
-                          <ul className="rc-versions__issues" data-pre-repair-list="">
-                            {preRepairs.map((view) => {
-                              return (
-                                <li key={view.dir} title={view.dir}>
-                                  {preRepairCanCleanup ? (
-                                    <input
-                                      type="checkbox"
-                                      data-pre-repair-check=""
-                                      checked={preRepairSelected.has(view.dir)}
-                                      disabled={busy || preRepairBusy}
-                                      onChange={() => togglePreRepairSelected(view.dir)}
-                                      aria-label={view.label}
-                                    />
-                                  ) : null}{" "}
-                                  {view.label} · {formatWhen(view.modifiedAt)} · {formatBytes(view.bytes)}
-                                  {!view.ownerPath
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairOrphan")}`
-                                    : null}
-                                  {view.ownerArchived
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairArchived")}`
-                                    : null}
-                                  {view.spliced && view.splicedBy === "manual"
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedManual")}`
-                                    : view.spliced && view.splicedBy === "auto"
-                                      ? ` · ${t("settings.recoveryCopiesPreRepairSplicedAuto")}`
-                                      : view.spliced
-                                        ? ` · ${t("settings.recoveryCopiesPreRepairSpliced")}`
-                                        : null}
-                                  {/* tl117A/包117-A：降级登记的如实披露——徽标带
-                                      原因（纯元信息登记、投影未生成），并明示降级
-                                      只可登记不可重复合并（已登记行本就不给合并入口，
-                                      这里把「为什么」写在行上）。 */}
-                                  {view.spliced && view.splicedDegraded
-                                    ? ` · ${t("settings.recoveryCopiesPreRepairSplicedDegraded")}`
-                                    : null}
-                                  {view.transcript ? (
-                                    <button
-                                      className="btn btn--small"
-                                      type="button"
-                                      data-pre-repair-view=""
-                                      disabled={preRepairPreviewing !== null}
-                                      onClick={() => void previewPreRepair(view)}
-                                    >
-                                      {preRepairPreviewing === view.dir
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairView")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanSplice && view.transcript && view.ownerPath && !view.ownerArchived && !view.spliced ? (
-                                    // tl1674b 阶段二：手动拼接入口（活宿主行专属；
-                                    // 已登记行不再给——登记幂等，重复确认无意义）。
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-splice=""
-                                      disabled={preRepairSplicing.has(view.dir)}
-                                      title={t("settings.recoveryCopiesPreRepairSpliceHint")}
-                                      onClick={() => void splicePreRepair(view)}
-                                    >
-                                      {preRepairSplicing.has(view.dir)
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairSplice")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-merge=""
-                                      disabled={preRepairMerging.has(view.dir)}
-                                      title={t("settings.recoveryCopiesPreRepairMergeHint")}
-                                      onClick={() => void mergePreRepair(view)}
-                                    >
-                                      {preRepairMerging.has(view.dir)
-                                        ? "…"
-                                        : t("settings.recoveryCopiesPreRepairMerge")}
-                                    </button>
-                                  ) : null}
-                                  {preRepairCanCleanup ? (
-                                    <button
-                                      className="btn btn--secondary btn--small"
-                                      type="button"
-                                      data-pre-repair-delete=""
-                                      disabled={
-                                        busy ||
-                                        preRepairBusy ||
-                                        preRepairDeleting.has(view.dir)
-                                      }
-                                      title={t("settings.recoveryCopiesPreRepairDeleteHint")}
-                                      onClick={() => void deletePreRepair(view)}
-                                    >
-                                      {t("settings.recoveryCopiesPreRepairDelete")}
-                                    </button>
-                                  ) : null}
-                                </li>
-                              );
-                            })}
-                          </ul>
+                          // tl1834: 表格形态（对照分支合并主表 rc-maintable）——
+                          // 表头行 + 列对齐（名称左对齐/时间·大小右对齐）。结构
+                          // 仍是 ul/li：tl1603/tl1674b/tl1787 的钉按
+                          // `[data-pre-repair-list] > li` 直取行，行语义零改动；
+                          // 表头是 ul 的兄弟行，与行共用同一份 grid 列模板（对齐
+                          // 由模板保证）。徽标从「 · 」串联迁入状态列逐行展示。
+                          <div className="rc-pretable" data-pre-repair-table="">
+                            <div className="rc-pretable__head" data-pre-repair-head="">
+                              <span className="rc-pretable__check" aria-hidden="true" />
+                              <span className="rc-pretable__cell rc-pretable__cell--name" role="columnheader">
+                                {t("settings.recoveryCopiesColLine")}
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--when" role="columnheader">
+                                {t("settings.recoveryCopiesColModified")}
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--size" role="columnheader">
+                                {t("settings.recoveryCopiesColSize")}
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--state" role="columnheader">
+                                {t("settings.recoveryCopiesPreRepairColState")}
+                              </span>
+                              <span className="rc-pretable__cell rc-pretable__cell--ops" role="columnheader">
+                                {t("settings.recoveryCopiesColOps")}
+                              </span>
+                            </div>
+                            <ul className="rc-versions__issues rc-pretable__body" data-pre-repair-list="">
+                              {preRepairs.map((view) => {
+                                return (
+                                  <li key={view.dir} className="rc-pretable__row" title={view.dir}>
+                                    <span className="rc-pretable__check">
+                                      {preRepairCanCleanup ? (
+                                        <input
+                                          type="checkbox"
+                                          data-pre-repair-check=""
+                                          checked={preRepairSelected.has(view.dir)}
+                                          disabled={busy || preRepairBusy}
+                                          onChange={() => togglePreRepairSelected(view.dir)}
+                                          aria-label={view.label}
+                                        />
+                                      ) : null}
+                                    </span>
+                                    <span className="rc-pretable__name">{view.label}</span>
+                                    <span className="rc-pretable__when rc-num">{formatWhen(view.modifiedAt)}</span>
+                                    <span className="rc-pretable__size rc-num">{formatBytes(view.bytes)}</span>
+                                    <span className="rc-pretable__state">
+                                      {[
+                                        !view.ownerPath ? t("settings.recoveryCopiesPreRepairOrphan") : "",
+                                        view.ownerArchived ? t("settings.recoveryCopiesPreRepairArchived") : "",
+                                        // tl117A/包117-A：降级登记的如实披露——徽标带
+                                        // 原因（纯元信息登记、投影未生成），并明示降级
+                                        // 只可登记不可重复合并（已登记行本就不给合并入口，
+                                        // 这里把「为什么」写在行上）。
+                                        view.spliced
+                                          ? view.splicedBy === "manual"
+                                            ? t("settings.recoveryCopiesPreRepairSplicedManual")
+                                            : view.splicedBy === "auto"
+                                              ? t("settings.recoveryCopiesPreRepairSplicedAuto")
+                                              : t("settings.recoveryCopiesPreRepairSpliced")
+                                          : "",
+                                        view.spliced && view.splicedDegraded
+                                          ? t("settings.recoveryCopiesPreRepairSplicedDegraded")
+                                          : "",
+                                      ]
+                                        .filter(Boolean)
+                                        .map((badge, index) => (
+                                          <span key={index} className="rc-pretable__badge">
+                                            {badge}
+                                          </span>
+                                        ))}
+                                    </span>
+                                    <span className="rc-pretable__ops">
+                                      {view.transcript ? (
+                                        <button
+                                          className="btn btn--small"
+                                          type="button"
+                                          data-pre-repair-view=""
+                                          disabled={preRepairPreviewing !== null}
+                                          onClick={() => void previewPreRepair(view)}
+                                        >
+                                          {preRepairPreviewing === view.dir
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairView")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanSplice && view.transcript && view.ownerPath && !view.ownerArchived && !view.spliced ? (
+                                        // tl1674b 阶段二：手动拼接入口（活宿主行专属；
+                                        // 已登记行不再给——登记幂等，重复确认无意义）。
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-splice=""
+                                          disabled={preRepairSplicing.has(view.dir)}
+                                          title={t("settings.recoveryCopiesPreRepairSpliceHint")}
+                                          onClick={() => void splicePreRepair(view)}
+                                        >
+                                          {preRepairSplicing.has(view.dir)
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairSplice")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanMerge && view.transcript && view.ownerPath && !view.ownerArchived ? (
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-merge=""
+                                          disabled={preRepairMerging.has(view.dir)}
+                                          title={t("settings.recoveryCopiesPreRepairMergeHint")}
+                                          onClick={() => void mergePreRepair(view)}
+                                        >
+                                          {preRepairMerging.has(view.dir)
+                                            ? "…"
+                                            : t("settings.recoveryCopiesPreRepairMerge")}
+                                        </button>
+                                      ) : null}
+                                      {preRepairCanCleanup ? (
+                                        <button
+                                          className="btn btn--secondary btn--small"
+                                          type="button"
+                                          data-pre-repair-delete=""
+                                          disabled={
+                                            busy ||
+                                            preRepairBusy ||
+                                            preRepairDeleting.has(view.dir)
+                                          }
+                                          title={t("settings.recoveryCopiesPreRepairDeleteHint")}
+                                          onClick={() => void deletePreRepair(view)}
+                                        >
+                                          {t("settings.recoveryCopiesPreRepairDelete")}
+                                        </button>
+                                      ) : null}
+                                    </span>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
                         )
                       ) : null}
                     </div>
