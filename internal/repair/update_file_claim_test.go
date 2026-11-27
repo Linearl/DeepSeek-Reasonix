@@ -34,9 +34,10 @@ func prepareTestFileUpdateClaim(t *testing.T) (*UpdateTransaction, string, []str
 
 func TestClaimPendingFileUpdateRejectsReleaseUnitMismatch(t *testing.T) {
 	tx, launcher, paths := prepareTestFileUpdateClaim(t)
-	_, release, err := ClaimPendingFileUpdate(
+	_, release, err := ClaimPendingFileUpdateExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		launcher,
 		paths[:len(paths)-1],
 		time.Second,
@@ -82,9 +83,10 @@ func TestClaimPendingFileUpdateRejectsLiveReleaseUnitDrift(t *testing.T) {
 	if err := os.WriteFile(paths[1], []byte("changed-after-prepare"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingFileUpdate(
+	_, release, err := ClaimPendingFileUpdateExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		launcher,
 		paths,
 		time.Second,
@@ -105,9 +107,10 @@ func TestClaimPendingFileUpdateRejectsRollbackBackupDrift(t *testing.T) {
 	if err := os.WriteFile(tx.Files[1].BackupPath, []byte("changed-backup"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingFileUpdate(
+	_, release, err := ClaimPendingFileUpdateExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		launcher,
 		paths,
 		time.Second,
@@ -141,9 +144,10 @@ func TestClaimPendingFileUpdateRejectsPreparedMissingFileAppearing(t *testing.T)
 	if err := os.WriteFile(added, []byte("appeared"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingFileUpdate(
+	_, release, err := ClaimPendingFileUpdateExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		guard,
 		[]string{target, guard, added},
 		time.Second,
@@ -169,7 +173,7 @@ func TestReadPendingFileUpdateRejectsDuplicateReleaseTarget(t *testing.T) {
 
 func TestClaimPendingFileUpdateRejectsReplacementWhileLocking(t *testing.T) {
 	tx, launcher, paths := prepareTestFileUpdateClaim(t)
-	holder, err := LockRepairMutations(paths...)
+	holder, err := lockRepairMutations(paths...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,9 +186,10 @@ func TestClaimPendingFileUpdateRejectsReplacementWhileLocking(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, release, err := ClaimPendingFileUpdate(
+		_, release, err := ClaimPendingFileUpdateExact(
 			tx.ToVersion,
 			tx.CreatedAt,
+			UpdateTransactionID(tx),
 			launcher,
 			paths,
 			2*time.Second,
@@ -217,9 +222,10 @@ func TestClaimPendingFileUpdateRejectsReplacementWhileLocking(t *testing.T) {
 
 func TestClaimPendingFileUpdateHoldsCompleteReleaseUnit(t *testing.T) {
 	tx, launcher, paths := prepareTestFileUpdateClaim(t)
-	_, release, err := ClaimPendingFileUpdate(
+	_, release, err := ClaimPendingFileUpdateExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		launcher,
 		paths,
 		time.Second,
@@ -230,7 +236,7 @@ func TestClaimPendingFileUpdateHoldsCompleteReleaseUnit(t *testing.T) {
 
 	waiter := make(chan error, 1)
 	go func() {
-		unlock, err := LockRepairMutationsTimeout(time.Second, paths...)
+		unlock, err := lockRepairMutationsTimeout(time.Second, paths...)
 		if err == nil {
 			unlock()
 		}
