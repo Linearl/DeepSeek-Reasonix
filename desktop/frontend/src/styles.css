@@ -28615,12 +28615,15 @@ button.statusbar__mcp:focus-visible {
 /* tl1744: 问号帮助菜单按钮——常驻窗口控件左侧的标题栏入口。尺寸/层级/拖拽豁免
    全部对齐 .windows-window-controls（right 用同一宽度变量，改控件宽度按钮跟着
    走）；背景透明融入标题栏，与窗口控件在无面板态的透明规则一致。
-   tl1817: 右缘加 --windows-window-controls-gap 组间距（与 topicbar 让位窗口
-   控件的口径同源——此前右缘紧贴控件盒分隔线，「ⓘ 与窗口控件更挤」即此）；
-   hover 底色对齐面板按钮家族（.app-chrome__panel-toggle 同款 fg-faint 10%，
-   原为 fg 8%——两个色号体系未对齐）。主题风格档（data-theme-style）下整只
-   按钮换 30px 圆角档位（--chrome-panel-control-size，与 ⊞ 同款几何/hover/
-   open 态），见下方同名段落。 */
+   tl1817: hover 底色对齐面板按钮家族（.app-chrome__panel-toggle 同款
+   fg-faint 10%，原为 fg 8%——两个色号体系未对齐）。主题风格档
+   （data-theme-style）下整只按钮换 30px 圆角档位（--chrome-panel-control-size，
+   与 ⊞ 同款几何/hover/open 态），见下方同名段落。
+   tl1817b: 首版「右缘加 18px 组间距」的注释诊断有误——挤的从来不是窗口控件
+   盒（tl1744 起右缘=控件宽 138 时已叠在 ⊞ 让位位上 8px），加 18px 后（右缘
+   156）与 ⊞（右缘=safe+8=164 起）重叠扩到 26px，即包 117「返修反而恶化」。
+   frameless native-tabs 档的真实位置由 mode-classic.css 同名段落按 ⊞ 让位链
+   覆盖；本块 right 仅作无 ⊞ 链档位（workbench 等）的兜底。 */
 .help-menu-button {
   position: fixed;
   top: 0;

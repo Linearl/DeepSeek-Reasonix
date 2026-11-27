@@ -1959,12 +1959,38 @@
 .app--windows-frameless .app-chrome--native-tabs,
 :root[data-theme-style] .app--windows-frameless .app-chrome--native-tabs {
   --windows-frameless-titlebar-tools-offset: var(--windows-window-controls-safe);
-  padding-right: calc(var(--windows-frameless-titlebar-tools-offset) + var(--chrome-panel-control-size, 30px) + 18px);
+  /* tl1817b: 让位链再加一档问号按钮（.help-menu-button）——⊞ 自身右缘 =
+     offset+8，问号按钮插到其左侧再留 8px 族内 gap，行尾内容再让 18px
+     （与旧公式行尾 18 同口径：8px ⊞ 起手 + 10px 视觉间距）。
+     ⊞ 宽两档均为 30px：theme-style 档 = --chrome-panel-control-size，
+     classic 档 = 本文件 1239 行同宽 pill 档（width:30px 字面）；问号宽
+     theme-style 30（--chrome-panel-control-size）、classic 34（基础块
+     全高条），故第二项 fallback 34。 */
+  padding-right: calc(
+    var(--windows-frameless-titlebar-tools-offset) +
+    var(--chrome-panel-control-size, 30px) + 8px +
+    var(--chrome-panel-control-size, 34px) + 18px
+  );
 }
 
 .app--windows-frameless .app-chrome--native-tabs .app-chrome__panel-toggle--right,
 :root[data-theme-style] .app--windows-frameless .app-chrome--native-tabs .app-chrome__panel-toggle--right {
   right: calc(var(--windows-frameless-titlebar-tools-offset) + 8px);
+}
+
+/* tl1817b: 问号按钮跟随同一让位链——⊞ 右缘（offset+8）+ ⊞ 宽 + 8px 族内
+   gap。此前首版锚在 offset（=safe，紧贴窗口控件盒 gap），正好压上 ⊞
+   （实测重叠 26px，即包 117「间距返修反而恶化」现场）；tl1744 原始锚
+   （=窗口控件宽）就已叠 8px。两档 ⊞ 宽同为 30px（theme-style=
+   --chrome-panel-control-size，classic=上同名 pill 档），故一条公式双选择
+   器同发。挂 :has(.app-chrome--native-tabs:not(--workbench)) 与 ⊞ 让位规则
+   同条件命中（workbench 档 chrome 高度为 0 无此叠面）。变量可解析性：
+   --windows-window-controls-safe 定义在 .app--windows-frameless（按钮直
+   父）；--chrome-panel-control-size 定义在 :root[data-theme-style]，classic
+   档走 30px 兜底与 pill 档同值。 */
+.app--windows-frameless:has(.app-chrome--native-tabs:not(.app-chrome--workbench)) > .help-menu-button,
+:root[data-theme-style] .app--windows-frameless:has(.app-chrome--native-tabs:not(.app-chrome--workbench)) > .help-menu-button {
+  right: calc(var(--windows-window-controls-safe, 156px) + 8px + var(--chrome-panel-control-size, 30px) + 8px);
 }
 
 /* 任务 506：标签栏自适应压缩（experimental_tab_compress，默认关）。
