@@ -83,10 +83,11 @@ ok(
   "toggle persists through SetExperimentalCDPDebugPort and raises restartNeeded",
 );
 
-// 3. Bridge contract: declared, stubbed, and mirrored by the Wails binding.
+// 3. Bridge contract: the App-level setter is retired from the Go bridge
+// (tl1842 clears the dead declaration); this pin tracks the retirement.
 ok(
-  bridge.includes("SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;"),
-  "bridge declares SetExperimentalCDPDebugPort",
+  !bridge.includes("SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;"),
+  "retired SetExperimentalCDPDebugPort stays out of the bridge declarations",
 );
 ok(
   goBindings.includes("SetExperimentalCDPDebugPort"),
