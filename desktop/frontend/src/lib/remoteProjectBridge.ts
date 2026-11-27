@@ -4,7 +4,6 @@ import type { RemoteAskAnswer, RemoteProjectView, RemoteSessionView, RemoteTabOp
 export interface RemoteProjectBindings {
   AddRemoteProject(hostId: string, workspace: string): Promise<RemoteProjectView>;
   RemoveRemoteProject(hostId: string, workspace: string): Promise<void>;
-  ListRemoteProjects(): Promise<RemoteProjectView[]>;
   OpenRemoteProjectTab(hostId: string, workspace: string, opts?: RemoteTabOpenOptions): Promise<TabMeta>;
   RemoteProjectSessions(hostId: string, workspace: string): Promise<RemoteSessionView[]>;
   EnsureRemoteProjectSessions(hostId: string, workspace: string): Promise<RemoteSessionView[]>;
@@ -39,12 +38,8 @@ export interface RemoteProjectBindings {
   ResumeRemoteTabGoal(tabId: string): Promise<void>;
   CancelRemoteTabJobs(tabId: string, jobIds: string[]): Promise<void>;
   SteerRemoteTab(tabId: string, input: string): Promise<void>;
-  SetRemoteTabPlanMode(tabId: string, on: boolean): Promise<void>;
   CompactRemoteTab(tabId: string, instructions: string): Promise<void>;
   ReplayRemoteTabPrompts(tabId: string): Promise<unknown>;
   ForkRemoteTab(tabId: string, turn: number, name: string): Promise<void>;
   SummarizeRemoteTab(tabId: string, turn: number, mode: string): Promise<void>;
-  ForgetRemoteTab(tabId: string, name: string): Promise<void>;
-  RemoteTabBranches(tabId: string): Promise<unknown>;
-  RemoteTabSkills(tabId: string): Promise<unknown>;
 }

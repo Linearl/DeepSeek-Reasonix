@@ -53,11 +53,9 @@ func TestRemoteTabCommandsForwardedToServe(t *testing.T) {
 		{"resume-goal", func() error { return a.ResumeRemoteTabGoal(meta.ID) }, "POST /goal/resume {}"},
 		{"cancel-jobs", func() error { return a.CancelRemoteTabJobs(meta.ID, []string{"job-1"}) }, `POST /jobs/cancel {"ids":["job-1"]}`},
 		{"steer", func() error { return a.SteerRemoteTab(meta.ID, "keep it narrow") }, `POST /inbox/items {"input":"keep it narrow","intent":"steer"}`},
-		{"plan-on", func() error { return a.SetRemoteTabPlanMode(meta.ID, true) }, `POST /plan {"on":true}`},
 		{"compact", func() error { return a.CompactRemoteTab(meta.ID, "preserve tests") }, `POST /compact {"instructions":"preserve tests"}`},
 		{"fork", func() error { return a.ForkRemoteTab(meta.ID, 2, "try-auth") }, `POST /fork {"name":"try-auth","turn":2}`},
 		{"summarize", func() error { return a.SummarizeRemoteTab(meta.ID, 4, "upto") }, `POST /summarize {"mode":"upto","turn":4}`},
-		{"forget", func() error { return a.ForgetRemoteTab(meta.ID, "api-key") }, `POST /forget {"name":"api-key"}`},
 		{"clear", func() error { return a.ClearRemoteTabSession(meta.ID) }, "POST /clear {}"},
 	}
 	for _, step := range steps {
@@ -84,28 +82,16 @@ func TestRemoteTabCommandsForwardedToServe(t *testing.T) {
 			t.Fatalf("%s: serve saw %v, want %q", step.name, calls, step.want)
 		}
 	}
-	if _, err := a.RemoteTabBranches(meta.ID); err != nil {
-		t.Fatalf("branches: %v", err)
-	}
-	if _, err := a.RemoteTabSkills(meta.ID); err != nil {
-		t.Fatalf("skills: %v", err)
-	}
 	if _, err := a.ReplayRemoteTabPrompts(meta.ID); err != nil {
 		t.Fatalf("pending prompts: %v", err)
 	}
-	foundBranches, foundSkills, foundPrompts := false, false, false
+	foundPrompts := false
 	for _, c := range fs.recorded() {
-		if c == "GET /branches " {
-			foundBranches = true
-		}
-		if c == "GET /skills " {
-			foundSkills = true
-		}
 		if c == "GET /pending-prompts " {
 			foundPrompts = true
 		}
 	}
-	if !foundBranches || !foundSkills || !foundPrompts {
-		t.Fatalf("branches/skills/prompt reads missing: %v", fs.recorded())
+	if !foundPrompts {
+		t.Fatalf("pending-prompts read missing: %v", fs.recorded())
 	}
 }

@@ -455,10 +455,6 @@ func (a *App) SteerRemoteTab(tabID, input string) error {
 	return a.remoteTabPost(tabID, "/inbox/items", map[string]any{"input": input, "intent": "steer"})
 }
 
-func (a *App) SetRemoteTabPlanMode(tabID string, on bool) error {
-	return a.remoteTabPost(tabID, "/plan", map[string]any{"on": on})
-}
-
 func (a *App) CompactRemoteTab(tabID, instructions string) error {
 	return a.remoteTabPost(tabID, "/compact", map[string]any{"instructions": strings.TrimSpace(instructions)})
 }
@@ -473,18 +469,6 @@ func (a *App) ForkRemoteTab(tabID string, turn int, name string) error {
 
 func (a *App) SummarizeRemoteTab(tabID string, turn int, mode string) error {
 	return a.remoteTabPost(tabID, "/summarize", map[string]any{"turn": turn, "mode": mode})
-}
-
-func (a *App) ForgetRemoteTab(tabID, name string) error {
-	return a.remoteTabPost(tabID, "/forget", map[string]any{"name": name})
-}
-
-func (a *App) RemoteTabBranches(tabID string) (json.RawMessage, error) {
-	return a.remoteTabGet(tabID, "/branches")
-}
-
-func (a *App) RemoteTabSkills(tabID string) (json.RawMessage, error) {
-	return a.remoteTabGet(tabID, "/skills")
 }
 
 func (a *App) refreshRemoteTabTitle(tabID string) {
