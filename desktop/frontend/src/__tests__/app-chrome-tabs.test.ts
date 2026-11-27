@@ -538,6 +538,20 @@ for (const selector of [
   );
 }
 
+// tl1817b: 问号按钮跟随 ⊞ 同一条让位链（⊞ 右缘 offset+8 → 问号 = ⊞ 左缘 + 8；
+// 两档 ⊞ 宽均为 30px）。首版锚在 offset（紧贴控件盒 gap）正好压上 ⊞（重叠
+// 26px），此钉防锚点回退。
+for (const selector of [
+  ".app--windows-frameless:has(.app-chrome--native-tabs:not(.app-chrome--workbench)) > .help-menu-button",
+  ":root[data-theme-style] .app--windows-frameless:has(.app-chrome--native-tabs:not(.app-chrome--workbench)) > .help-menu-button",
+]) {
+  ok(
+    finalDeclaration(selector, "right") ===
+      "calc(var(--windows-window-controls-safe, 156px) + 8px + var(--chrome-panel-control-size, 30px) + 8px)",
+    `${selector} follows the panel-toggle relief chain instead of hugging the window controls`,
+  );
+}
+
 ok(
   finalDeclaration(".app--windows-frameless:not(.app--workbench):not(.app--creation) .app-chrome--native-tabs .app-chrome__drag-rail", "--wails-draggable") === "drag" &&
     finalDeclaration(".app--windows-frameless:not(.app--workbench):not(.app--creation) .app-chrome--native-tabs .app-chrome__drag-rail", "right")?.includes("--windows-window-controls-safe") &&
