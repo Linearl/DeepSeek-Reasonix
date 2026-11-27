@@ -1,7 +1,7 @@
-# 包119 release notes — v1.38.3-20261127-1900
+# 包119 release notes — v1.38.3-20261127-2143
 
 > 基线：包118（v1.38.3-20261127-1555，构建点 `222da0ee89`）
-> 构建点：`f7c408fe3b`（main-v2-stable；变更同步四支全落地+outline 实装+弹层锚修复）
+> 构建点：`f7c408fe3b`（main-v2-stable；三轮构建 rc=0——r1 wrapper 时序/r2 lint:hooks=.bin 链缺失 pnpm --force 重建后 13 门全绿/r3 干净过）
 > 执行线：zcode 开发线（7 支全量本包；主题=变更同步缺口收口+guardian 幽灵清单收窄+outline 模式）
 > <!-- claims: feat-tl1840,feat-tl-slop1,feat-tl1842,feat-tl1841,feat-tl1843,feat-tl1850,feat-tl1833b -->
 
