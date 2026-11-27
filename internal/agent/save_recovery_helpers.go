@@ -140,6 +140,12 @@ func copyValidContextProjection(originalPath, targetPath string, msgs []provider
 		return false, nil
 	}
 	migratePromotedCoveredPrefixHash(&st, msgs)
+	// tl1831r2: the fork-inheritance comparator runs the current recipe on both
+	// sides, so a pre-upgrade sidecar would silently stop inheriting its parent
+	// fold. The one-time recipe lane keeps the inheritance working; no
+	// pre-repair corpus exists on this path, so only the bytes-unchanged gate
+	// applies.
+	migrateTransientStrippedPrefixHash(&st, msgs, nil)
 	n := st.Projection.CoveredCount
 	if len(st.Projection.Messages) == 0 || n <= 0 || n > len(msgs) ||
 		st.Projection.CoveredPrefixHash == "" ||

@@ -498,6 +498,13 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 			contentValid = true
 			needsNormalization = true
 		}
+		// tl1831r2: the transient-strip recipe change gets the same one-time
+		// lane — a pre-upgrade sidecar re-anchors to the stripped recipe
+		// instead of mismatching every old fold into a full-canonical fallback.
+		if !contentValid && migrateTransientStrippedPrefixHash(&st, msgs, preRepair) {
+			contentValid = true
+			needsNormalization = true
+		}
 		if contentValid {
 			normalized, keyOK = key, true
 		}
@@ -563,6 +570,14 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	// serves the wire and the normalized sidecar is republished below via
 	// persistCompactionStateLocked.
 	if failReason != projectionFailNone && migrateLoadRepairedPrefixHash(&st, msgs, preRepair) {
+		needsNormalization = true
+		failReason = projectionInvalidReason(st, msgs)
+	}
+	// tl1831r2: last one-time lane — a sidecar sealed under the pre-strip
+	// recipe (transient blocks fingerprinted verbatim) re-anchors to the
+	// stripped recipe. Without it the first load after the upgrade mismatches
+	// every old fold into the wholesale drop this file already logs.
+	if failReason != projectionFailNone && migrateTransientStrippedPrefixHash(&st, msgs, preRepair) {
 		needsNormalization = true
 		failReason = projectionInvalidReason(st, msgs)
 	}

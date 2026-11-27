@@ -379,11 +379,53 @@ func summaryContentHash(summary string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
+// transientStrippedView returns a request-side copy of msgs with host-injected
+// transient blocks removed from user turns (tl1831r2). The blocks registered in
+// TransientUserBlockTags (current-time, context-state, language pins, …) are
+// runtime decoration the host prepends per turn — preview/title derivation,
+// steer recognition, and the reasoning-replay anchor already strip them
+// (StripTransientUserBlocks is the single source of truth). The covered-prefix
+// fingerprint joins them: the hash exists to distinguish "conversation grew
+// append-only" from "history was rewritten", and a rendering change to a clock
+// anchor is neither. Everything else (roles, assistant/tool bytes, tool-call
+// signatures) is passed through untouched.
+func transientStrippedView(msgs []provider.Message) []provider.Message {
+	out := make([]provider.Message, len(msgs))
+	copy(out, msgs)
+	for i := range out {
+		if out[i].Role == provider.RoleUser {
+			out[i].Content = StripTransientUserBlocks(out[i].Content)
+		}
+	}
+	return out
+}
+
 // coveredPrefixHash fingerprints the current model-visible prefix of msgs[:n].
 // Tool Content is the stable bounded provider representation; RawContent is
 // local-only. SanitizeToolPairing applies the same deterministic repair used on
 // the wire, keeping hashes stable when LoadSession repairs a transcript.
+//
+// tl1831r2: transient user-turn blocks are stripped before fingerprinting.
+// The pre-fix recipe fingerprinted them verbatim, so any change to their
+// rendering — the tl1831 context-state copy change being the incident — read
+// as a prefix rewrite and discarded the whole fold (20261127 装机重启:
+// covered_count 2371→0, 2.9M-token full-canonical fallback, 29-minute chunked
+// compaction). The stripped recipe still fails closed on real edits: user
+// prose, assistant/tool bytes, and tool-call signatures all keep hashing.
 func coveredPrefixHash(msgs []provider.Message, n int) string {
+	if n <= 0 || n > len(msgs) {
+		return ""
+	}
+	visible := transientStrippedView(modelInputMessages(msgs[:n]))
+	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
+}
+
+// legacyTransientIncludedCoveredPrefixHash reproduces the pre-tl1831r2
+// fingerprint (transient blocks included) exactly as every sidecar written
+// before the recipe change sealed it. It exists only so
+// migrateTransientStrippedPrefixHash can recognize those sidecars once; new
+// checkpoints always use coveredPrefixHash.
+func legacyTransientIncludedCoveredPrefixHash(msgs []provider.Message, n int) string {
 	if n <= 0 || n > len(msgs) {
 		return ""
 	}
@@ -393,20 +435,92 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 
 // coveredMessageFingerprints (tl1651) fingerprints each message of the
 // sanitized covered prefix individually, through the exact pipeline
-// coveredPrefixHash uses (modelInputMessages → SanitizeToolPairing), so a
-// whole-prefix mismatch can be narrowed to the first edited message. The
-// per-message hashes are read side by side against the sidecar's persisted
-// CoveredMessageHashes; the index where they diverge is the rewrite point.
+// coveredPrefixHash uses (transient-strip → modelInputMessages →
+// SanitizeToolPairing), so a whole-prefix mismatch can be narrowed to the
+// first edited message. The per-message hashes are read side by side against
+// the sidecar's persisted CoveredMessageHashes; the index where they diverge
+// is the rewrite point. tl1831r2: same recipe as coveredPrefixHash, so a
+// transient-only rendering change never shows up as a per-message divergence.
 func coveredMessageFingerprints(msgs []provider.Message, n int) []string {
 	if n <= 0 || n > len(msgs) {
 		return nil
 	}
-	visible := provider.SanitizeToolPairing(modelInputMessages(msgs[:n]))
+	visible := provider.SanitizeToolPairing(transientStrippedView(modelInputMessages(msgs[:n])))
 	out := make([]string, len(visible))
 	for i := range visible {
 		out[i] = providerVisibleFingerprint(visible[i : i+1])
 	}
 	return out
+}
+
+// migrateTransientStrippedPrefixHash (tl1831r2) is the one-time lane for
+// sidecars sealed under the pre-tl1831r2 recipe, which fingerprinted transient
+// user-turn blocks verbatim. Without it, the first load after the upgrade
+// recomputes every prefix hash under the stripped recipe, mismatches every
+// old sidecar, and reproduces exactly the wholesale-drop fallback the recipe
+// change was meant to prevent. Migration is re-anchoring only: the stored hash
+// and the diagnostic per-message corpus are repointed at the current
+// transcript under the new recipe; the projection body is untouched.
+//
+// Gates are deliberately strict; every non-passing shape stays invalid so
+// real rewrites are never legalized:
+//  1. Recipe gate — the stored hash must equal the LEGACY recipe recomputed
+//     over the current covered prefix. A sidecar sealed under the new recipe
+//     that mismatches has real content drift and is left for the drop path.
+//  2. Load-repair gate (B-corpus) — when this load's normalization rewrote
+//     provider-visible bytes (tl1651's repair family), the legacy recipe must
+//     match the PRE-REPAIR disk prefix instead, and the stripped-recipe first
+//     fingerprints of both views must agree (same shared-head proof
+//     migrateLoadRepairedPrefixHash requires).
+//
+// No schema bump accompanies the recipe change: bumping would make readers
+// reject every existing sidecar outright (fail into RemoveCompactionState and
+// a full rebuild) — the catastrophe this lane exists to avoid. The
+// dual-recipe re-anchor follows the migratePromotedCoveredPrefixHash precedent.
+func migrateTransientStrippedPrefixHash(st *CompactionState, msgs, preRepair []provider.Message) bool {
+	if st == nil {
+		return false
+	}
+	n := st.Projection.CoveredCount
+	if n <= 0 || n > len(msgs) {
+		return false
+	}
+	stored := st.Projection.CoveredPrefixHash
+	if stored == "" {
+		return false
+	}
+	currentHash := coveredPrefixHash(msgs, n)
+	if currentHash == "" || currentHash == stored {
+		return false
+	}
+	matched := legacyTransientIncludedCoveredPrefixHash(msgs, n) == stored
+	if !matched && len(preRepair) > 0 && n <= len(preRepair) &&
+		legacyTransientIncludedCoveredPrefixHash(preRepair, n) == stored {
+		preFP := coveredMessageFingerprints(preRepair, n)
+		curFP := coveredMessageFingerprints(msgs, n)
+		if len(preFP) == 0 || len(curFP) == 0 || preFP[0] != curFP[0] {
+			return false
+		}
+		matched = true
+	}
+	if !matched {
+		return false
+	}
+	st.Projection.CoveredPrefixHash = currentHash
+	// tl1651: keep the diagnostic per-message corpus in step with the migrated
+	// prefix hash, so later mismatches localize against the migrated form.
+	st.Projection.CoveredMessageHashes = coveredMessageFingerprints(msgs, n)
+	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
+		receipt := *st.LastReceipt
+		receipt.CoveredPrefixHash = currentHash
+		st.LastReceipt = &receipt
+	}
+	slog.Info("agent: transient-included covered prefix migrated",
+		"writer", SessionWriterID(),
+		"covered_count", n,
+		"stored_prefix_hash", shortHash8(stored),
+		"migrated_prefix_hash", shortHash8(currentHash))
+	return true
 }
 
 // projectionMismatchEvidence is the tl1651 diagnosis of one hash_mismatch
