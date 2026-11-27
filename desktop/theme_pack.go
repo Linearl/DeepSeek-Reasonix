@@ -67,7 +67,11 @@ var themePackTokenKeys = map[string]string{
 }
 
 var (
-	themePackIDRe    = regexp.MustCompile(`^[a-z][a-z0-9-]{0,62}[a-z0-9]$|^[a-z]$`)
+	// themePackIDRe is built from themePackMaxIDLen so the id length limit has
+	// a single source: change the constant and the accepted maximum follows.
+	// Equivalent literal: ^[a-z][a-z0-9-]{0,62}[a-z0-9]$|^[a-z]$
+	// (2..themePackMaxIDLen chars, or a single-character id).
+	themePackIDRe    = regexp.MustCompile(fmt.Sprintf(`^[a-z][a-z0-9-]{0,%d}[a-z0-9]$|^[a-z]$`, themePackMaxIDLen-2))
 	themePackColorRe = regexp.MustCompile(`^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$`)
 	themePackImageRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,120}\.(png|jpe?g|webp)$`)
 )
