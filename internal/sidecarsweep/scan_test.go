@@ -50,8 +50,9 @@ func materializeFamily(t *testing.T, dir, stem string) {
 	sessionPath := filepath.Join(dir, stem+".jsonl")
 	writeFile(t, sessionPath, "transcript")
 	writeFile(t, guardPath(sessionPath), "guardian")
-	// SessionSidecarFiles(session) ∪ SessionSidecarFiles(guardian) ∪
-	// telemetry/toolstats/ckpt/jobs/inbox/reminders/imgpack/guardian+cursor
+	// SessionSidecarFiles(session) ∪ SessionGuardianSidecarFiles(guardian)
+	// ∪ guardian+cursor ∪ telemetry/toolstats/ckpt/jobs/inbox/reminders/imgpack
+	// （tl1850 收窄口径：guardian 段=实际数据面，清单构造器驱动）
 	for _, p := range store.SessionStaticTrashSidecars(sessionPath) {
 		if p == "" {
 			continue

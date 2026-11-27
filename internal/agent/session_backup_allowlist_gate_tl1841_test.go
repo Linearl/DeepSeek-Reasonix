@@ -21,38 +21,31 @@ import (
 // 纪律）都是 Go 守卫测试。故本门禁落包级测试；check-fork-integrity 另补
 // 锚段防上游 merge 静默丢行（该脚本职责即 fork-only 特征锚）。
 //
-// 存量欠账口径：静态换位清单里 guardian 家族的派生数据侧车只有核心 6 键
-// 在白名单（meta/events/转录/双 index/cursor），其余 11 键是本次门禁首跑
-// 实测出的存量缺口（G2 同机制存量面，非本次任务书新增侧车）。按「上限+
-// 新增即红」纪律显式登记在 exemptions 里：扩权（补登）或收窄（清单裁剪）
-// 都要动这份登记，静默新增必红。
+// 存量欠账口径（tl1850 已清偿）：静态换位清单里 guardian 家族的派生数据侧车
+// 只有核心 6 键在白名单（meta/events/转录/双 index/cursor），其余 11 键是
+// tl1841 门禁首跑实测出的存量缺口（G2 同机制存量面），按「上限+新增即红」
+// 纪律显式登记在 exemptions 里。tl1849 实证这 11 键 guardian 路径写入方缺失
+// +磁盘零实例（构造器对 guardianPath 全量重跑主会话侧车构造器的理论派生面），
+// tl1850 据此收窄：清单侧改走 SessionGuardianSidecarFiles（实际数据面），
+// 豁免表对应 11 键同 commit 删除；guardian.repairlog.jsonl 豁免键也随清单
+// 收窄失去清单来源，按表内纪律一并删（共 12 键出表，repairlog 主会话键
+// 保留）——清单里没有→不要求白名单；未来若真新增 guardian 派生写入方，
+// 写入方须同 commit 登记两处清单（门禁纪律照常覆盖）。
 
 // tl1841AllowlistExemptions 是差集门禁的显式豁免登记（键=stem 相对 rel）。
 // 每个键必须给出理由；豁免被清（对应 rel 从清单消失）后应同步删键。
 var tl1841AllowlistExemptions = map[string]string{
 	// 任务 1116 终裁：修复记录是审计轨迹不是数据侧车（白名单天然排除）。
-	"repairlog.jsonl":          "任务1116 终裁：审计轨迹不入备份白名单",
-	"guardian.repairlog.jsonl": "任务1116 终裁：审计轨迹不入备份白名单（guardian 家族）",
+	// guardian 版豁免键已随 tl1850 收窄删除：清单侧不再派生
+	// guardian.repairlog.jsonl（selfheal 写链只挂主会话），豁免表自身纪律
+	// 「rel 从清单消失→同 commit 删键」生效（豁免卫生测试钉）。
+	"repairlog.jsonl": "任务1116 终裁：审计轨迹不入备份白名单",
 	// 目录工件：backupSessionFiles 按构造跳目录（e.IsDir()），不在复制语义内。
 	"ckpt":          "目录工件：备份函数按构造跳目录",
 	"jobs":          "目录工件：备份函数按构造跳目录",
 	"inbox":         "目录工件：备份函数按构造跳目录",
 	"reminders":     "目录工件：备份函数按构造跳目录",
 	"jsonl.imgpack": "目录工件：备份函数按构造跳目录（legacy 无写入方）",
-	// 存量欠账（tl1841 门禁首跑实测登记；G2 同机制存量面，扩权需拍板）：
-	// guardian 家族派生数据侧车从未入过归档白名单——转正换位链对它们同样
-	// 「无归档销毁」。本次任务书只收口三个新增侧车；存量扩权留后续裁决。
-	"guardian.goal-state.json":       "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.events.jsonl.zst":      "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.events.jsonl.damaged":  "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.events.jsonl.rotating": "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.jsonl.zst":             "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.turns.jsonl":           "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.turns.jsonl.damaged":   "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.conflicts.jsonl":       "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.recovery.json":         "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.context.json":          "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
-	"guardian.pinned-context.json":   "存量欠账 tl1841 登记：guardian 家族数据侧车未入白名单",
 }
 
 // tl1841StaticInventoryRels 跑 store 静态换位清单构造器（纯字符串运算，

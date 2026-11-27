@@ -57,6 +57,30 @@ func SessionTrashSidecars(sessionPath string) []string {
 	return artifacts
 }
 
+// SessionGuardianSidecarFiles returns the data sidecars the guardian
+// companion session actually produces (tl1850). Guardian saves go through the
+// same session layer, but the guardian conversation only ever writes and
+// consumes its transcript, replay cursor, meta, event log, and the two
+// indexes — goal state, recovery, projection context, turn/conflict ledgers,
+// and the diagnostic/audit sidecars have no writer on the guardian path
+// (field-measured zero instances; tl1849). The inventory used to re-run
+// SessionSidecarFiles on the guardian path, which drafted those eleven
+// never-produced shapes into every deletion chain as phantom entries; the
+// stem-prefix catch-all sweep at each call site still covers any shape this
+// narrowed list stops naming.
+func SessionGuardianSidecarFiles(guardianPath string) []string {
+	guardianPath = strings.TrimSpace(guardianPath)
+	if guardianPath == "" {
+		return nil
+	}
+	return []string{
+		SessionMeta(guardianPath),
+		SessionEventLog(guardianPath),
+		SessionEventIndex(guardianPath),
+		SessionDisplayIndex(guardianPath),
+	}
+}
+
 // SessionStaticTrashSidecars is the glob-free form of SessionTrashSidecars:
 // pure constructor applications, so two spellings of one session yield two
 // lists of identical length and order. The identity-swap chain
@@ -64,6 +88,13 @@ func SessionTrashSidecars(sessionPath string) []string {
 // consumes this form; the pre-repair backup directories it omits are swept by
 // that chain separately, after the swap lands. Deletion chains use the full
 // SessionTrashSidecars.
+//
+// tl1850: the guardian family section is built from SessionGuardianSidecarFiles
+// (the guardian path's real data face) instead of re-running
+// SessionSidecarFiles on the guardian path — a future guardian-side writer for
+// a shape outside that face must register both this inventory and the backup
+// allowlist in the same commit (the tl1841 differential gate keeps enforcing
+// that pairing).
 func SessionStaticTrashSidecars(sessionPath string) []string {
 	sessionPath = strings.TrimSpace(sessionPath)
 	if sessionPath == "" {
@@ -75,7 +106,7 @@ func SessionStaticTrashSidecars(sessionPath string) []string {
 	// the family.
 	guardianPath := SessionGuardianTranscript(sessionPath)
 	artifacts = append(artifacts, guardianPath, SessionGuardianCursor(sessionPath))
-	artifacts = append(artifacts, SessionSidecarFiles(guardianPath)...)
+	artifacts = append(artifacts, SessionGuardianSidecarFiles(guardianPath)...)
 	artifacts = append(artifacts,
 		// Runtime counters and telemetry (the 2026-11-05 measured gaps).
 		SessionTelemetry(sessionPath),
