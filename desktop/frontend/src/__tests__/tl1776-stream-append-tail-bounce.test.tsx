@@ -35,12 +35,29 @@
 //      读者位置保持、不被拽回底（修复前后一致——tl 1740 零回退）。
 //   W  干净贴底（无流式竞态采样）+ 宽度重排：无条件回底（tl 1699 A 腿
 //      语义保持；facts 缺席时读 kernel.atBottom 的路径）。
+//
+// tl 1776c（包117 装机再现——同症状不同根因层）：smoothScrollFollow 实验开关
+// 开启时（用户装机实况），瞬写竞态之上多出一层动画 transit 盲区——writer 在
+// 平滑分支之前就把 tailFloor 记到最新 floor，而 outstanding-target 门让
+// scrollTop 仍停在旧目标（快速流式下这是稳态：lastTailFloor 恒领先 scrollTop
+// 一个追尾差），floor 见证 |scrollTop-lastTailFloor|≤4 永不命中 → facts 稳态
+// 污染 → 任一宽度重排照旧降级回弹。修法=第二见证腿：跟随层有未结动画目标
+// （smoothFollowPending）即 writer 自有送位途中——手势入口一律先 interrupt
+// （动画目标清零后才可能有读者位移），所以 tail intent + 动画未结 + 测得
+// 不在底 = follow-lag 而非读者意图。
+//   S1 平滑跟随开启 + 动画 transit 稳态 + 宽度重排：intent 保持 tail、
+//      动画结算后跟随引擎追新 floor、流式继续跟随（修复前：降级 reader、
+//      停跟）；见证命中落诊断打点（含 smoothFollowPending 字段）。
+//   S2 平滑跟随开启 + 读者手势 interrupt 后真实上滚位移 + 宽度重排：
+//      动画目标先清零（smoothFollowPending=false），见证不命中，读者位置
+//      保持不被拽回底（tl 1740 语义在平滑层下零回退）。
 
 import { JSDOM } from "jsdom";
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import type { useTranscriptKernel } from "../lib/useTranscriptKernel";
 import { setTranscriptScrollDiagnosticSink } from "../lib/transcriptScrollProbe";
+import { applyLabFlags } from "../lib/labFlags";
 import { TranscriptTestClock } from "./transcript-test-clock";
 
 let passed = 0;
@@ -100,10 +117,15 @@ class FakeResizeObserver {
 (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = FakeResizeObserver;
 
 // ── 诊断流收集（见证命中打点的读数来源）───────────────────────────────
-type DiagnosticEvent = { type: string; outcome?: string; intent?: string };
+type DiagnosticEvent = { type: string; outcome?: string; intent?: string; smoothFollowPending?: boolean };
 const diagnostics: DiagnosticEvent[] = [];
 setTranscriptScrollDiagnosticSink((type, fields) => {
-  diagnostics.push({ type, outcome: fields.outcome as string | undefined, intent: fields.intent as string | undefined });
+  diagnostics.push({
+    type,
+    outcome: fields.outcome as string | undefined,
+    intent: fields.intent as string | undefined,
+    smoothFollowPending: fields.smoothFollowPending as boolean | undefined,
+  });
 });
 
 // ── 滚动容器几何 stub（tl 1740 同款）────────────────────────────────
@@ -132,6 +154,10 @@ function resetGeom(): void {
 function rect(top: number, height: number): DOMRect {
   return { top, bottom: top + height, left: 0, right: geom.clientW, width: geom.clientW, height, x: 0, y: top, toJSON: () => ({}) } as DOMRect;
 }
+// tl 1776c：平滑跟随的 scrollTo 记录（S 块读数）。浏览器语义：smooth 请求
+// 挂起动画目标、scrollTop 不立即移动；instant 请求即时定位。jsdom 无布局，
+// 用这个桩区分两态。
+const smoothScrollCalls: { top: number; behavior: string }[] = [];
 const geomBound = new WeakSet<Element>();
 function ensureScrollerStubs(node: HTMLDivElement): void {
   if (geomBound.has(node)) return;
@@ -153,6 +179,11 @@ function ensureScrollerStubs(node: HTMLDivElement): void {
       set: (value: number) => { geom.top = value; },
     },
   });
+  (node as unknown as Record<string, unknown>).scrollTo = (arg: { top: number; behavior?: string }) => {
+    const behavior = String(arg.behavior ?? "auto");
+    smoothScrollCalls.push({ top: arg.top, behavior });
+    if (behavior !== "smooth") node.scrollTop = arg.top;
+  };
   node.getBoundingClientRect = () => rect(0, geom.client);
 }
 
@@ -317,6 +348,129 @@ process.stdout.write("\n[tl 1776] streaming append keeps a bottom-pinned view pi
   eq(hookRef.current!.kernel.intent, "tail", "W: the clean at-bottom rewrap keeps the tail intent");
   eq(bottomDistance(), 0, `W: the width compensation re-pins the new bottom (bottomDistance=${bottomDistance()})`);
   await unmount();
+}
+
+// ── S1: 平滑跟随开启 + 动画 transit 稳态 + 宽度重排——intent 保持 tail、
+//    动画结算后跟随引擎追新 floor、流式继续跟随（tl 1776c 主钉）─────────
+{
+  resetGeom();
+  clock = new TranscriptTestClock();
+  FakeResizeObserver.reset();
+  diagnostics.length = 0;
+  smoothScrollCalls.length = 0;
+  applyLabFlags({ smoothScrollFollow: true });
+  await mount("t1776-s1");
+  flushAll();
+  await fireInitialObservation();
+  // 贴底稳态：动画到达 floor（上一次 smooth 请求的目标），视图钉底。
+  bumpFrame();
+  geom.top = bottomOf();
+  await act(async () => { hookRef.current!.onScroll(); });
+  eq(bottomDistance(), 0, "S1: the view starts pinned at the bottom (animation arrival)");
+
+  // 流式追加第一拍：echo 采样落在 follow-lag 窗口，scrollTop 仍坐在
+  // lastTailFloor 上——floor 见证腿命中（R 同款，瞬写层）。
+  await streamAppendEchoObservation(600);
+  // 驱动一次尾写：tailFloor 前移到新 floor，同时 outstanding-target 门让
+  // scrollTop 停在旧位——装配出快速流式的 transit 稳态（writer 记账领先，
+  // 动画在途）。
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(hookRef.current!.writer.smoothFollowPending, true, "S1: the smooth follow holds an outstanding target (transit steady state)");
+  eq(smoothScrollCalls[smoothScrollCalls.length - 1]?.top, bottomOf(), "S1: the outstanding target is the new floor");
+
+  // 快速流式第二拍：这次连 scrollTop 也不再坐在 lastTailFloor 上（追尾差
+  // 600px）——floor 见证腿不命中，动画在途是唯一的见证来源。
+  await streamAppendEchoObservation(600);
+  eq(bottomDistance(), 1200, "S1: the second append leaves the transit gap the floor witness cannot cover");
+
+  // 宽度重排（同宽度纪元内）：facts 采样此刻已被污染（修复前）→ 降级回弹。
+  await widthRewrapFrame(620);
+  flushAll();
+  eq(hookRef.current!.kernel.intent, "tail",
+    "S1: the transit steady state does not demote the tail intent through the width compensation");
+  ok(diagnostics.some((event) => event.type === "tail-floor-witness" && event.smoothFollowPending === true),
+    "S1: the transit witness rescue is recorded with the smoothFollowPending field");
+
+  // 动画结算（浏览器到达未结目标）→ 跟随引擎必须追新 floor（写路径恢复，
+  // 不靠手动挪动 scrollTop）。
+  bumpFrame();
+  geom.top = smoothScrollCalls[smoothScrollCalls.length - 1]!.top;
+  await act(async () => { hookRef.current!.onScroll(); });
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(smoothScrollCalls[smoothScrollCalls.length - 1]?.top, bottomOf(),
+    `S1: after settling, the follow engine chases the post-rewrap floor (last smooth target=${smoothScrollCalls[smoothScrollCalls.length - 1]?.top}, expected=${bottomOf()})`);
+
+  // 动画到达新 floor：贴底恢复。
+  bumpFrame();
+  geom.top = bottomOf();
+  await act(async () => { hookRef.current!.onScroll(); });
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(bottomDistance(), 0, `S1: the view re-pins the bottom through the write path (bottomDistance=${bottomDistance()})`);
+  eq(hookRef.current!.kernel.intent, "tail", "S1: the intent stays tail through the recovery");
+
+  // 后续流式继续跟随：再追加一拍，跟随引擎必须再追新 floor（写路径钉），
+  // 结算后仍回底（跟活未死）。
+  await streamAppendEchoObservation(600);
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(smoothScrollCalls[smoothScrollCalls.length - 1]?.top, bottomOf(),
+    "S1: streaming keeps following after the transit rescue (the follow engine chases the grown floor)");
+  bumpFrame();
+  geom.top = bottomOf();
+  await act(async () => { hookRef.current!.onScroll(); });
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(bottomDistance(), 0, `S1: streaming keeps following after the transit rescue (bottomDistance=${bottomDistance()})`);
+  await unmount();
+  applyLabFlags({});
+}
+
+// ── S2: 平滑跟随开启 + 读者手势 interrupt 后真实上滚 + 宽度重排——位置保持
+//    （tl 1740 语义在平滑层下零回退；动画见证不得命中真实读者位移）────────
+{
+  resetGeom();
+  clock = new TranscriptTestClock();
+  FakeResizeObserver.reset();
+  diagnostics.length = 0;
+  smoothScrollCalls.length = 0;
+  applyLabFlags({ smoothScrollFollow: true });
+  await mount("t1776-s2");
+  flushAll();
+  await fireInitialObservation();
+  bumpFrame();
+  geom.top = bottomOf();
+  await act(async () => { hookRef.current!.onScroll(); });
+  eq(bottomDistance(), 0, "S2: the view starts pinned at the bottom");
+
+  // 建立 transit 稳态（与 S1 同构）：追加 + 尾写 → 动画在途。
+  await streamAppendEchoObservation(600);
+  await act(async () => { hookRef.current!.commitViewportGeometry(); });
+  flushAll();
+  eq(hookRef.current!.writer.smoothFollowPending, true, "S2: the transit steady state is armed");
+
+  // 读者上滚：手势入口先 interrupt（动画目标清零、位置即钉）——这是
+  // 「动画在途不可能与读者位移共存」的机制钉。
+  await act(async () => { hookRef.current!.onWheelCapture(); });
+  eq(hookRef.current!.writer.smoothFollowPending, false, "S2: the gesture entry interrupts the outstanding follow before reader motion");
+  bumpFrame();
+  geom.top -= 120;
+  await act(async () => { hookRef.current!.onScroll(); });
+  eq(bottomDistance(), 720, "S2: the reader travel leaves the floor (append already moved the floor 600px down)");
+  eq(hookRef.current!.kernel.intent, "reader", "S2: the displacement demotes the intent to reader under the gesture lease");
+
+  // 租约到期（native 320ms 空闲窗），随后宽度重排：动画见证已不可能命中
+  // （interrupt 清零），读者位置必须保持。
+  clock.advance(400);
+  await widthRewrapFrame(620);
+  flushAll();
+  eq(hookRef.current!.writer.smoothFollowPending, false, "S2: no outstanding follow can masquerade as reader transit");
+  eq(bottomDistance(), 720, `S2: the width compensation keeps the reader position (bottomDistance=${bottomDistance()})`);
+  eq(hookRef.current!.kernel.intent, "reader", "S2: the reader intent survives the rewrap");
+  await unmount();
+  applyLabFlags({});
 }
 
 process.stdout.write(`\n[tl 1776] passed=${passed} failed=${failed}\n`);
