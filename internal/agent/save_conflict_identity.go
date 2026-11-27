@@ -51,7 +51,10 @@ func newSnapshotConflictIdentity(base sessionPersistState, next, disk [sha256.Si
 		LedgerDigest:   ledger.digest,
 		LedgerWriter:   ledger.writer,
 	}
-	if base.ok {
+	// tl1843: a disk-healed baseline must keep BaseDigest empty — the evidence
+	// shape "no baseline digest for this side" stays truthful for a session
+	// whose baseline was assembled at save time from content it never loaded.
+	if base.ok && !base.healedFromDisk {
 		identity.BaseDigest = digestString(base.digest)
 	}
 	return identity

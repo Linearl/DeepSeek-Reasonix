@@ -86,8 +86,18 @@ type sessionPersistState struct {
 	// pure projection of the disk transcript while the checkpoint itself is
 	// byte-stable.
 	checkpointBytes int64
-	saveVerified    bool
-	ok              bool
+	// healedFromDisk marks a baseline assembled at save time from the observed
+	// on-disk state (tl1843) because the session faced a ledger-backed file
+	// with no assembled baseline of its own. The live transcript's descent
+	// from that content is unverified — the session never loaded it — so this
+	// baseline must never act as ownership proof (ownsPersistedState refuses
+	// it) nor pose as a verified conflict base digest; it only guarantees that
+	// no write leaves this gate without a baseline in place and arms revision
+	// tracking from the next landed save. Every setPersistedBaseline* rewrite
+	// (a landed save, an adopt, a load) replaces the struct and clears it.
+	healedFromDisk bool
+	saveVerified   bool
+	ok             bool
 }
 
 type sessionSaveMode int
@@ -769,6 +779,19 @@ func (s *Session) checkSnapshotWrite(path string, next []provider.Message, nextD
 			// so no load-time repair is left to force a rewrite.
 			repairPending = false
 		}
+	}
+	// tl1843 fail-closed baseline gate: a writer facing an existing
+	// ledger-backed transcript with no assembled baseline of its own must not
+	// classify with the CAS disarmed. Force the baseline assembly here, before
+	// the write path is decided, and carry an attribution anchor for the
+	// d4 leftover ("why was this baseline never assembled?"). The healed
+	// baseline changes no verdict below: revision CAS stays un-armed exactly
+	// like the torn-sidecar degradation, ownership stays refused (the disk
+	// content was never loaded by this session), and diverged writes still
+	// conflict into the takeover ladders unchanged. See
+	// healMissingPersistedBaseline.
+	if !baseState.ok {
+		baseState = s.healMissingPersistedBaseline(path, existingDigest, ledger, len(existing), len(next), nextVersion)
 	}
 	if !appendShaped && baseState.ok && baseState.revisionKnown &&
 		baseState.revision == currentRevision && !contentUnchanged {
