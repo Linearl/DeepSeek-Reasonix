@@ -9,13 +9,36 @@ next launch into a global Safe Mode.
 ```text
 reasonix doctor
 reasonix doctor repair
+reasonix doctor repair --undo
 reasonix report         # diagnostic reports: list / show / send
 ```
 
 - **doctor** inspects configuration, derived desktop state, and common install
   problems without loading the Wails shell.
 - **doctor repair** applies safe, explicit repairs the user opts into.
+- **doctor repair --undo** reverses the most recent recorded repair (see
+  below).
 - Crash reports remain opt-in and never force a degraded product mode.
+
+## Undoing a repair
+
+Every repair that changes files is recorded before it is applied. Pass
+`--undo` to reverse the most recent recorded repair: it restores the exact
+files that repair moved aside, and keeps whatever the undo displaces as
+timestamped redo candidates next to each target. An undo therefore never
+destroys either side of the repair.
+
+- The undo is one-shot: once it succeeds, undoing the same repair again is
+  refused with exit 1.
+- With no recorded repair, `--undo` fails closed with exit 1.
+- `--undo` cannot be combined with `--apply` or `--project`.
+- If a recorded backup is missing or no longer matches the recorded state,
+  the undo is refused before anything is touched instead of partially
+  applied.
+- `--undo` covers the journaled repairs: config quarantine and
+  last-known-good snapshot restore, snapshot restore, and derived-state
+  rebuilds. Update rollbacks follow their own rollback path and are not part
+  of `--undo`.
 
 ## Install layout (v1.20+)
 
