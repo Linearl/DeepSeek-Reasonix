@@ -523,10 +523,10 @@ console.log("\npre-repair backups cleanup (tl1603)");
   }
   const bridgeSource = readFileSync(resolve(testDir, "../lib/bridge.ts"), "utf8");
   ok(
-    bridgeSource.includes("DeletePreRepairBackup(dir: string): Promise<PreRepairDeleteView>;"),
+    bridgeSource.includes("DeletePreRepairBackup(dir: string, force: boolean): Promise<PreRepairDeleteView>;"),
     "⑤ AppBindings declares DeletePreRepairBackup with the tl1658 verdict view",
   );
-  ok(bridgeSource.includes("DeletePreRepairBackups(dirs: string[]): Promise<PreRepairBatchCleanupView>;"), "⑤ AppBindings declares DeletePreRepairBackups");
+  ok(bridgeSource.includes("DeletePreRepairBackups(dirs: string[], force: boolean): Promise<PreRepairBatchCleanupView>;"), "⑤ AppBindings declares DeletePreRepairBackups");
   const sectionSource = readFileSync(resolve(testDir, "../components/RecoveryCopiesSection.tsx"), "utf8");
   // tl1658 契约改写：永久删除不再是「零接线」——超长路径死锁的兜底是**明示
   // 通道**（bridge 已声明 + 组件只在 permanentOnly 裁决后、且用户在含「永久
