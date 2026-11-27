@@ -28,7 +28,12 @@
 //   renders the sealed copy once todoEmpty signals say the session had tasks;
 // - the user's screenshot scenario: a signed-off (all-completed, dismissed)
 //   3-item list must NOT render the "暂无任务" copy;
-// - i18n: the sealed/expand keys present in all three locales.
+// - i18n: the sealed/expand keys present in all three locales;
+// - tl1836: the expanded sealed record renders the SAME tree unit as the live
+//   panel (TodoTree) — hierarchy T-codes, status chips, focus-group folding
+//   with per-group counts; the old glyph+text bare list is retired (user
+//   screenshots 20261127: the previous-turn expand showed plain circles, the
+//   current turn showed the full badge/code/group presentation).
 
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
@@ -43,6 +48,10 @@ const dom = new JSDOM("<!doctype html><html><body><div id=\"root\"></div></body>
 globalThis.window = dom.window as unknown as Window & typeof globalThis;
 globalThis.document = dom.window.document;
 Object.defineProperty(globalThis, "navigator", { configurable: true, value: dom.window.navigator });
+// tl1836: the shared tree unit persists group disclosure state per batch key —
+// wire the jsdom storage in so the interactive sections exercise the real
+// load/save path (each section clears it for a deterministic default).
+globalThis.localStorage = dom.window.localStorage;
 dom.window.HTMLElement.prototype.scrollIntoView = () => {};
 
 let passed = 0;
@@ -60,7 +69,7 @@ function eq(actual: unknown, expected: unknown, label: string) {
 const { todoDockEmptyState } = await import("../lib/todoVisibility");
 const { TodoDockEmptyState } = await import("../components/TodoDockEmptyState");
 const { WorkspaceDockRegion } = await import("../app-shell/WorkspaceDockRegion");
-const { tFor } = await import("../lib/i18n");
+const { tFor, LocaleProvider } = await import("../lib/i18n");
 
 const t = ((key: string) => key) as Parameters<typeof WorkspaceDockRegion>[0]["t"];
 const noop = () => {};
@@ -69,6 +78,18 @@ const completed3: Todo[] = [
   { content: "Inspect the report", status: "completed" },
   { content: "Ship the fix", status: "completed" },
   { content: "Write the handoff", status: "completed" },
+];
+
+// tl1682/tl1836 shared fixture: a sealed snapshot that still holds work —
+// 5 completed, 1 in-flight, 1 pending (the feedback-20261117-143801 shape).
+const mixed7: Todo[] = [
+  { content: "Inspect the report", status: "completed" },
+  { content: "Ship the fix", status: "completed" },
+  { content: "Write the handoff", status: "completed" },
+  { content: "Update the docs", status: "completed" },
+  { content: "Notify the reviewer", status: "completed" },
+  { content: "Append the new task", status: "in_progress", activeForm: "Appending the new task" },
+  { content: "Verify the panel", status: "pending" },
 ];
 
 console.log("\ntodo dock empty state (893-B)");
@@ -212,13 +233,21 @@ console.log("\ntodo dock empty state (893-B)");
 // 5. tl1353 interactive: the sealed expand/collapse — click reveals the
 // previous turn's items read-only, clicking again collapses; nothing in the
 // toggle path mutates the list (the onClick only flips local state).
+// tl1836: the revealed list is now the shared TodoTree unit (LocaleProvider
+// wraps the mount because TodoTree resolves labels through useT). An
+// all-terminal snapshot keeps the plain signed-off face (task 893-C parity
+// with the live panel): every item as a row, no group headers, and — for a
+// flat batch — no disclosure buttons at all.
 {
+  localStorage.clear();
   const rootEl = document.getElementById("root")!;
   const root = createRoot(rootEl);
   type SealedProps = Omit<Parameters<typeof TodoDockEmptyState>[0], "t">;
   const sealedInput: SealedProps = { canonicalTodos: completed3 };
   await act(async () => {
-    root.render(createElement(TodoDockEmptyState, { ...sealedInput, t: tFor("en") }));
+    root.render(
+      createElement(LocaleProvider, null, createElement(TodoDockEmptyState, { ...sealedInput, t: tFor("en") })),
+    );
   });
   const toggle = () => document.querySelector<HTMLElement>("[data-todo-sealed-toggle]")!;
   eq(Boolean(toggle()), true, "interactive sealed: toggle renders");
@@ -232,8 +261,11 @@ console.log("\ntodo dock empty state (893-B)");
   eq(toggle().getAttribute("aria-expanded"), "true", "interactive sealed: aria-expanded flips");
   eq(list!.querySelectorAll("li").length, 3, "interactive sealed: every previous-turn item listed");
   eq(list!.textContent!.includes("Ship the fix"), true, "interactive sealed: item content readable");
-  // The expand is read-only: no interactive row controls (no buttons) inside.
-  eq(list!.querySelectorAll("button").length, 0, "interactive sealed: expanded list has no mutating controls");
+  // All-terminal + flat → the plain signed-off face: shared tree unit, no
+  // groups, and no disclosure controls inside (still a read-only record).
+  eq(Boolean(list!.querySelector(".todobar__list")), true, "interactive sealed: renders the shared todobar tree unit");
+  eq(Boolean(list!.querySelector(".todobar__group")), false, "interactive sealed: all-terminal batch keeps the plain face (no group headers)");
+  eq(list!.querySelectorAll("button").length, 0, "interactive sealed: flat all-terminal list has no mutating controls");
 
   await act(async () => {
     toggle().click();
@@ -269,15 +301,6 @@ console.log("\ntodo dock empty state (893-B)");
   const mount = (props: EmptyStateProps, translator = t): string => {
     return renderToStaticMarkup(createElement(TodoDockEmptyState, { ...props, t: translator }));
   };
-  const mixed7: Todo[] = [
-    { content: "Inspect the report", status: "completed" },
-    { content: "Ship the fix", status: "completed" },
-    { content: "Write the handoff", status: "completed" },
-    { content: "Update the docs", status: "completed" },
-    { content: "Notify the reviewer", status: "completed" },
-    { content: "Append the new task", status: "in_progress", activeForm: "Appending the new task" },
-    { content: "Verify the panel", status: "pending" },
-  ];
 
   const sealedActive = mount({ canonicalTodos: mixed7 });
   eq(sealedActive.includes("rightDock.todoSealedActiveCount"), true, "tl1682: snapshot with active work uses the active-count copy");
@@ -306,18 +329,96 @@ console.log("\ntodo dock empty state (893-B)");
   eq(sealedGeneric.includes("rightDock.todoSealedActiveCount"), false, "tl1682: no snapshot never claims active work");
 
   // The seven-item copy agrees with the expandable list (header ↔ reveal).
+  // tl1836: the reveal is the shared TodoTree unit, so the snapshot renders
+  // in the focus-mode presentation — the 5 completed items fold into the
+  // done group header (counted), the in-flight item and the lookahead
+  // pending item stay as plain rows. The header↔reveal agreement is the
+  // accounting 5 (group) + 2 (plain rows) = 7, proven by expanding the group.
+  localStorage.clear();
   const rootEl2 = document.getElementById("root")!;
   const root2 = createRoot(rootEl2);
   await act(async () => {
-    root2.render(createElement(TodoDockEmptyState, { canonicalTodos: mixed7, t: tFor("en") }));
+    root2.render(
+      createElement(LocaleProvider, null, createElement(TodoDockEmptyState, { canonicalTodos: mixed7, t: tFor("en") })),
+    );
   });
   await act(async () => {
     document.querySelector<HTMLElement>("[data-todo-sealed-toggle]")!.click();
   });
   const revealed = document.querySelector<HTMLElement>("[data-todo-sealed-list]")!;
-  eq(revealed.querySelectorAll("li").length, 7, "tl1682: revealed list carries the same 7 items the header counts");
+  const doneGroup = revealed.querySelector<HTMLElement>('[data-todo-group="done"]')!;
+  eq(Boolean(doneGroup), true, "tl1682: revealed tree folds the completed items into a done group");
+  eq(doneGroup.querySelector<HTMLElement>(".todobar__group-toggle")!.textContent!.includes("5"), true,
+    "tl1682: done group header counts its 5 items");
+  eq(revealed.querySelectorAll(".todobar__item").length, 2, "tl1682: current + lookahead items stay as plain rows");
+  await act(async () => {
+    doneGroup.querySelector<HTMLElement>(".todobar__group-toggle")!.click();
+  });
+  eq(revealed.querySelectorAll(".todobar__item").length, 7,
+    "tl1682: expanding the group reveals all 7 items the header counts (5 + 2)");
   await act(async () => {
     root2.unmount();
+  });
+}
+
+// 8. tl1836 (user screenshots 20261127): the expanded sealed record renders
+// the SAME presentation as the live panel — T-codes, status chips, group
+// folding. The old glyph+text bare list is retired; the default collapsed
+// behaviour (tl1353) is untouched.
+{
+  localStorage.clear();
+  const rootEl3 = document.getElementById("root")!;
+  const root3 = createRoot(rootEl3);
+  await act(async () => {
+    root3.render(
+      createElement(LocaleProvider, null, createElement(TodoDockEmptyState, { canonicalTodos: mixed7, t: tFor("en") })),
+    );
+  });
+  await act(async () => {
+    document.querySelector<HTMLElement>("[data-todo-sealed-toggle]")!.click();
+  });
+  const revealed = document.querySelector<HTMLElement>("[data-todo-sealed-list]")!;
+
+  // Pin ①: the shared tree unit replaced the bespoke bare list.
+  eq(Boolean(revealed.querySelector(".todobar__list")), true, "tl1836: expanded record renders the live panel's todobar tree unit");
+  eq(revealed.querySelectorAll(".workbench-dock__todo-sealed-item").length, 0, "tl1836: the old glyph+text sealed rows are gone");
+
+  // Pin ② (分组折叠): the done group renders collapsed, its toggle flips
+  // aria-expanded and reveals the folded rows.
+  const doneGroup = revealed.querySelector<HTMLElement>('[data-todo-group="done"]')!;
+  eq(doneGroup.querySelector<HTMLElement>(".todobar__group-toggle")!.getAttribute("aria-expanded"), "false",
+    "tl1836: done group starts collapsed");
+  await act(async () => {
+    doneGroup.querySelector<HTMLElement>(".todobar__group-toggle")!.click();
+  });
+  eq(doneGroup.querySelector<HTMLElement>(".todobar__group-toggle")!.getAttribute("aria-expanded"), "true",
+    "tl1836: done group toggle flips aria-expanded");
+  eq(revealed.querySelectorAll(".todobar__group-list .todobar__item").length, 5,
+    "tl1836: expanding the done group reveals its 5 folded rows");
+
+  // Pin ③ (编号): dotted T-codes ride the same todoHierarchyCodes pass.
+  const codes = Array.from(revealed.querySelectorAll<HTMLElement>(".todobar__code")).map((el) => el.textContent);
+  for (let n = 1; n <= 7; n++) {
+    eq(codes.includes(`T${n}`), true, `tl1836: hierarchy code T${n} present in the sealed record`);
+  }
+
+  // Pin ④ (徽章): status chips on the record rows; the item that was
+  // in-flight when the turn ended shows the paused arrow (record face — the
+  // turn is over, never a live waiting state).
+  eq(revealed.querySelectorAll(".todobar__status--completed").length, 5, "tl1836: completed rows carry the completed status chip");
+  eq(revealed.querySelectorAll(".todobar__status--pending").length, 1, "tl1836: pending row carries the pending status chip");
+  const marks = revealed.querySelectorAll<HTMLElement>(".todobar__mark");
+  eq(marks.length, 1, "tl1836: the in-flight item renders the arrow mark");
+  eq(marks[0]!.getAttribute("class"), "todobar__mark todobar__mark--paused", "tl1836: sealed in-flight arrow uses the paused face (not live running/waiting)");
+
+  // Read-only record guard: every control inside the reveal is a disclosure
+  // button (group toggle / subtree caret) — nothing mutates the list data.
+  const controls = Array.from(revealed.querySelectorAll("button, input, [role='checkbox']"));
+  eq(controls.every((el) => el.tagName === "BUTTON" && /todobar__group-toggle|todobar__caret/.test(el.className)), true,
+    "tl1836: the only controls in the sealed record are disclosure buttons");
+
+  await act(async () => {
+    root3.unmount();
   });
 }
 
