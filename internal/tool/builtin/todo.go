@@ -39,14 +39,24 @@ type todoItem struct {
 
 func (todoWrite) Name() string { return "todo_write" }
 
+// tl1838: structured for scanning, not one dense wall — quick rules first
+// (the three the host rejects on, plus identity copy), then the loss-recovery
+// posture, then the executable example, low-frequency details last.
 func (todoWrite) Description() string {
-	return "Record and update a structured task list for the current work. Three rules the host enforces (violating one rejects the call): " +
-		"(1) OPS SHAPE — an ops element is {\"op\":\"replace\",\"step_id\":\"plan_step_02\",\"item\":{\"content\":\"…\",\"status\":\"completed\"}}: `op`, `step_id` and `item` are SIBLINGS at the element's top level; step_id never goes inside `item`. " +
-		"(2) ONE in_progress — exactly one item is in_progress at a time and it must be the FIRST unfinished item, so the list reads [completed, in_progress, pending]; flip an item to completed the moment it's done (don't batch completions). " +
-		"(3) IDENTITY IS IMMOVABLE — a replace must keep the target's step_id exactly; to change which id a step carries, INSERT a new item with a fresh id and DELETE the old one (a replace that changes step_id is rejected). " +
-		"Prefer `ops` for small edits (replace/insert/delete/move by step_id) after calling todo_read; if an ops call keeps being rejected, fall back to one wholesale rewrite: send the COMPLETE `todos` list with every kept item's original step_id. Use it to plan multi-step work and show progress; skip it for trivial single-step tasks. " +
-		"Minimal ops example: {\"ops\":[{\"op\":\"replace\",\"step_id\":\"plan_step_01\",\"item\":{\"content\":\"Read config\",\"status\":\"completed\"}},{\"op\":\"insert\",\"after_step_id\":\"plan_step_06\",\"item\":{\"content\":\"Add the parser\",\"status\":\"in_progress\",\"step_id\":\"plan_step_07\"}}]} " +
-		"The list is two-level: a `level` 0 item is a PHASE (a milestone) and the `level` 1 items after it are its concrete sub-steps; omit `level` (0) for a flat list. Deeper nesting (task 152): give a sub-step `parent_id` = the parent's step_id to build a tree (T1 / T1.1 / T1.1.1 — a parent may be signed off only once every subtask under it is finished, abandoned, or archived). Statuses: pending | in_progress | completed, plus abandoned (you are giving this item up — say so instead of leaving it dangling) and archived (a completed item kept for the record; only completed items may be archived). If the in_progress item lands behind pending work the host auto-reorders instead of rejecting, but send the correct order. Each item has `content` (imperative, e.g. \"Add the parser\"), `status`, `activeForm` (present-continuous shown while in progress, e.g. \"Adding the parser\"), optional `level` (0 phase | 1 sub-step), optional `parent_id`, and `step_id` — an item's stable identity. COPY `step_id` VERBATIM for every item that already has one: it is how a completion stays attached to its step when you retitle it, insert a step above it, or reorder the list. Give a new item a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber an existing one."
+	return "Record and update a structured task list for the current work; use it for multi-step work and progress, skip it for trivial single-step tasks.\n" +
+		"\n" +
+		"QUICK RULES (the host rejects a violating call):\n" +
+		"1. OPS SHAPE — an ops element keeps `op`, `step_id` and `item` as SIBLINGS at the element's top level; step_id never goes inside `item`.\n" +
+		"2. ONE in_progress — exactly one item is in_progress and it must be the FIRST unfinished item, so the list reads [completed, in_progress, pending]. Complete items as they finish; don't batch.\n" +
+		"3. IDENTITY IS IMMOVABLE — a replace keeps the target's step_id exactly; to change an id, INSERT a new item with a fresh id and DELETE the old one.\n" +
+		"4. COPY step_id VERBATIM — kept items re-send their original step_id; a new item gets a fresh unique id (e.g. \"plan_step_07\"); never reuse or renumber.\n" +
+		"\n" +
+		"LIST LOST? After a session restart or context compaction the list may be gone from your view. Call todo_read FIRST and rebuild from its output — copy step_id/status verbatim, re-send the SAME plan_id it echoes; a completed entry rebuilt from memory is rejected as invented. If it answers \"no todo list is active\", no baseline exists: a fresh list with fresh step_ids is legal.\n" +
+		"\n" +
+		"EDITS — prefer `ops` (replace/insert/delete/move by step_id) after calling todo_read; if an ops call keeps being rejected, fall back to one wholesale rewrite: send the COMPLETE `todos` list with every kept item's original step_id.\n" +
+		"Minimal ops example: {\"ops\":[{\"op\":\"replace\",\"step_id\":\"plan_step_01\",\"item\":{\"content\":\"Read config\",\"status\":\"completed\"}},{\"op\":\"insert\",\"after_step_id\":\"plan_step_06\",\"item\":{\"content\":\"Add the parser\",\"status\":\"in_progress\",\"step_id\":\"plan_step_07\"}}]}\n" +
+		"\n" +
+		"DETAILS — statuses: pending | in_progress | completed, plus abandoned (giving the item up — say so, don't leave it dangling) and archived (completed work kept for the record; only completed items may be archived). Levels: `level` 0 is a PHASE, 1 its concrete sub-step; omit for a flat list. Trees (rare): a sub-step carries `parent_id` = the parent's step_id (parent earlier in the list); a parent signs off only once every subtask under it is finished, abandoned, or archived. Item fields are documented in the schema. If the in_progress item lands behind pending work the host auto-reorders instead of rejecting, but send the correct order."
 }
 
 func (todoWrite) Schema() json.RawMessage {
@@ -60,12 +70,12 @@ func (todoWrite) Schema() json.RawMessage {
       "type":"object",
       "properties":{
         "content":{"type":"string","description":"Imperative description of the task."},
-        "status":{"type":"string","enum":["pending","in_progress","completed","abandoned","archived"],"description":"Task state. Keep at most one in_progress, and it must be the FIRST unfinished item (shape: [completed, in_progress, pending]); if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order. abandoned = you are giving this item up; archived = completed work kept for the record (only completed items may be archived)."},
+        "status":{"type":"string","enum":["pending","in_progress","completed","abandoned","archived"],"description":"pending | in_progress | completed. Exactly one in_progress, and it must be the FIRST unfinished item ([completed, in_progress, pending]); if it lands behind pending work the host auto-reorders instead of rejecting, but send the correct order. abandoned = giving the item up; archived = completed work kept for the record (only completed items may be archived)."},
         "activeForm":{"type":"string","description":"Present-continuous form shown while the task is in progress (e.g. \"Running tests\")."},
         "level":{"type":"integer","enum":[0,1],"description":"Nesting level: 0 = phase/milestone, 1 = a sub-step of the phase above it. Omit for a flat list."},
-        "parent_id":{"type":"string","description":"Task 152 tree: step_id of this item's parent task. The parent must appear earlier in the list. Build T1/T1.1/T1.1.1 hierarchies for stage→substep work; a parent may be completed or archived only after every subtask under it is finished, abandoned, or archived. A child must come after its parent."},
-        "step_id":{"type":"string","description":"Stable identity for this item, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; use a fresh unique id for a genuinely new item. Also the handle other items' parent_id references."},
-        "owner":{"type":"string","description":"Optional executor label for this item (\"main\", \"subagent:api\", ...). Coordination metadata only: it never changes status and no validator reads it."},
+        "parent_id":{"type":"string","description":"Tree mode (rare): step_id of the parent task; the parent must appear earlier in the list. A parent completes or archives only after every subtask under it is finished, abandoned, or archived."},
+        "step_id":{"type":"string","description":"Stable identity, e.g. \"plan_step_02\". Copy it verbatim from the item's previous entry so completions stay attached across retitles, insertions, and reordering; a genuinely new item gets a fresh unique id. Also the handle other items' parent_id references."},
+        "owner":{"type":"string","description":"Optional executor label (\"main\", \"subagent:api\", ...). Metadata only: never changes status; no validator reads it."},
         "running":{"type":"boolean","description":"Optional marker that a parallel executor is currently on this item. Metadata only."}
       },
       "required":["content","status"]
@@ -73,7 +83,7 @@ func (todoWrite) Schema() json.RawMessage {
   },
   "ops":{
     "type":"array",
-    "description":"Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read. Omit when sending todos. An op element's target step_id sits at the ELEMENT'S TOP LEVEL, next to \"op\" and \"item\" — not inside \"item\". The array value itself must be a JSON array, never a quoted string.",
+    "description":"Optional incremental edits applied to the current host list, then validated as a full list. Use after todo_read; omit when sending todos. An op element's target step_id sits at the ELEMENT'S TOP LEVEL, next to \"op\" and \"item\" — not inside \"item\". The value must be a real JSON array, never a quoted string.",
     "items":{
       "type":"object",
       "properties":{
@@ -82,7 +92,7 @@ func (todoWrite) Schema() json.RawMessage {
         "after_step_id":{"type":"string","description":"Insert/move: place after this step_id; empty = end of list. When inserting a child, place it after its parent's subtree so the parent stays earlier in the list."},
         "item":{"type":"object","description":"replace/insert payload (content,status,activeForm,level,step_id,parent_id). Its step_id is the ITEM's identity, not the op's target.","properties":{
           "content":{"type":"string"},"status":{"type":"string","enum":["pending","in_progress","completed","abandoned","archived"]},
-          "activeForm":{"type":"string"},"level":{"type":"integer","enum":[0,1]},"step_id":{"type":"string","description":"This item's own identity — not the op's target. replace must keep it exactly (identity is immovable); to change which id a step carries, insert a new item with a fresh id and delete the old one."},
+          "activeForm":{"type":"string"},"level":{"type":"integer","enum":[0,1]},"step_id":{"type":"string","description":"This item's own identity — not the op's target. replace must keep it exactly (identity is immovable); to change an id, insert a new item with a fresh id and delete the old one."},
           "parent_id":{"type":"string","description":"Task 152 tree: parent task's step_id; the parent must appear earlier in the list."},
           "owner":{"type":"string"},"running":{"type":"boolean"}
         }}
@@ -90,7 +100,7 @@ func (todoWrite) Schema() json.RawMessage {
       "required":["op"]
     }
   },
-  "plan_id":{"type":"string","description":"Optional plan marker (task 972). DESTRUCTIVE: sending a NEW value archives the ENTIRE current plan — the old list is closed out and the user's todo panel switches to a sealed/archived view (the active panel empties, which reads as data loss to the user). Never send a turn id, timestamp, or invented marker as plan_id; each unintended new value seals the user's visible plan. Send a NEW value ONLY when you genuinely start a different plan: the write is then treated as a wholesale replacement (old plan archived, not rejected as invented). If you switched by mistake, recover immediately: re-send the ORIGINAL full list with its ORIGINAL plan_id (todo_read echoes the current marker). Re-send the SAME value (or omit it) while working inside the current plan, where completed items are preserved and never invented."}
+  "plan_id":{"type":"string","description":"Plan marker. DESTRUCTIVE: sending a NEW value archives the ENTIRE current plan — the user's todo panel switches to a sealed/archived view (it empties). Never send a turn id, timestamp, or invented marker. Send a NEW value ONLY when genuinely starting a different plan (the write is then a legal wholesale replacement; the old plan is archived). If you switched by mistake, recover immediately: re-send the ORIGINAL full list with its ORIGINAL plan_id (todo_read echoes the current marker). Re-send the SAME value (or omit it) while working inside the current plan."}
 }
 }`)
 }
