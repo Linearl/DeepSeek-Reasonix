@@ -681,7 +681,7 @@ func TestGenericUpdateTransitionsBindPendingBeforeWaitingForLock(t *testing.T) {
 		}
 		t.Cleanup(func() { acquirePendingUpdateLock = originalAcquire })
 
-		result, err := RollbackPendingUpdate()
+		result, err := RollbackPendingUpdateExact(tx)
 		if err == nil || result.RolledBack ||
 			!strings.Contains(err.Error(), "pending transaction changed") {
 			t.Fatalf("generic rollback after pending-lock replacement = %+v, %v", result, err)

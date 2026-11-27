@@ -24,7 +24,8 @@ func TestPendingUpdateRollbackExcludesConcurrentCommit(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -44,7 +45,7 @@ func TestPendingUpdateRollbackExcludesConcurrentCommit(t *testing.T) {
 
 	rollbackDone := make(chan error, 1)
 	go func() {
-		_, err := RollbackPendingUpdate()
+		_, err := RollbackPendingUpdateExact(tx)
 		rollbackDone <- err
 	}()
 	<-entered
