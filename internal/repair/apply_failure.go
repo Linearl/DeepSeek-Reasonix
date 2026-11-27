@@ -168,3 +168,89 @@ func clearUpdateApplyFailureExact(expected *UpdateApplyFailure) error {
 	}
 	return nil
 }
+
+// RecoverFailedInstall rolls back the pending update when an update helper
+// recorded an installer failure, restoring the previous release unit without
+// waiting for a crash loop. The marker is cleared once the rollback succeeded
+// (or when nothing was left to roll back); on rollback errors both the marker
+// and the pending transaction are kept so the next launch retries.
+func RecoverFailedInstall() (UpdateRollbackResult, *UpdateApplyFailure, error) {
+	invocationFailure, ok := ReadUpdateApplyFailure()
+	if !ok {
+		return UpdateRollbackResult{}, nil, nil
+	}
+	invocationFailureID := repairPlanStateID(invocationFailure)
+	invocationTx, invocationTxErr := ReadPendingUpdate()
+	if invocationTxErr != nil && !os.IsNotExist(invocationTxErr) {
+		return UpdateRollbackResult{}, invocationFailure, invocationTxErr
+	}
+	unlock, lockErr := acquirePendingUpdateLock()
+	if lockErr != nil {
+		return UpdateRollbackResult{}, invocationFailure, fmt.Errorf("recover failed install: lock pending transaction: %w", lockErr)
+	}
+	defer unlock()
+	failure, ok := ReadUpdateApplyFailure()
+	if !ok {
+		return UpdateRollbackResult{}, nil, nil
+	}
+	if repairPlanStateID(failure) != invocationFailureID {
+		return UpdateRollbackResult{}, failure, fmt.Errorf("recover failed install: failure marker changed while waiting")
+	}
+	tx, txErr := ReadPendingUpdate()
+	if txErr != nil {
+		if !os.IsNotExist(txErr) {
+			return UpdateRollbackResult{}, failure, txErr
+		}
+		if clearErr := clearUpdateApplyFailureExact(failure); clearErr != nil {
+			return UpdateRollbackResult{}, failure, clearErr
+		}
+		return UpdateRollbackResult{}, failure, nil
+	}
+	if invocationTxErr == nil && UpdateTransactionID(tx) != UpdateTransactionID(invocationTx) {
+		return UpdateRollbackResult{}, failure, fmt.Errorf("recover failed install: pending transaction changed while waiting")
+	}
+	if os.IsNotExist(invocationTxErr) {
+		if clearErr := clearUpdateApplyFailureExact(failure); clearErr != nil {
+			return UpdateRollbackResult{}, failure, clearErr
+		}
+		return UpdateRollbackResult{}, failure, nil
+	}
+	if !applyFailureMatchesUpdate(failure, tx) {
+		// A marker can survive when the helper cannot relaunch Guard. Never let
+		// that stale marker roll back a later, unrelated update transaction.
+		if clearErr := clearUpdateApplyFailureExact(failure); clearErr != nil {
+			return UpdateRollbackResult{}, failure, clearErr
+		}
+		return UpdateRollbackResult{}, failure, nil
+	}
+	// Keep the exact identity check in the rollback transition as a second
+	// fail-closed guard even though correlation and recovery share this lock.
+	stateID, states := pendingUpdateBoundPreview(tx)
+	result, err := rollbackPendingUpdateMatchingLocked(
+		tx.ToVersion,
+		tx.CreatedAt,
+		stateID,
+		states,
+		UpdateTransactionID(tx),
+		false,
+	)
+	if err != nil {
+		return result, failure, err
+	}
+	if clearErr := clearUpdateApplyFailureExact(failure); clearErr != nil {
+		return result, failure, clearErr
+	}
+	return result, failure, nil
+}
+
+func applyFailureMatchesUpdate(failure *UpdateApplyFailure, tx *UpdateTransaction) bool {
+	if failure == nil || tx == nil {
+		return false
+	}
+	toVersion := strings.TrimSpace(failure.ToVersion)
+	if toVersion == "" || toVersion != strings.TrimSpace(tx.ToVersion) {
+		return false
+	}
+	transactionID := strings.TrimSpace(failure.UpdateTransactionID)
+	return transactionID != "" && transactionID == UpdateTransactionID(tx)
+}

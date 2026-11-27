@@ -62,14 +62,15 @@ func tl1827InstallFixture(t *testing.T) (target, guard string) {
 			t.Fatalf("stage %s: %v", filepath.Base(path), err)
 		}
 	}
-	if _, err := repair.PrepareFileUpdate("v1", "v2", target, guard); err != nil {
+	tx, err := repair.PrepareFileUpdate("v1", "v2", target, guard)
+	if err != nil {
 		t.Fatalf("prepare update transaction: %v", err)
 	}
 	// Simulate the partial NSIS run: guard replaced, desktop untouched.
 	if err := os.WriteFile(guard, []byte("new-guard"), 0o700); err != nil {
 		t.Fatalf("simulate partial install: %v", err)
 	}
-	if err := repair.MarkUpdateApplyFailed("v2", "installer exited with 1"); err != nil {
+	if err := repair.MarkUpdateApplyFailedExact(tx, "installer exited with 1"); err != nil {
 		t.Fatalf("record installer failure marker: %v", err)
 	}
 	if _, ok := repair.ReadUpdateApplyFailure(); !ok {

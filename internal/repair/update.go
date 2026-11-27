@@ -1838,6 +1838,14 @@ func readPendingUpdateUnchecked() (*UpdateTransaction, error) {
 	return &tx, nil
 }
 
+// HasPendingUpdate reports whether a well-formed pending update transaction
+// can be read. It is the strict probe used to gate launch-time recovery; the
+// malformed-tolerant variant lives in PendingUpdateExists.
+func HasPendingUpdate() bool {
+	_, err := ReadPendingUpdate()
+	return err == nil
+}
+
 // PendingUpdateExists reports the on-disk marker even when its contents are
 // malformed. It is intended only for progress/UI decisions; callers must use
 // ReadPendingUpdate or ReconcilePendingUpdate before authorizing mutations.
