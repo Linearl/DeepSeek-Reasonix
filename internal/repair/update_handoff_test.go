@@ -179,7 +179,7 @@ func TestClaimPendingAppBundleUpdateHandoffReturnsRecordedPaths(t *testing.T) {
 	}
 	t.Cleanup(func() { repairMutationBeforeLock = originalBeforeLock })
 
-	claimed, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	claimed, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -496,7 +496,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsBackupAppearingAfterPrepare(t 
 	if err := os.MkdirAll(tx.BackupPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}
@@ -506,7 +506,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsBackupAppearingAfterPrepare(t 
 	if _, err := ReadPendingUpdate(); err != nil {
 		t.Fatalf("rejected claim removed pending transaction: %v", err)
 	}
-	if _, err := CancelPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second); err == nil ||
+	if _, err := CancelPendingAppBundleUpdateHandoffExact(tx, time.Second); err == nil ||
 		!strings.Contains(err.Error(), "backup path already exists") {
 		t.Fatalf("cancel error = %v, want appearing-backup rejection", err)
 	}
@@ -520,7 +520,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsBackupAppearingAfterPrepare(t 
 
 func TestClearClaimedAppBundleUpdateHandoffRejectsOriginalDrift(t *testing.T) {
 	tx, _ := prepareTestAppBundleHandoff(t)
-	claimed, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	claimed, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -554,7 +554,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsUnboundTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second); err == nil {
+	if _, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second); err == nil {
 		release()
 		t.Fatal("unbound app target was claimed")
 	}
@@ -574,7 +574,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsLegacyTransaction(t *testing.T
 		t.Fatal(err)
 	}
 
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}
@@ -593,9 +593,10 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsMissingStagingDigest(t *testin
 		t.Fatal(err)
 	}
 
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(
 		tx.ToVersion,
 		tx.CreatedAt,
+		UpdateTransactionID(tx),
 		time.Second,
 	)
 	if release != nil {
@@ -627,7 +628,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsReplacementWhileLocking(t *tes
 	}
 	t.Cleanup(func() { repairMutationBeforeLock = originalBeforeLock })
 
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}
@@ -641,7 +642,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsStagedTreeDrift(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(tx.HandoffAppPath, "changed-after-prepare"), []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}
@@ -719,7 +720,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsOriginalTreeDrift(t *testing.T
 	if err := os.WriteFile(filepath.Join(tx.TargetPath, "changed-after-prepare"), []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}
@@ -733,13 +734,13 @@ func TestCancelPendingAppBundleUpdateHandoffAfterSourceDrift(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tx.HandoffAppPath, "changed-after-prepare"), []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second); err == nil {
+	if _, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second); err == nil {
 		if release != nil {
 			release()
 		}
 		t.Fatal("claim accepted staged source drift")
 	}
-	cancelled, err := CancelPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	cancelled, err := CancelPendingAppBundleUpdateHandoffExact(tx, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -759,7 +760,7 @@ func TestCancelPendingAppBundleUpdateHandoffPreservesDriftedOriginal(t *testing.
 	if err := os.WriteFile(filepath.Join(tx.TargetPath, "changed-after-prepare"), []byte("tampered"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := CancelPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second); err == nil ||
+	if _, err := CancelPendingAppBundleUpdateHandoffExact(tx, time.Second); err == nil ||
 		!strings.Contains(err.Error(), "installed bundle changed after prepare") {
 		t.Fatalf("cancel error = %v, want original drift rejection", err)
 	}
@@ -801,7 +802,7 @@ func TestClaimPendingAppBundleUpdateHandoffRejectsStagingSymlinkEscape(t *testin
 	if err := os.Symlink(outside, tx.HandoffAppPath); err != nil {
 		t.Fatal(err)
 	}
-	_, release, err := ClaimPendingAppBundleUpdateHandoff(tx.ToVersion, tx.CreatedAt, time.Second)
+	_, release, err := ClaimPendingAppBundleUpdateHandoffExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx), time.Second)
 	if release != nil {
 		release()
 	}

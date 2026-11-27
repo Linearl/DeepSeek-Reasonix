@@ -2,7 +2,6 @@ package repair
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -463,488 +462,6 @@ func TestReconcilePendingFileUpdateRollsBackPublishedReleaseUnit(t *testing.T) {
 		t.Fatal("pending file update survived rollback")
 	}
 }
-
-func TestAppBundleRollbackRestoresWhenLiveBundleIsMissing(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdate("v1", "v2", app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	result, err := RollbackPendingUpdate()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.RolledBack || result.ToVersion != "v1" {
-		t.Fatalf("rollback result = %+v", result)
-	}
-	got, err := os.ReadFile(exe)
-	if err != nil || string(got) != "old" {
-		t.Fatalf("restored bundle executable = %q (%v)", got, err)
-	}
-	if _, err := os.Stat(backup); !os.IsNotExist(err) {
-		t.Fatalf("backup bundle survived successful rollback: %v", err)
-	}
-	if HasPendingUpdate() {
-		t.Fatal("pending update survived successful rollback")
-	}
-}
-
-func TestAppBundleRollbackRecognizesAlreadyRestoredBundle(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdate("v1", "v2", app, backup); err != nil {
-		t.Fatal(err)
-	}
-	// This is the durable state after backup -> live succeeded but the process
-	// exited before pending-update.json was removed. It is also the safe
-	// pre-handoff cancellation state.
-	result, err := RollbackPendingUpdate()
-	if err != nil || !result.RolledBack {
-		t.Fatalf("already-restored rollback = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "old" {
-		t.Fatalf("recognized live bundle = %q, %v", got, err)
-	}
-	if HasPendingUpdate() {
-		t.Fatal("already-restored app transaction was not cleared")
-	}
-}
-
-func TestMarkUpdateHealthyRejectsAppBundleDrift(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	staging, err := os.MkdirTemp("", "reasonix-mac-update-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(staging) })
-	stagedApp := filepath.Join(staging, "Reasonix.app")
-	stagedExe := filepath.Join(stagedApp, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(stagedExe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(stagedExe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareAppBundleUpdateHandoff(
-		"v1", "v2", app, backup, stagedApp, staging, os.Getpid(),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("drifted-after-launch"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := MarkUpdateHealthyMatching(tx.ToVersion, tx.CreatedAt); err == nil ||
-		!strings.Contains(err.Error(), "installed bundle differs") {
-		t.Fatalf("healthy commit error = %v, want installed-bundle drift rejection", err)
-	}
-	if _, err := ReadPendingUpdate(); err != nil {
-		t.Fatalf("rejected healthy commit removed pending transaction: %v", err)
-	}
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("rejected healthy commit removed rollback backup: %v", err)
-	}
-}
-
-func TestMarkUpdateHealthyRejectsLegacyAppBundleWithoutInstalledDigest(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := MarkUpdateHealthyMatching(tx.ToVersion, tx.CreatedAt); err == nil ||
-		!strings.Contains(err.Error(), "installed bundle state is missing") {
-		t.Fatalf("legacy healthy commit = %v, want fail-closed rejection", err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("legacy healthy rejection removed pending transaction")
-	}
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("legacy healthy rejection removed rollback backup: %v", err)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "new" {
-		t.Fatalf("legacy healthy rejection changed live bundle: %q, %v", got, err)
-	}
-}
-
-func TestAppBundleRollbackRejectsChangedBackupTree(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdate("v1", "v2", app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(backup, "Contents", "MacOS", "Reasonix"), []byte("tampered"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := RollbackPendingUpdate(); err == nil || !strings.Contains(err.Error(), "digest mismatch") {
-		t.Fatalf("rollback error = %v, want backup digest mismatch", err)
-	}
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("changed backup was removed: %v", err)
-	}
-	if HasPendingUpdate() == false {
-		t.Fatal("pending update was lost after rejected rollback")
-	}
-}
-
-func TestAppBundleRollbackCompensatesBackupChangedDuringPublish(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdate("v1", "v2", app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	originalSwap := rollbackSwapRename
-	rollbackSwapRename = func(oldPath, newPath string) error {
-		if err := renameRepairNodeNoReplace(oldPath, newPath); err != nil {
-			return err
-		}
-		if oldPath == backup && newPath == app {
-			return os.WriteFile(filepath.Join(app, "Contents", "MacOS", "Reasonix"), []byte("tampered-during-publish"), 0o700)
-		}
-		return nil
-	}
-	t.Cleanup(func() { rollbackSwapRename = originalSwap })
-
-	result, err := RollbackPendingUpdate()
-	if err == nil || !strings.Contains(err.Error(), "restored bundle digest mismatch") {
-		t.Fatalf("rollback error = %v, want post-publish digest rejection", err)
-	}
-	if result.MixedInstall {
-		t.Fatalf("rollback reported mixed install after successful compensation: %+v", result)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "new" {
-		t.Fatalf("prior live bundle was not restored: %q, %v", got, err)
-	}
-	rejected, err := filepath.Glob(app + ".reasonix-cleanup-*")
-	if err != nil || len(rejected) != 1 {
-		t.Fatalf("rejected backup bundle = %v, %v", rejected, err)
-	}
-	rejectedExe := filepath.Join(rejected[0], "Contents", "MacOS", "Reasonix")
-	if got, err := os.ReadFile(rejectedExe); err != nil || string(got) != "tampered-during-publish" {
-		t.Fatalf("rejected bundle was not preserved: %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("failed rollback removed pending recovery state")
-	}
-}
-
-func TestLegacyAppBundleRollbackWithoutTreeDigest(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx.BackupTreeID = ""
-	if err := overwritePendingUpdateForTest(tx); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	result, err := RollbackPendingUpdate()
-	if err == nil || result.RolledBack ||
-		!strings.Contains(err.Error(), "backup bundle identity is missing") {
-		t.Fatalf("legacy rollback result = %+v, %v", result, err)
-	}
-	if _, err := os.Lstat(app); !os.IsNotExist(err) {
-		t.Fatalf("legacy rollback recreated target without authorization: %v", err)
-	}
-	backupExe := filepath.Join(backup, "Contents", "MacOS", "Reasonix")
-	if got, err := os.ReadFile(backupExe); err != nil || string(got) != "old" {
-		t.Fatalf("legacy rollback changed backup bundle = %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("legacy rollback removed pending recovery state")
-	}
-}
-
-func TestRepairPlanCanConfirmLegacyAppBundleRollbackWithoutTreeDigest(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx.BackupTreeID = ""
-	if err := overwritePendingUpdateForTest(tx); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	plan := RepairPlan{
-		SchemaVersion: RepairPlanSchemaVersion,
-		Summary:       "restore legacy app bundle",
-		Actions: []RepairPlanAction{{
-			Type:   "rollback_update",
-			Reason: "confirmed recovery",
-		}},
-	}
-	preview, err := PreviewRepairPlan(plan, ApplyPlanOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := ApplyRepairPlan(plan, ApplyPlanOptions{
-		ExpectedPreviewID: RepairPlanPreviewID(plan, preview),
-	})
-	if err != nil || len(result.Applied) != 1 {
-		t.Fatalf("confirmed legacy rollback = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "old" {
-		t.Fatalf("confirmed legacy restore = %q, %v", got, err)
-	}
-	if HasPendingUpdate() {
-		t.Fatal("confirmed legacy rollback retained pending transaction")
-	}
-}
-
-func TestRepairPlanRejectsLegacyAppBundleSymlinkBackupBeforeMutation(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tx.BackupTreeID = ""
-	if err := overwritePendingUpdateForTest(tx); err != nil {
-		t.Fatal(err)
-	}
-	external := filepath.Join(dir, "external-backup")
-	if err := os.Rename(app, external); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(external, backup); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
-	plan := RepairPlan{
-		SchemaVersion: RepairPlanSchemaVersion,
-		Summary:       "restore legacy app backup",
-		Actions: []RepairPlanAction{{
-			Type:   "rollback_update",
-			Reason: "explicitly confirmed recovery",
-		}},
-	}
-	preview, err := PreviewRepairPlan(plan, ApplyPlanOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = ApplyRepairPlan(plan, ApplyPlanOptions{
-		ExpectedPreviewID: RepairPlanPreviewID(plan, preview),
-	})
-	if err == nil || !strings.Contains(err.Error(), "backup bundle is not a directory") {
-		t.Fatalf("legacy symlink backup rollback = %v", err)
-	}
-	if got, err := os.Readlink(backup); err != nil || got != external {
-		t.Fatalf("backup symlink changed before rejection: %q, %v", got, err)
-	}
-	if _, err := os.Lstat(app); !os.IsNotExist(err) {
-		t.Fatalf("live app path changed before rejection: %v", err)
-	}
-	if got, err := os.ReadFile(filepath.Join(external, "Contents", "MacOS", "Reasonix")); err != nil || string(got) != "old" {
-		t.Fatalf("external backup changed: %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("rejected legacy symlink backup removed pending state")
-	}
-}
-
 func TestRollbackPendingUpdateRejectsUnexpectedVersion(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
@@ -973,7 +490,7 @@ func TestRollbackPendingUpdateRejectsUnexpectedVersion(t *testing.T) {
 	if err != nil || string(got) != "v2" {
 		t.Fatalf("target = %q (%v), want v2", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("mismatched rollback removed the pending transaction")
 	}
 }
@@ -1013,7 +530,7 @@ func TestRollbackPendingUpdateFailsClosedWhenStateLockIsUnavailable(t *testing.T
 	if err != nil || string(got) != "new" {
 		t.Fatalf("target changed without pending lock: %q (%v)", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("pending update was removed without pending lock")
 	}
 }
@@ -1075,41 +592,6 @@ func TestFileUpdateRollbackRestoresReleaseUnit(t *testing.T) {
 		t.Fatalf("new-release-only sibling survived rollback: %v", err)
 	}
 }
-
-func TestCancelPendingUpdateRemovesReleaseUnitBackups(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	for path, body := range map[string]string{target: "desktop", guard: "guard"} {
-		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target, guard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := CancelPendingUpdate("v2"); err != nil {
-		t.Fatal(err)
-	}
-	if HasPendingUpdate() {
-		t.Fatal("pending update remains after cancel")
-	}
-	for _, f := range tx.Files {
-		if _, err := os.Stat(f.BackupPath); !os.IsNotExist(err) {
-			t.Fatalf("backup %s still exists: %v", f.BackupPath, err)
-		}
-	}
-}
-
 func TestPrepareFileUpdatePreservesExistingPendingTransaction(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
@@ -1160,124 +642,6 @@ func TestPrepareFileUpdatePreservesExistingPendingTransaction(t *testing.T) {
 		t.Fatalf("rejected prepare changed rollback backup: got %q, want %q", backupAfter, backupBefore)
 	}
 }
-
-func TestExactUpdateTransitionsIgnoreLaterSameVersionTransaction(t *testing.T) {
-	t.Run("cancel", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("REASONIX_HOME", home)
-		dir, err := filepath.EvalSymlinks(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		target := filepath.Join(dir, "reasonix-desktop")
-		guard := filepath.Join(dir, "reasonix-guard")
-		originalExecutable := repairExecutable
-		repairExecutable = func() (string, error) { return guard, nil }
-		t.Cleanup(func() { repairExecutable = originalExecutable })
-		if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		first, err := PrepareFileUpdate("v1", "v2", target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		second := *first
-		second.CreatedAt = time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
-		if err := overwritePendingUpdateForTest(&second); err != nil {
-			t.Fatal(err)
-		}
-		if err := CancelPendingUpdateMatching(first.ToVersion, first.CreatedAt); err != nil {
-			t.Fatal(err)
-		}
-		current, err := ReadPendingUpdate()
-		if err != nil || current.CreatedAt != second.CreatedAt {
-			t.Fatalf("stale cancel changed current transaction: %+v, %v", current, err)
-		}
-	})
-
-	t.Run("healthy", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("REASONIX_HOME", home)
-		dir, err := filepath.EvalSymlinks(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		target := filepath.Join(dir, "reasonix-desktop")
-		guard := filepath.Join(dir, "reasonix-guard")
-		originalExecutable := repairExecutable
-		repairExecutable = func() (string, error) { return guard, nil }
-		t.Cleanup(func() { repairExecutable = originalExecutable })
-		if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		first, err := PrepareFileUpdate("v1", "v2", target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		second := *first
-		second.CreatedAt = time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
-		if err := overwritePendingUpdateForTest(&second); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := RecordClaimedFileUpdateInstalled(&second, fileUpdateInstallReceiptsForTest(t, &second)...); err != nil {
-			t.Fatal(err)
-		}
-		if err := MarkUpdateHealthyMatching("v2", first.CreatedAt); err != nil {
-			t.Fatal(err)
-		}
-		current, err := ReadPendingUpdate()
-		if err != nil || current.CreatedAt != second.CreatedAt {
-			t.Fatalf("stale health commit changed current transaction: %+v, %v", current, err)
-		}
-		if err := MarkUpdateHealthyMatching("v2", second.CreatedAt); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := ReadPendingUpdate(); !os.IsNotExist(err) {
-			t.Fatalf("matching health commit left pending transaction: %v", err)
-		}
-	})
-
-	t.Run("rollback", func(t *testing.T) {
-		home := t.TempDir()
-		t.Setenv("REASONIX_HOME", home)
-		dir, err := filepath.EvalSymlinks(t.TempDir())
-		if err != nil {
-			t.Fatal(err)
-		}
-		target := filepath.Join(dir, "reasonix-desktop")
-		guard := filepath.Join(dir, "reasonix-guard")
-		originalExecutable := repairExecutable
-		repairExecutable = func() (string, error) { return guard, nil }
-		t.Cleanup(func() { repairExecutable = originalExecutable })
-		if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		first, err := PrepareFileUpdate("v1", "v2", target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		second := *first
-		second.CreatedAt = time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
-		if err := overwritePendingUpdateForTest(&second); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		result, err := RollbackPendingUpdateMatching(first.ToVersion, first.CreatedAt)
-		if err != nil || result.RolledBack {
-			t.Fatalf("stale rollback = %+v, %v", result, err)
-		}
-		if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
-			t.Fatalf("stale rollback changed target: %q, %v", got, err)
-		}
-		result, err = RollbackPendingUpdateMatching(second.ToVersion, second.CreatedAt)
-		if err != nil || !result.RolledBack {
-			t.Fatalf("matching rollback = %+v, %v", result, err)
-		}
-	})
-}
-
 func TestUpdateTransitionsRecheckPendingAfterTargetLock(t *testing.T) {
 	t.Run("rollback", func(t *testing.T) {
 		home := t.TempDir()
@@ -1362,7 +726,7 @@ func TestUpdateTransitionsRecheckPendingAfterTargetLock(t *testing.T) {
 		}
 		t.Cleanup(func() { repairMutationBeforeLock = originalHook })
 
-		if err := MarkUpdateHealthyMatching(tx.ToVersion, tx.CreatedAt); err == nil ||
+		if err := MarkUpdateHealthyExact(tx.ToVersion, tx.CreatedAt, UpdateTransactionID(tx)); err == nil ||
 			!strings.Contains(err.Error(), "changed while waiting") {
 			t.Fatalf("healthy commit after pending rewrite = %v", err)
 		}
@@ -1482,7 +846,7 @@ func TestGenericUpdateTransitionsBindPendingBeforeWaitingForLock(t *testing.T) {
 		}
 		t.Cleanup(func() { acquirePendingUpdateLock = originalAcquire })
 
-		if err := CancelPendingUpdate("v2"); err == nil ||
+		if err := CancelPendingUpdateExact(tx); err == nil ||
 			!strings.Contains(err.Error(), "pending transaction changed") {
 			t.Fatalf("generic cancel after pending-lock replacement = %v", err)
 		}
@@ -1528,58 +892,6 @@ func TestCancelPendingFileUpdateRejectsLiveDrift(t *testing.T) {
 		t.Fatalf("cancel removed rollback backup: %v", err)
 	}
 }
-
-func TestRecoverFailedInstallRejectsStaleSameVersionIdentity(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	first, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second := *first
-	second.CreatedAt = time.Now().UTC().Add(-time.Second).Format(time.RFC3339Nano)
-	if err := overwritePendingUpdateForTest(&second); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := markUpdateApplyFailed(
-		first.ToVersion,
-		first.CreatedAt,
-		UpdateTransactionID(first),
-		"stale failure",
-	); err != nil {
-		t.Fatal(err)
-	}
-	result, failure, err := RecoverFailedInstall()
-	if err != nil || failure == nil || result.RolledBack {
-		t.Fatalf("recover stale marker = %+v, %+v, %v", result, failure, err)
-	}
-	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
-		t.Fatalf("stale marker rolled back current transaction: %q, %v", got, err)
-	}
-	current, err := ReadPendingUpdate()
-	if err != nil || current.CreatedAt != second.CreatedAt {
-		t.Fatalf("current transaction after stale marker = %+v, %v", current, err)
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("stale exact marker was not cleared")
-	}
-}
-
 func TestMarkUpdateHealthyExactRejectsRewrittenTransaction(t *testing.T) {
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -1616,53 +928,6 @@ func TestMarkUpdateHealthyExactRejectsRewrittenTransaction(t *testing.T) {
 		t.Fatalf("exact health rejection removed backup: %v", err)
 	}
 }
-
-func TestRecoverFailedInstallRejectsRewrittenExactTransaction(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := MarkUpdateApplyFailedExact(tx, "installer failed"); err != nil {
-		t.Fatal(err)
-	}
-	changed := *tx
-	changed.FromVersion = "rewritten"
-	if err := overwritePendingUpdateForTest(&changed); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	result, failure, err := RecoverFailedInstall()
-	if err != nil || failure == nil || result.RolledBack {
-		t.Fatalf("recover rewritten marker = %+v, %+v, %v", result, failure, err)
-	}
-	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
-		t.Fatalf("stale marker rolled back rewritten transaction: %q, %v", got, err)
-	}
-	current, err := ReadPendingUpdate()
-	if err != nil || current.FromVersion != changed.FromVersion {
-		t.Fatalf("rewritten transaction after stale marker = %+v, %v", current, err)
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("stale full-identity marker was not cleared")
-	}
-}
-
 func TestClearUpdateApplyFailureExactPreservesDifferentTransactionMarker(t *testing.T) {
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	first := &UpdateTransaction{
@@ -1692,330 +957,6 @@ func TestClearUpdateApplyFailureExactPreservesDifferentTransactionMarker(t *test
 		t.Fatal("matching transaction marker was not cleared")
 	}
 }
-
-// TestRecoverFailedInstallRollsBackAndClearsMarker pins the Windows helper
-// handoff contract: an installer failure recorded by the update helper makes
-// Guard restore the release unit on its next launch, clearing both the marker
-// and the pending transaction.
-func TestRecoverFailedInstallRollsBackAndClearsMarker(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	for path, body := range map[string]string{target: "old-desktop", guard: "old-guard"} {
-		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := PrepareFileUpdate("v1", "v2", target, guard); err != nil {
-		t.Fatal(err)
-	}
-	// Simulate a partial NSIS run followed by the helper's failure marker.
-	if err := os.WriteFile(guard, []byte("new-guard"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := MarkUpdateApplyFailed("v2", "installer exited with 1"); err != nil {
-		t.Fatal(err)
-	}
-	result, failure, err := RecoverFailedInstall()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if failure == nil || !result.RolledBack || result.ToVersion != "v1" {
-		t.Fatalf("recover result = %+v failure = %+v", result, failure)
-	}
-	for path, want := range map[string]string{target: "old-desktop", guard: "old-guard"} {
-		got, err := os.ReadFile(path)
-		if err != nil || string(got) != want {
-			t.Fatalf("restored %s = %q (%v), want %q", filepath.Base(path), got, err, want)
-		}
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("failure marker survived a successful rollback")
-	}
-	if HasPendingUpdate() {
-		t.Fatal("pending update survived the rollback")
-	}
-	// Subsequent launches are a no-op.
-	if result, failure, err := RecoverFailedInstall(); err != nil || failure != nil || result.RolledBack {
-		t.Fatalf("second recover = %+v %+v %v", result, failure, err)
-	}
-}
-
-func TestRecoverFailedInstallAfterInstalledSidecarCommit(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	for path, body := range map[string]string{target: "old-desktop", guard: "old-guard"} {
-		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	prepared, err := PrepareFileUpdate("v1", "v2", target, guard)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, body := range map[string]string{target: "new-desktop", guard: "new-guard"} {
-		if err := os.WriteFile(path, []byte(body), 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := MarkUpdateApplyFailedExact(prepared, "helper crashed after publish"); err != nil {
-		t.Fatal(err)
-	}
-	recorded, err := RecordClaimedFileUpdateInstalled(prepared, fileUpdateInstallReceiptsForTest(t, prepared)...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	sidecar := installedFileUpdateStatePath(recorded)
-	if _, err := os.Stat(sidecar); err != nil {
-		t.Fatalf("installed-state sidecar was not committed: %v", err)
-	}
-	if _, ok := ReadUpdateApplyFailure(); !ok {
-		t.Fatal("exact failure marker was not committed")
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("pending transaction disappeared before recovery")
-	}
-
-	result, failure, err := RecoverFailedInstall()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if failure == nil || !result.RolledBack || result.ToVersion != "v1" {
-		t.Fatalf("recover result = %+v failure = %+v", result, failure)
-	}
-	for path, want := range map[string]string{target: "old-desktop", guard: "old-guard"} {
-		got, err := os.ReadFile(path)
-		if err != nil || string(got) != want {
-			t.Fatalf("restored %s = %q (%v), want %q", filepath.Base(path), got, err, want)
-		}
-	}
-	if HasPendingUpdate() {
-		t.Fatal("pending transaction survived sidecar-backed recovery")
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("failure marker survived sidecar-backed recovery")
-	}
-	if _, err := os.Stat(sidecar); !os.IsNotExist(err) {
-		t.Fatalf("installed-state sidecar survived recovery: %v", err)
-	}
-}
-
-// A stale marker with nothing to roll back must be cleared, not retried
-// forever.
-func TestRecoverFailedInstallClearsStaleMarker(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	if err := MarkUpdateApplyFailed("v2", "installer exited with 1"); err != nil {
-		t.Fatal(err)
-	}
-	result, failure, err := RecoverFailedInstall()
-	if err != nil || failure == nil || result.RolledBack {
-		t.Fatalf("recover = %+v %+v %v", result, failure, err)
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("stale marker was not cleared")
-	}
-}
-
-func TestRecoverFailedInstallPreservesMarkerRecreatedDuringCleanup(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	if err := MarkUpdateApplyFailed("v2", "old failure"); err != nil {
-		t.Fatal(err)
-	}
-	originalHook := updateCleanupAfterRename
-	injected := false
-	updateCleanupAfterRename = func(oldpath, _ string) {
-		if !injected && oldpath == updateApplyFailurePath() {
-			injected = true
-			if err := markUpdateApplyFailed("v3", "", "", "new failure"); err != nil {
-				t.Errorf("recreate failure marker: %v", err)
-			}
-		}
-	}
-	t.Cleanup(func() { updateCleanupAfterRename = originalHook })
-
-	if _, failure, err := RecoverFailedInstall(); err != nil || failure == nil {
-		t.Fatalf("recover = %+v, %v", failure, err)
-	}
-	current, ok := ReadUpdateApplyFailure()
-	if !ok || current.ToVersion != "v3" || current.Reason != "new failure" {
-		t.Fatalf("concurrent failure marker = %+v, present=%v", current, ok)
-	}
-}
-
-func TestRecoverFailedInstallIgnoresMarkerForAnotherVersion(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("v2"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := PrepareFileUpdate("v2", "v3", target); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("v3"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := markUpdateApplyFailed("v2", "", "", "stale installer failure"); err != nil {
-		t.Fatal(err)
-	}
-	result, failure, err := RecoverFailedInstall()
-	if err != nil || failure == nil || result.RolledBack {
-		t.Fatalf("recover = %+v %+v %v", result, failure, err)
-	}
-	got, err := os.ReadFile(target)
-	if err != nil || string(got) != "v3" {
-		t.Fatalf("unrelated update was rolled back: %q (%v)", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("unrelated pending update was removed")
-	}
-	if _, ok := ReadUpdateApplyFailure(); ok {
-		t.Fatal("stale failure marker was not cleared")
-	}
-}
-
-func TestMarkUpdateApplyFailedPreservesNewMarkerAfterPendingReplacement(t *testing.T) {
-	t.Setenv("REASONIX_HOME", t.TempDir())
-	dir := t.TempDir()
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("v1"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	first, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	second := *first
-	second.CreatedAt = time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano)
-
-	originalLock := acquirePendingUpdateLock
-	var hookErr error
-	acquirePendingUpdateLock = func() (func(), error) {
-		if hookErr = overwritePendingUpdateForTest(&second); hookErr == nil {
-			hookErr = MarkUpdateApplyFailedExact(&second, "new transaction failed")
-		}
-		return func() {}, nil
-	}
-	t.Cleanup(func() { acquirePendingUpdateLock = originalLock })
-
-	if err := MarkUpdateApplyFailed(first.ToVersion, "old transaction failed"); err == nil ||
-		!strings.Contains(err.Error(), "changed while waiting") {
-		t.Fatalf("stale failure marker creation = %v", err)
-	}
-	if hookErr != nil {
-		t.Fatalf("replace pending transaction and marker: %v", hookErr)
-	}
-	failure, ok := ReadUpdateApplyFailure()
-	if !ok || failure.UpdateTransactionID != UpdateTransactionID(&second) ||
-		failure.Reason != "new transaction failed" {
-		t.Fatalf("new transaction marker = %+v, present=%v", failure, ok)
-	}
-	current, err := ReadPendingUpdate()
-	if err != nil || UpdateTransactionID(current) != UpdateTransactionID(&second) {
-		t.Fatalf("pending transaction = %+v, %v", current, err)
-	}
-}
-
-func TestRecoverFailedInstallRejectsLegacyMarkerRegardlessVersionAndTime(t *testing.T) {
-	for _, tc := range []struct {
-		name          string
-		markerOlder   bool
-		wantContents  string
-		fromVersion   string
-		targetVersion string
-		markerVersion string
-	}{
-		{name: "older marker is stale", markerOlder: true, wantContents: "v3", fromVersion: "v2", targetVersion: "v3"},
-		{name: "newer matching marker is still unbound", wantContents: "v2", fromVersion: "v1", targetVersion: "v2", markerVersion: "v2"},
-		{name: "newer versionless marker is incomplete", wantContents: "v2", fromVersion: "v1", targetVersion: "v2"},
-		{name: "older same-version marker is stale", markerOlder: true, wantContents: "v3", fromVersion: "v2", targetVersion: "v3", markerVersion: "v3"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			home := t.TempDir()
-			t.Setenv("REASONIX_HOME", home)
-			dir, err := filepath.EvalSymlinks(t.TempDir())
-			if err != nil {
-				t.Fatal(err)
-			}
-			target := filepath.Join(dir, "reasonix-desktop")
-			guard := filepath.Join(dir, "reasonix-guard")
-			originalExecutable := repairExecutable
-			repairExecutable = func() (string, error) { return guard, nil }
-			t.Cleanup(func() { repairExecutable = originalExecutable })
-			if err := os.WriteFile(target, []byte(tc.fromVersion), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			tx, err := PrepareFileUpdate(tc.fromVersion, tc.targetVersion, target)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(target, []byte(tc.targetVersion), 0o700); err != nil {
-				t.Fatal(err)
-			}
-			if err := markUpdateApplyFailed(tc.markerVersion, "", "", "installer failure"); err != nil {
-				t.Fatal(err)
-			}
-			failure, ok := ReadUpdateApplyFailure()
-			if !ok {
-				t.Fatal("legacy failure marker missing")
-			}
-			txAt, err := time.Parse(time.RFC3339Nano, tx.CreatedAt)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.markerOlder {
-				failure.RecordedAt = txAt.Add(-time.Second).Format(time.RFC3339Nano)
-			} else {
-				failure.RecordedAt = txAt.Add(time.Second).Format(time.RFC3339Nano)
-			}
-			b, err := json.Marshal(failure)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(updateApplyFailurePath(), append(b, '\n'), 0o600); err != nil {
-				t.Fatal(err)
-			}
-			result, failure, err := RecoverFailedInstall()
-			if err != nil || failure == nil || result.RolledBack {
-				t.Fatalf("recover = %+v %+v %v", result, failure, err)
-			}
-			got, err := os.ReadFile(target)
-			if err != nil || string(got) != tc.wantContents {
-				t.Fatalf("target = %q (%v), want %q", got, err, tc.wantContents)
-			}
-		})
-	}
-}
-
 func TestHealthyUpdateRemovesBackup(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
@@ -2036,13 +977,13 @@ func TestHealthyUpdateRemovesBackup(t *testing.T) {
 	if err := MarkUpdateHealthy("v1"); err != nil {
 		t.Fatal(err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("mismatched version committed pending update")
 	}
 	if err := MarkUpdateHealthy("v2"); err != nil {
 		t.Fatal(err)
 	}
-	if HasPendingUpdate() {
+	if PendingUpdateExists() {
 		t.Fatal("pending update remains after health confirmation")
 	}
 	if _, err := os.Stat(tx.BackupPath); !os.IsNotExist(err) {
@@ -2138,7 +1079,7 @@ func TestRecordClaimedFileUpdateInstalledBindsCompleteReleaseUnit(t *testing.T) 
 		!strings.Contains(err.Error(), "installed release file") {
 		t.Fatalf("healthy error = %v, want installed sibling drift rejection", err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("drifted installed release unit removed pending state")
 	}
 	if _, err := os.Stat(prepared.BackupPath); err != nil {
@@ -2151,7 +1092,7 @@ func TestRecordClaimedFileUpdateInstalledBindsCompleteReleaseUnit(t *testing.T) 
 	if err := MarkUpdateHealthyExact(recorded.ToVersion, recorded.CreatedAt, UpdateTransactionID(recorded)); err != nil {
 		t.Fatalf("healthy exact after restoring installed state: %v", err)
 	}
-	if HasPendingUpdate() {
+	if PendingUpdateExists() {
 		t.Fatal("verified installed release unit retained pending state")
 	}
 	if _, err := os.Stat(installedFileUpdateStatePath(recorded)); !os.IsNotExist(err) {
@@ -2231,90 +1172,6 @@ func TestReadPendingUpdateRejectsPartialInstalledReleaseUnitState(t *testing.T) 
 		t.Fatalf("ReadPendingUpdate error = %v, want partial installed-state rejection", err)
 	}
 }
-
-func TestHealthyFileUpdateRejectsBackupDrift(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	target := filepath.Join(t.TempDir(), "reasonix-desktop")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return filepath.Join(filepath.Dir(target), "reasonix-guard"), nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := RecordClaimedFileUpdateInstalled(tx, fileUpdateInstallReceiptsForTest(t, tx)...); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(tx.BackupPath, []byte("unrelated"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := MarkUpdateHealthyMatching(tx.ToVersion, tx.CreatedAt); err == nil {
-		t.Fatal("healthy commit accepted a changed file backup")
-	}
-	if _, err := ReadPendingUpdate(); err != nil {
-		t.Fatalf("rejected healthy commit removed pending transaction: %v", err)
-	}
-	if got, err := os.ReadFile(tx.BackupPath); err != nil || string(got) != "unrelated" {
-		t.Fatalf("changed backup was removed: %q, %v", got, err)
-	}
-}
-
-func TestHealthyAppUpdateRejectsBackupDrift(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(backup, "Contents", "MacOS", "Reasonix"), []byte("unrelated"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := MarkUpdateHealthyMatching(tx.ToVersion, tx.CreatedAt); err == nil {
-		t.Fatal("healthy commit accepted a changed app backup")
-	}
-	if _, err := ReadPendingUpdate(); err != nil {
-		t.Fatalf("rejected healthy commit removed pending transaction: %v", err)
-	}
-	if got, err := os.ReadFile(filepath.Join(backup, "Contents", "MacOS", "Reasonix")); err != nil || string(got) != "unrelated" {
-		t.Fatalf("changed app backup was removed: %q, %v", got, err)
-	}
-}
-
 func TestMarkUpdateHealthyPreservesPendingRecreatedDuringCleanup(t *testing.T) {
 	t.Setenv("REASONIX_HOME", t.TempDir())
 	dir, err := filepath.EvalSymlinks(t.TempDir())
@@ -2465,7 +1322,7 @@ func TestFileUpdateRollbackCompensatesOnPartialFailure(t *testing.T) {
 	if err != nil || len(leftovers) != 0 {
 		t.Fatalf("rollback left staging files behind: %v (err=%v)", leftovers, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("pending update must survive a failed rollback for a retry")
 	}
 
@@ -2528,7 +1385,7 @@ func TestFileUpdateRollbackRejectsStageChangedDuringPublish(t *testing.T) {
 	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
 		t.Fatalf("compensated target = %q, %v; want pre-rollback bytes", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("failed rollback removed pending transaction")
 	}
 }
@@ -2624,7 +1481,7 @@ func TestFileUpdateRollbackCompensationPreservesRecreatedTarget(t *testing.T) {
 	if got, err := os.ReadFile(aside); err != nil || string(got) != "new-desktop" {
 		t.Fatalf("retained pre-rollback target = %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("failed compensation removed pending transaction")
 	}
 }
@@ -2688,7 +1545,7 @@ func TestFileUpdateRollbackRetryPreservesRetainedNewBinary(t *testing.T) {
 	if got, err := os.ReadFile(targetAside); err != nil || string(got) != "new-desktop" {
 		t.Fatalf("untrusted inherited aside was consumed: %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("failed crash retry removed pending transaction")
 	}
 
@@ -2763,224 +1620,10 @@ func TestFileUpdateRollbackRechecksWholeReleaseUnitBeforeCommit(t *testing.T) {
 	if got, err := os.ReadFile(target + ".reasonix-rollback-aside"); err != nil || string(got) != "new-desktop" {
 		t.Fatalf("prior target recovery material was not preserved: %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("failed release-unit verification removed pending state")
 	}
 }
-
-func TestRollbackPendingUpdateStateRechecksLiveUnitAfterStaging(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("confirmed-new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	expectedState, expectedFiles := pendingUpdateBoundPreview(tx)
-
-	originalCopy := rollbackStageCopy
-	changed := false
-	rollbackStageCopy = func(src, dst string, mode os.FileMode) (string, error) {
-		hash, err := copyFileWithHash(src, dst, mode)
-		if err == nil && !changed {
-			changed = true
-			err = os.WriteFile(target, []byte("concurrent-new"), 0o700)
-		}
-		return hash, err
-	}
-	t.Cleanup(func() { rollbackStageCopy = originalCopy })
-
-	result, err := rollbackPendingUpdateState(expectedState, expectedFiles)
-	if err == nil || result.RolledBack || !strings.Contains(err.Error(), "preview changed since confirmation") {
-		t.Fatalf("rollback after live drift = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(target); err != nil || string(got) != "concurrent-new" {
-		t.Fatalf("rollback overwrote unconfirmed live target: %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("rejected confirmed rollback removed pending transaction")
-	}
-}
-
-func TestRollbackPendingUpdateStateRejectsDriftInsideRetainRename(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("confirmed-new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	expectedState, expectedFiles := pendingUpdateBoundPreview(tx)
-
-	originalRename := rollbackSwapRename
-	injected := false
-	rollbackSwapRename = func(oldpath, newpath string) error {
-		if !injected && oldpath == target && newpath == target+".reasonix-rollback-aside" {
-			injected = true
-			if err := os.WriteFile(target, []byte("concurrent-new"), 0o700); err != nil {
-				return err
-			}
-		}
-		return os.Rename(oldpath, newpath)
-	}
-	t.Cleanup(func() { rollbackSwapRename = originalRename })
-
-	result, err := rollbackPendingUpdateState(expectedState, expectedFiles)
-	if err == nil || result.RolledBack || !strings.Contains(err.Error(), "preview changed since confirmation") {
-		t.Fatalf("rollback after retain-window drift = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(target); err != nil || string(got) != "concurrent-new" {
-		t.Fatalf("rollback lost concurrent live target: %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("rejected retain-window drift removed pending transaction")
-	}
-}
-
-func TestRollbackPendingUpdateStatePreservesRecreateBeforeStagePublish(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	target := filepath.Join(dir, "reasonix-desktop")
-	guard := filepath.Join(dir, "reasonix-guard")
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return guard, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := PrepareFileUpdate("v1", "v2", target)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(target, []byte("confirmed-new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	expectedState, expectedFiles := pendingUpdateBoundPreview(tx)
-
-	originalPublish := rollbackPublishStage
-	injected := false
-	rollbackPublishStage = func(oldpath, newpath string) error {
-		if !injected && newpath == target {
-			injected = true
-			if err := os.WriteFile(target, []byte("concurrent-new"), 0o700); err != nil {
-				return err
-			}
-		}
-		return renameRepairNodeNoReplace(oldpath, newpath)
-	}
-	t.Cleanup(func() { rollbackPublishStage = originalPublish })
-
-	result, err := rollbackPendingUpdateState(expectedState, expectedFiles)
-	if err == nil || result.RolledBack || !result.MixedInstall {
-		t.Fatalf("rollback after pre-publish recreate = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(target); err != nil || string(got) != "concurrent-new" {
-		t.Fatalf("rollback overwrote concurrent recreation: %q, %v", got, err)
-	}
-	aside := target + ".reasonix-rollback-aside"
-	if got, err := os.ReadFile(aside); err != nil || string(got) != "confirmed-new" {
-		t.Fatalf("rollback lost confirmed live target: %q, %v", got, err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("failed pre-publish recreate removed pending transaction")
-	}
-}
-
-func TestRollbackPendingAppBundleStateRejectsDriftInsideRetainRename(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-
-	backup := app + ".reasonix-update-backup"
-	tx, err := PrepareAppBundleUpdate("v1", "v2", app, backup)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("confirmed-new"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	expectedState, expectedFiles := pendingUpdateBoundPreview(tx)
-
-	originalRename := rollbackSwapRename
-	injected := false
-	rollbackSwapRename = func(oldpath, newpath string) error {
-		if !injected && oldpath == app && strings.Contains(newpath, ".reasonix-failed-") {
-			injected = true
-			if err := os.WriteFile(exe, []byte("concurrent-new"), 0o700); err != nil {
-				return err
-			}
-		}
-		return os.Rename(oldpath, newpath)
-	}
-	t.Cleanup(func() { rollbackSwapRename = originalRename })
-
-	result, err := rollbackPendingUpdateState(expectedState, expectedFiles)
-	if err == nil || result.RolledBack || !strings.Contains(err.Error(), "preview changed since confirmation") {
-		t.Fatalf("bundle rollback after retain-window drift = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "concurrent-new" {
-		t.Fatalf("bundle rollback lost concurrent live tree: %q, %v", got, err)
-	}
-	if _, err := os.Stat(backup); err != nil {
-		t.Fatalf("rejected bundle rollback lost backup: %v", err)
-	}
-	if !HasPendingUpdate() {
-		t.Fatal("rejected bundle retain-window drift removed pending transaction")
-	}
-}
-
 func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
@@ -3013,7 +1656,7 @@ func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	if got, err := os.ReadFile(target); err != nil || string(got) != "old" {
 		t.Fatalf("restored target after cleanup failure = %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("injected cleanup failure unexpectedly removed pending transaction")
 	}
 
@@ -3022,7 +1665,7 @@ func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	if err != nil || !retry.RolledBack {
 		t.Fatalf("retry after cleanup failure = %+v, %v", retry, err)
 	}
-	if HasPendingUpdate() {
+	if PendingUpdateExists() {
 		t.Fatal("retry left pending transaction")
 	}
 }
@@ -3156,7 +1799,7 @@ func TestFileUpdateRollbackBypassesAndPreservesCrashedStage(t *testing.T) {
 	if got, err := os.ReadFile(stage); err != nil || string(got) != "unowned-stage" {
 		t.Fatalf("preexisting stage was overwritten: %q, %v", got, err)
 	}
-	if HasPendingUpdate() {
+	if PendingUpdateExists() {
 		t.Fatal("successful rollback left pending recovery state")
 	}
 }
@@ -3342,7 +1985,7 @@ func TestFileUpdateRollbackRechecksReleaseUnitAfterPendingDisplacement(t *testin
 	if got, err := os.ReadFile(target); err != nil || string(got) != "concurrent" {
 		t.Fatalf("concurrent release file = %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("late rollback drift removed pending recovery state")
 	}
 }
@@ -3403,7 +2046,7 @@ func TestRollbackPendingUpdateDirectRejectsDriftWhileWaitingForTargetLock(t *tes
 	if body, err := os.ReadFile(target); err != nil || string(body) != "changed-while-waiting" {
 		t.Fatalf("drifted live target = %q, %v", body, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("rejected direct rollback removed pending transaction")
 	}
 }
@@ -3485,7 +2128,7 @@ func TestPublishClaimedFileUpdateMemberUsesCompareAndPublish(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := PublishClaimedFileUpdateMember(claimed, target, []byte("new"), 0o700); err != nil {
+	if _, err := PublishClaimedFileUpdateMemberExact(claimed, target, []byte("new"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
@@ -3535,7 +2178,7 @@ func TestRecordClaimedFileUpdateInstalledRejectsDriftAfterPublish(t *testing.T) 
 	if _, err := os.Lstat(installedFileUpdateStatePath(claimed)); !os.IsNotExist(err) {
 		t.Fatalf("post-publish drift created installed sidecar: %v", err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("post-publish drift removed pending recovery state")
 	}
 }
@@ -3600,7 +2243,7 @@ func TestPublishClaimedFileUpdateMemberPreservesConcurrentRecreate(t *testing.T)
 	}
 	t.Cleanup(func() { fileUpdateAfterRetain = originalHook })
 
-	if err := PublishClaimedFileUpdateMember(claimed, target, []byte("new"), 0o700); err == nil {
+	if _, err := PublishClaimedFileUpdateMemberExact(claimed, target, []byte("new"), 0o700); err == nil {
 		t.Fatal("member publish overwrote a concurrent target recreation")
 	}
 	if hookErr != nil {
@@ -3613,7 +2256,7 @@ func TestPublishClaimedFileUpdateMemberPreservesConcurrentRecreate(t *testing.T)
 	if got, err := os.ReadFile(aside); err != nil || string(got) != "old" {
 		t.Fatalf("verified prior target recovery material = %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("failed member publish removed pending recovery state")
 	}
 }
@@ -3655,7 +2298,7 @@ func TestPublishClaimedFileUpdateMemberRestoresPreparedFileWhenStageSwapped(t *t
 	}
 	t.Cleanup(func() { fileUpdateAfterRetain = originalHook })
 
-	err = PublishClaimedFileUpdateMember(claimed, target, []byte("new"), 0o700)
+	_, err = PublishClaimedFileUpdateMemberExact(claimed, target, []byte("new"), 0o700)
 	if err == nil || !strings.Contains(err.Error(), "installed reasonix-desktop changed") {
 		t.Fatalf("stage-swapped member publish = %v", err)
 	}
@@ -3679,7 +2322,7 @@ func TestPublishClaimedFileUpdateMemberRestoresPreparedFileWhenStageSwapped(t *t
 	if _, err := os.Lstat(aside); !os.IsNotExist(err) {
 		t.Fatalf("restored prior target remained aside: %v", err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("stage-swapped member publish removed pending recovery state")
 	}
 }
@@ -3725,7 +2368,7 @@ func TestPublishClaimedFileUpdateMemberRejectsSameContentStageSymlink(t *testing
 	}
 	t.Cleanup(func() { fileUpdateAfterRetain = originalHook })
 
-	err = PublishClaimedFileUpdateMember(claimed, target, []byte("new"), 0o700)
+	_, err = PublishClaimedFileUpdateMemberExact(claimed, target, []byte("new"), 0o700)
 	if hookErr != nil {
 		t.Skipf("replace staged update with symlink: %v", hookErr)
 	}
@@ -3745,7 +2388,7 @@ func TestPublishClaimedFileUpdateMemberRejectsSameContentStageSymlink(t *testing
 	if got, err := os.ReadFile(external); err != nil || string(got) != "new" {
 		t.Fatalf("external file changed = %q, %v", got, err)
 	}
-	if !HasPendingUpdate() {
+	if !PendingUpdateExists() {
 		t.Fatal("symlink-swapped member publish removed pending recovery state")
 	}
 }
@@ -3784,55 +2427,6 @@ func TestFileUpdateRollbackCleansInstalledNodeBoundToTransaction(t *testing.T) {
 		t.Fatalf("transaction-owned installed node survived cleanup: %v", err)
 	}
 }
-
-func TestAppBundleRollbackPreservesLiveBundleWithoutReplacementOwnership(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("REASONIX_HOME", home)
-	dir, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	app := filepath.Join(dir, "Reasonix.app")
-	exe := filepath.Join(app, "Contents", "MacOS", "Reasonix")
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("old"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	originalExecutable := repairExecutable
-	repairExecutable = func() (string, error) { return exe, nil }
-	t.Cleanup(func() { repairExecutable = originalExecutable })
-	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdate("v1", "v2", app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Rename(app, backup); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(exe, []byte("unbound-live"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := RollbackPendingUpdate()
-	if err != nil || !result.RolledBack {
-		t.Fatalf("rollback = %+v, %v", result, err)
-	}
-	if got, err := os.ReadFile(exe); err != nil || string(got) != "old" {
-		t.Fatalf("restored bundle = %q, %v", got, err)
-	}
-	failed, err := filepath.Glob(app + ".reasonix-failed-*")
-	if err != nil || len(failed) != 1 {
-		t.Fatalf("retained unbound bundle = %v, %v", failed, err)
-	}
-	if got, err := os.ReadFile(filepath.Join(failed[0], "Contents", "MacOS", "Reasonix")); err != nil || string(got) != "unbound-live" {
-		t.Fatalf("unbound bundle was not preserved: %q, %v", got, err)
-	}
-}
-
 func TestAppBundleRollbackCleansReplacementBoundToStagingTree(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
