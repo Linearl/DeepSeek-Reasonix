@@ -1,7 +1,7 @@
-# 包118 release notes — v1.38.3-20261127-1500
+# 包118 release notes — v1.38.3-20261127-1555
 
 > 基线：包117（v1.38.3-20261126-2200，构建点 `6a1c4af1ee`）
-> 构建点：`88d3c95f00`（main-v2-stable；含 tl1831c 收官件+tl1844 单源化+锚换代治理）
+> 构建点：`222da0ee89`（main-v2-stable；含 tl1831c 收官件+tl1844 单源化+锚换代治理+tl1834 CSS 热修 222da0ee89，三轮构建 rc=0）
 > 执行线：zcode 开发线（十三支全量本包；本包含 0858 投影事故根因链收口+变更同步四路调研首批落地）
 > <!-- claims: feat-tl1828b,feat-tl1827b,feat-tl1830,feat-tl1823b,feat-tl1776c,feat-tl1817b,feat-tl1829,feat-tl-caseC,feat-tl1834,feat-tl1836,feat-tl1814x,feat-tl1844,feat-tl1831c -->
 
