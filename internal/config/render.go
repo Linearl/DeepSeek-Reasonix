@@ -148,10 +148,12 @@ var labFeatureTiers = []labFeatureTier{
 	// 入口常显，decode 侧 legacy 继承（task-856③）一并删除，deprecated 清单
 	// 承接存量手写键。
 	// 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关归提效
-	// 组（同 messageMerge 的跨会话展示族先例）；档位按 550 口径建议可选。
-	// tl1741 注：宿主 sessionCollab 卡随撤开关移除，本 optional 成员行随之
-	// 失去展示面（键保持活键，config 手写可调）。
-	{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}},
+	// 组（同 messageMerge 的跨会话展示族先例）；原按 550 口径建议可选。
+	// tl1741 注：宿主 sessionCollab 卡随撤开关移除，本成员行随之失去展示面
+	// （键保持活键，config 手写可调；tl1741r2 卡体回归后恢复展示）。
+	// 案C/tl1265 级升档（2026-11-27 用户拍板 A1 同意、A2 highSpeedModel 不升）：
+	// 可选→推荐——长跨会话消息刷屏是协作高频痛点，关闭即体验缺口（前端同步）。
+	{"sessionCollabAutoFold", LabTierRecommended, []string{"experimental_session_collab_auto_fold"}},
 	// ── ui（界面，16 项）────────────────────────────────────────
 	// 任务 704：轨迹视图（DSH 同款可观测性视图，纯前端投影）。展示类开关按
 	// 550 口径定档可选——不开启时标题栏与转录视图与引入前完全一致（铁律 2，

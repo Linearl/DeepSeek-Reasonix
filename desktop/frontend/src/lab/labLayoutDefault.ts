@@ -97,7 +97,8 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
           tier: "stable",
           onKeys: ["experimentalCascadeApproval"],
           members: [
-            { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "optional" },
+            // 案C/tl1265 级升档（2026-11-27 拍板 A1）：可选→推荐，默认关语义不变。
+            { id: "sessionCollabAutoFold", labelKey: "settings.sessionCollabAutoFold", tier: "recommended" },
           ],
           alwaysOn: true,
         },

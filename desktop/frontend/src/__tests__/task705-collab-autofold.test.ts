@@ -59,10 +59,12 @@ ok(
   const layoutDefault = fs.readFileSync(path.join(frontendRoot, "src/lab/labLayoutDefault.ts"), "utf8");
   const yaml = fs.readFileSync(path.join(frontendRoot, "src/lab/lab-layout.yaml"), "utf8");
   const collabBlock = layoutDefault.slice(layoutDefault.indexOf('id: "sessionCollab"'), layoutDefault.indexOf('id: "fullAccess"'));
-  ok(collabBlock.includes('id: "sessionCollabAutoFold"') && collabBlock.includes('tier: "optional"'),
+  // 案C（2026-11-27 拍板 A1）：sessionCollabAutoFold 可选→推荐（tl1265 级升档，
+  // 布局双源+双侧注册表四处同翻；默认关语义不变）。
+  ok(collabBlock.includes('id: "sessionCollabAutoFold"') && collabBlock.includes('tier: "recommended"'),
     "layout default hosts sessionCollabAutoFold as a sessionCollab card member");
   const yamlCollab = yaml.slice(yaml.indexOf("id: sessionCollab"), yaml.indexOf("id: fullAccess"));
-  ok(yamlCollab.includes("id: sessionCollabAutoFold") && yamlCollab.includes("tier: optional"),
+  ok(yamlCollab.includes("id: sessionCollabAutoFold") && yamlCollab.includes("tier: recommended"),
     "lab-layout.yaml hosts sessionCollabAutoFold as a sessionCollab card member");
 }
 
@@ -93,12 +95,13 @@ ok(
 ok(settingsApp.includes("view.ExperimentalSessionCollabAutoFold = cfg.Desktop.ExperimentalSessionCollabAutoFold"), "settings view maps the config value");
 ok(settingsPrefs.includes("func (a *App) SetExperimentalSessionCollabAutoFold(enabled bool) error"), "App setter persists the switch");
 
-// 5. Tier registration: optional (550 口径), mirrored on both sides, counts moved 18→19 / 47→48.
-ok(tiers.includes('| "sessionCollabAutoFold"') && tiers.includes('sessionCollabAutoFold: "optional"'), "frontend tier registry: sessionCollabAutoFold = optional");
-ok(goRender.includes('{"sessionCollabAutoFold", LabTierOptional, []string{"experimental_session_collab_auto_fold"}}'), "Go labFeatureTiers: sessionCollabAutoFold = optional");
+// 5. Tier registration: recommended (原 550 口径可选；案C 2026-11-27 拍板 A1
+//    可选→推荐，tl1265 级升档), mirrored on both sides, counts moved 18→19 / 47→48.
+ok(tiers.includes('| "sessionCollabAutoFold"') && tiers.includes('sessionCollabAutoFold: "recommended"'), "frontend tier registry: sessionCollabAutoFold = recommended");
+ok(goRender.includes('{"sessionCollabAutoFold", LabTierRecommended, []string{"experimental_session_collab_auto_fold"}}'), "Go labFeatureTiers: sessionCollabAutoFold = recommended");
 // 811 修预存红：这里曾写死 "optional: 22,"，后续每加一个 optional 实验特性
-// 就红一次（现值 29）。705 真正要守的是「计数不倒退」——22 是 727 推进后
-// 的下界，跌破即说明有人删了登记。
+// 就红一次（现值 28，案C 升档 29→28）。705 真正要守的是「计数不倒退」——22
+// 是 727 推进后的下界，跌破即说明有人删了登记。
 const optionalCount = Number(/optional:\s*(\d+),/.exec(tiers)?.[1] ?? -1);
 ok(optionalCount >= 22, `LAB_TIER_COUNTS optional 计数不低于 727 下界 22（当前 ${optionalCount}）`);
 
