@@ -431,6 +431,13 @@ func loadSessionWithReader(path string, read func(*sessionTranscriptHasher) (ses
 			// on-disk revision as another runtime's write and fork a recovery
 			// branch. Anchor the baseline on digest+version only until a
 			// successful save re-learns the revision.
+			// tl1843: this degradation used to be silent — one of the two
+			// baseline shapes the d4 scan could not rule out as the entry that
+			// left the incident session without a CAS anchor. Stamp it so the
+			// attribution question ("why was this baseline incomplete?") is
+			// answerable from desktop.log alone.
+			slog.Warn("session: persist baseline assembled without a ledger revision (branch meta unreadable)",
+				"path", path, "err", metaErr)
 			s.markPersistedRevisionUnknown(path, digest, s.version, s.rewriteVersion, diskView)
 		} else {
 			revision := int64(0)

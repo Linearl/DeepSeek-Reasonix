@@ -2,6 +2,7 @@ package agent
 
 import (
 	"crypto/sha256"
+	"log/slog"
 	"os"
 
 	"reasonix/internal/fileutil"
@@ -28,6 +29,66 @@ func (s *Session) markPersistedFromLoad(path string, digest [sha256.Size]byte, v
 // is unreadable. Revision CAS stays disarmed until a successful save.
 func (s *Session) markPersistedRevisionUnknown(path string, digest [sha256.Size]byte, version uint64, rewriteVersion int, view []provider.Message) {
 	s.setPersistedBaseline(path, digest, version, 0, false, false, rewriteVersion, view)
+}
+
+// healMissingPersistedBaseline is the tl1843 fail-closed assembly gate: a
+// session holding a write path onto an existing ledger-backed transcript with
+// no assembled baseline of its own ("empty ledger page") used to classify and
+// write with the revision CAS disarmed — the 2026-11-26 rev_lag=6719 shape
+// (desktop.log.4:5852, base_revision=0, fork trace base_digest=""). The gate
+// assembles the baseline from the observed disk state BEFORE the write is
+// classified, so no save can proceed from a baseline-less object anymore, and
+// stamps one structured attribution WARN: the d4 scan (tl1831) could not
+// attribute which entry skipped the load-time assembly, and that second-layer
+// gap stays invisible without this anchor.
+//
+// The healed baseline is revisionUnknown + healedFromDisk, mirroring the torn
+// sidecar degradation (markPersistedRevisionUnknown) minus the ancestry that
+// a real load proves: the live transcript never descended from the observed
+// disk content, so ownsPersistedState refuses it and the conflict identity
+// keeps BaseDigest empty. saveVerified/cleanLoad stay false, so the no-op
+// fast paths cannot arm on it either — the first save still runs in full and
+// markCheckpointPersisted replaces the state with a verified one on landing.
+//
+// Availability: the heal itself cannot fail (both the transcript and the
+// ledger were read successfully to reach it; their read failures error the
+// save unchanged), so nothing that saved before is refused now — append-shaped
+// writes still land, diverged writes still conflict, and the takeover ladders
+// still see the same conflict shape (BaseRevision 0, DiskRevision unchanged).
+func (s *Session) healMissingPersistedBaseline(path string, diskDigest [sha256.Size]byte, ledger sessionLedger, diskMessages, liveMessages int, nextVersion uint64) sessionPersistState {
+	s.mu.RLock()
+	priorPath := ""
+	if s.persisted.ok {
+		priorPath = s.persisted.path
+	}
+	authBound := s.writeAuth != nil
+	rewriteVersion := s.rewriteVersion
+	s.mu.RUnlock()
+	prior := priorPath
+	if prior == "" {
+		prior = "(none)"
+	}
+	origin, pid := LedgerWriterOrigin(ledger.writer)
+	slog.Warn("session: save with no assembled persist baseline; baseline healed to observed disk state (tl1843)",
+		"path", canonicalSessionSavePath(path),
+		"disk_revision", ledger.revision,
+		"disk_messages", diskMessages,
+		"disk_digest", ShortDigest(digestString(diskDigest)),
+		"live_messages", liveMessages,
+		"ledger_writer", ledger.writer,
+		"ledger_writer_origin", origin,
+		"ledger_writer_pid", pid,
+		"prior_baseline_path", prior,
+		"authority_bound", authBound,
+		"session_version", nextVersion,
+		"rewrite_version", rewriteVersion,
+		"writer", SessionWriterID(),
+	)
+	s.setPersistedBaseline(path, diskDigest, nextVersion, 0, false, false, rewriteVersion, nil)
+	s.mu.Lock()
+	s.persisted.healedFromDisk = true
+	s.mu.Unlock()
+	return s.persistState(path)
 }
 
 func (s *Session) setPersistedBaseline(path string, digest [sha256.Size]byte, version uint64, revision int64, revisionKnown, saveVerified bool, rewriteVersion int, persistedView []provider.Message) {

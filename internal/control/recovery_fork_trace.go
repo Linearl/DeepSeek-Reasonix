@@ -186,7 +186,11 @@ func (c *Controller) observeForkBrakeLocked(now time.Time) forkBrakeState {
 
 func forkLocalSideOf(s *agent.Session, path string) forkLocalSide {
 	side := forkLocalSide{known: true, msgs: s.Len()}
-	if persisted, ok := s.PersistedState(path); ok {
+	// tl1843: a disk-healed baseline describes content this session never
+	// loaded — reporting it as the fork's local base digest would dress the
+	// "no verified baseline" evidence shape (d4: base_digest="") in borrowed
+	// bytes. Keep rev and digest empty for it, matching the conflict identity.
+	if persisted, ok := s.PersistedState(path); ok && !persisted.BaselineHealedFromDisk {
 		side.rev = persisted.Revision
 		side.baseDigest = persisted.DigestHex
 	}

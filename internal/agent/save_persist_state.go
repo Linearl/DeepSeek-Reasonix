@@ -28,7 +28,12 @@ var (
 
 func (s *Session) ownsPersistedState(path string, existingDigest [sha256.Size]byte, existingRevision int64, existingLedgerDigest string, nextVersion uint64) bool {
 	state := s.persistState(path)
-	if !state.ok || state.version > nextVersion || !bytes.Equal(existingDigest[:], state.digest[:]) {
+	// tl1843: a disk-healed baseline shares the digest with what happens to be
+	// on disk by construction, but the live transcript never descended from it
+	// — digest equality there proves nothing about ownership. Refuse it before
+	// the unknown-revision branch below, whose "still owns the transcript it
+	// loaded" reasoning only holds for content the session actually loaded.
+	if !state.ok || state.healedFromDisk || state.version > nextVersion || !bytes.Equal(existingDigest[:], state.digest[:]) {
 		return false
 	}
 	// An unknown-revision baseline still owns the transcript it loaded — the
@@ -290,6 +295,13 @@ type PersistedState struct {
 	// UnchangedSincePersisted reports that the in-memory log is exactly the
 	// persisted transcript (no appends, no rewrites since the baseline).
 	UnchangedSincePersisted bool
+	// BaselineHealedFromDisk reports that the baseline was assembled at save
+	// time from the observed disk state (tl1843) rather than loaded or saved
+	// by this session. DigestHex then describes disk content whose descent
+	// from this session's transcript is unverified — evidence consumers (fork
+	// tracing) must treat it as "no verified base digest", mirroring the
+	// conflict identity's empty BaseDigest for the same state.
+	BaselineHealedFromDisk bool
 }
 
 // PersistedState returns the session's persistence baseline for path, or
@@ -309,6 +321,7 @@ func (s *Session) PersistedState(path string) (PersistedState, bool) {
 		RewriteEpoch:            s.persistedRewriteVersion,
 		AppendOnlyTail:          s.rewriteVersion == s.persistedRewriteVersion,
 		UnchangedSincePersisted: s.persisted.version == s.version,
+		BaselineHealedFromDisk:  s.persisted.healedFromDisk,
 	}, true
 }
 
