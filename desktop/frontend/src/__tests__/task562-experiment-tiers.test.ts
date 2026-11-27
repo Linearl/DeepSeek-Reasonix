@@ -171,15 +171,18 @@ console.log("\ntask 562 lab three-tier badges");
   // 移组不改注册表计数）。tl1787 件⑤/A+续作：rangesCompact+modelRangesCompact+
   // prepairAutosplice 三条入未稳定档——未稳定 4→7、总数 91→94（并集解
   // 20261124 撞 tl1772，数字跑实测定稿）。
-  ok(counts.stable === 9 && counts.recommended === 51 && counts.optional === 29 && counts.unstable === 7 && counts.retired === 0,
-    `register counts are 9 稳定/51/28/7/0 (got ${JSON.stringify(counts)})`);
+  // 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
+  // 不升）：sessionCollabAutoFold 可选→推荐——推荐 51→52、可选 29→28，
+  // 总数不变 96。
+  ok(counts.stable === 9 && counts.recommended === 52 && counts.optional === 28 && counts.unstable === 7 && counts.retired === 0,
+    `register counts are 9 稳定/52/28/7/0 (got ${JSON.stringify(counts)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
   // tl1772：decisionPatternsLayered 入表 → 90→91。tl1787：三条入表 → 91→94。
   // tl1817：mimoTts（朗读 MiMo TTS 传输层，可选档）入表 → 94→95。
-  // // 20261124 撞 tl1772，数字跑实测定稿）。tl1816：fallbackModel（备用模型
+  // tl1816：fallbackModel（备用模型开关行，可选档）入表 → 95→96。
   ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 96, `register holds exactly 96 features (tl1772 + tl1787 + tl1817 mimoTts + tl1816 fallbackModel; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 29 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/51/28/7/0 (tl1787 并集解 + tl1817 mimoTts)");
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 52 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/52/28/7/0 (tl1787 并集解 + tl1817 mimoTts + tl1816 fallbackModel + 案C autoFold 升档)");
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);

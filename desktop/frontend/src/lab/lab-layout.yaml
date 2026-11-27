@@ -91,9 +91,10 @@ groups:
         alwaysOn: true
         members:
           # 任务 722 点3：跨会话协作的展示子项。
+          # 案C/tl1265 级升档（2026-11-27 拍板 A1）：可选→推荐，默认关语义不变。
           - id: sessionCollabAutoFold
             labelKey: settings.sessionCollabAutoFold
-            tier: optional
+            tier: recommended
       - id: fullAccess
         labelKey: settings.fullAccess
         tier: stable

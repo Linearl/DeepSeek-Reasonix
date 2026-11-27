@@ -317,9 +317,12 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 改名）。tl1487 一组①：未稳定→稳定（用户 20261107 八组清单；默认关+
   // 开有关前置门控不变，档位只表达成熟度，pane 开关不接 labStableLocked）。
   collabHub: "stable",
-  // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关按 550
+  // 任务 705：超长跨会话消息自动折叠（默认关=全量展示）。展示类开关原按 550
   // 口径定档可选——不开启只影响长消息的阅读密度，不动任何协作行为。
-  sessionCollabAutoFold: "optional",
+  // 案C/tl1265 级升档（2026-11-27 用户拍板 A1 升档、A2 highSpeedModel 不升）：
+  // 可选→推荐——长跨会话消息刷屏是协作高频痛点，关闭即体验缺口（recommended
+  // 定义）；≥21 天零报障。默认关语义不变（档位只表达成熟度，不动铁律 2）。
+  sessionCollabAutoFold: "recommended",
   // 任务 707：压缩模型指定（上下文治理卡 compressOpt 下方，默认关）。按任务
   // 书建议定档可选——不开启不影响体验，只影响压缩成本。
   compactModel: "optional",
@@ -643,11 +646,15 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
  * tl1816：fallbackModel（备用模型开关行，可选档）入表——可选 28→29、总数
  * 95→96（前端独有，Go 渲染表无条目，feOnly 豁免同步）。pinnedIndex 同件
  * 移组（记忆与上下文组独立卡 → 安全/成本控制卡成员行），档位与键不动、
- * 注册表计数不变。 */
+ * 注册表计数不变。
+ * 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
+ * 不升）：sessionCollabAutoFold（跨会话消息自动折叠，sessionCollab 稳定卡
+ * 成员行）可选→推荐——推荐 51→52、可选 29→28，总数不变 96（Go 渲染表同步
+ * LabTierRecommended）。 */
 export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
   stable: 9,
-  recommended: 51,
-  optional: 29,
+  recommended: 52,
+  optional: 28,
   unstable: 7,
   retired: 0,
 };

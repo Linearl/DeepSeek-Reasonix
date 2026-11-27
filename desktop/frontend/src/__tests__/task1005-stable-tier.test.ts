@@ -76,9 +76,13 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // tl1718：composerToolsFold（composer 工具组默认折叠，推荐档）入表——
   // 推荐 50→51、总数 89→90（562 同步）。tl1772：decisionPatternsLayered
   // （决策模式注入分层伴生开关，可选档）入表——可选 26→27、总数 90→91。
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 51 && LAB_TIER_COUNTS.optional === 29 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-  // // tl1816：fallbackModel（备用模型开关行，可选档）入表——可选 27→28、
-    "LAB_TIER_COUNTS pins 9 稳定/51 推荐/28 可选/7 未稳定/0 退役 (tl1772 入可选档 + tl1787 ranges×2+prepairAutosplice 入未稳定档 + tl1817 mimoTts 入可选档)");
+  // tl1817：mimoTts（可选档）入表——可选 27→28、总数 94→95。
+  // tl1816：fallbackModel（可选档）入表——可选 28→29、总数 95→96。
+  // 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
+  // 不升）：sessionCollabAutoFold 可选→推荐——推荐 51→52、可选 29→28，
+  // 总数不变 96。
+  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 52 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
+    "LAB_TIER_COUNTS pins 9 稳定/52 推荐/28 可选/7 未稳定/0 退役 (tl1772 入可选档 + tl1787 ranges×2+prepairAutosplice 入未稳定档 + tl1817 mimoTts 入可选档 + tl1816 fallbackModel 入可选档 + 案C autoFold 升档)");
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");
