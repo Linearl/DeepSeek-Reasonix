@@ -11,6 +11,7 @@
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:comment-leak": "node scripts/check-comment-leak.mjs",
     "check:color-ratchet": "node scripts/check-css-color-ratchet.mjs",
+    "check:swatch-sync": "node scripts/check-theme-swatch-sync.mjs",
     "check:scroll-writer": "node scripts/check-single-scroll-writer.mjs",
     "check:restore-landing": "node scripts/check-restore-landing-sites.mjs",
     "preview": "vite preview",
