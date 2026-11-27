@@ -101,6 +101,18 @@ func (s *Session) SaveAdoptOverStaleDisk(path string, conflict *SessionSnapshotC
 		"disk_revision", conflict.DiskRevision,
 		"disk_messages", conflict.ExistingMessages,
 		"snapshot_messages", conflict.SnapshotMessages)
+	// tl1831c: the rewrite moved the transcript bytes under the projection
+	// layer's feet — a sidecar sealed against the pre-takeover state (often
+	// the dead writer's own fold) is now guaranteed stale, and the next
+	// startup would discover that as a hash_mismatch drop (the 20261127 08:58
+	// 2.9M-token fallback). Fire the collaboration signal so the owner
+	// republishes a still-valid fold or removes-and-rebuilds, in the
+	// watermark order: transcript bytes landed FIRST (SaveRewrite above), the
+	// sidecar write must FOLLOW. Synchronous, outside the save locks — the
+	// hook body takes compactionMu itself (the probe lock-order discipline).
+	if sync := s.takeoverProjectionSync; sync != nil {
+		sync()
+	}
 	return nil
 }
 

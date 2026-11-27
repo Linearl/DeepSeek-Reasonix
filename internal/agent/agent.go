@@ -2142,6 +2142,9 @@ func New(prov provider.Provider, tools *tool.Registry, session *Session, opts Op
 	// sidecar load so even a rewrite that happens during the very first
 	// validation window is witnessed.
 	a.installPrefixRewriteProbe()
+	// tl1831c: stale-disk takeover → projection collaboration signal. Same
+	// install point: the hook must be live before any takeover can commit.
+	a.installTakeoverProjectionSync()
 	if a.sess.path != "" {
 		a.LoadProjectionSidecar(a.sess.path)
 	}

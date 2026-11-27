@@ -118,6 +118,18 @@ type Session struct {
 	// off: zero overhead, zero behavior change. Called OUTSIDE s.mu (see
 	// Rewrite) with immutable snapshots.
 	prefixRewriteProbe func(reason string, before, after []provider.Message)
+	// takeoverProjectionSync (tl1831c) fires once after a committed stale-disk
+	// takeover rewrite (SaveAdoptOverStaleDisk), so the projection layer can
+	// republish or drop+rebuild the sidecar in step with the rewritten
+	// transcript instead of leaving the disk pair mismatched for the next
+	// startup to discover (the 20261127 08:58 hash_mismatch root). The agent
+	// installs it at bind time, next to prefixRewriteProbe; nil = no-op
+	// (plain Session users, legacy tests). Called OUTSIDE the save locks and
+	// s.mu — the agent-side body takes compactionMu (see
+	// projection_takeover_sync_tl1831c.go for the watermark ordering
+	// contract: the sidecar write always FOLLOWS the transcript bytes it
+	// describes).
+	takeoverProjectionSync func()
 	// writeAuth is the generation-bound write permit for this session's path.
 	// Controllers bind it after acquiring a SessionLease; save/ownership paths
 	// consult it instead of a process-level "I hold a lease" boolean.
