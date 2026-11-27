@@ -3285,9 +3285,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// the resolved shell so a 363A reuse build can skip the memory
 		// segments and the shell probe instead of paying for work whose
 		// result the reuse branch discards.
-		Memory:           mem,
+		Memory:            mem,
 		MemoryFingerprint: memory.FingerprintFor(memOptions),
-		Shell:            shell,
+		Shell:             shell,
 	}
 	// Task 125: one greppable line answers "startup ~9s, where did it go?"
 	// after the fact. Observation only — never fails a build.
@@ -4450,8 +4450,11 @@ Tools:
   the contact_id or topic_id, so existing references keep working — but update
   memories/documents that still quote the OLD title. (Older equivalent with a
   free-form target: rename_session(target, title).)
-- read_session_tail(target, max_bytes?) — read another session's last 10 KiB
-  so you can judge its duty from what it actually did.
+- read_session_tail(target, max_bytes?, mode?) — read another session's last
+  10 KiB so you can judge its duty from what it actually did. mode=outline
+  (tl1833) renders intent-summary lines instead of raw bytes — the same budget
+  covers roughly 10x or more turns, so prefer it for a "what has this session
+  been doing" check; default mode=full keeps raw transcript bytes.
 - task_card(action: create|update|get|list, ...) — collaboration task cards,
   rendered in-chat via a ` + "```taskcard" + ` fence.
 - create_collab_session(title, purpose, group?, group_id?) — create a session

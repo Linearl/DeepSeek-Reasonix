@@ -877,11 +877,11 @@ type readSessionTailTool struct{ cfg SessionCollabConfig }
 func (readSessionTailTool) Name() string { return "read_session_tail" }
 
 func (readSessionTailTool) Description() string {
-	return "Read the last N bytes (default 10 KiB) of another session's transcript from the contact directory (通讯录). Use it before assigning work or registering a duty on someone else, so the duty line is grounded in what that session actually did rather than its title. Read-only. Experimental."
+	return "Read the last N bytes (default 10 KiB) of another session's transcript from the contact directory (通讯录). Use it before assigning work or registering a duty on someone else, so the duty line is grounded in what that session actually did rather than its title. mode=outline (tl1833) renders the same trailing window as intent-summary lines — one [user]/[asst] line per turn plus one 'tool(state): intent' line per tool call — so the same budget covers roughly 10x or more turns; prefer it for a quick 'what has this session been doing' check. The default mode=full keeps returning raw transcript bytes. Read-only. Experimental."
 }
 
 func (readSessionTailTool) Schema() json.RawMessage {
-	return json.RawMessage(`{"type":"object","properties":{"target":{"type":"string","description":"contact_id, topic_id, or exact title of the session to read."},"max_bytes":{"type":"integer","description":"How many trailing bytes to return (default 10240, max 65536)."}},"required":["target"]}`)
+	return json.RawMessage(`{"type":"object","properties":{"target":{"type":"string","description":"contact_id, topic_id, or exact title of the session to read."},"max_bytes":{"type":"integer","description":"How many trailing bytes to return (default 10240, max 65536). In outline mode this budgets the outline text itself."},"mode":{"type":"string","enum":["full","outline"],"description":"full (default): raw transcript bytes, unchanged historical behavior. outline (tl1833): intent-summary lines — one [user]/[asst] line per turn plus 'tool(state): intent' per tool call (intent = the model-authored description argument, else a key argument); the same budget covers far more turns."}},"required":["target"]}`)
 }
 
 func (readSessionTailTool) ReadOnly() bool { return true }
@@ -890,6 +890,7 @@ func (t readSessionTailTool) Execute(_ context.Context, args json.RawMessage) (s
 	var p struct {
 		Target   string `json:"target"`
 		MaxBytes int    `json:"max_bytes"`
+		Mode     string `json:"mode"`
 	}
 	if err := json.Unmarshal(args, &p); err != nil {
 		return "", fmt.Errorf("invalid args: %w", err)
@@ -904,14 +905,27 @@ func (t readSessionTailTool) Execute(_ context.Context, args json.RawMessage) (s
 	if n > 64*1024 {
 		n = 64 * 1024
 	}
+	switch strings.TrimSpace(p.Mode) {
+	case "", "full":
+		return t.executeFull(p.Target, n)
+	case "outline":
+		return t.executeOutline(p.Target, n)
+	default:
+		return "", fmt.Errorf("invalid mode %q: valid values are \"full\" (default, raw transcript bytes) and \"outline\" (intent-summary lines)", p.Mode)
+	}
+}
+
+// executeFull is the historical read path, byte-for-byte unchanged (tl1833
+// acceptance ③): whole-file read, trailing cut at a line boundary, raw bytes.
+func (t readSessionTailTool) executeFull(target string, n int) (string, error) {
 	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
-	id, err := ResolveTarget(ids, p.Target)
+	id, err := ResolveTarget(ids, target)
 	if err != nil {
 		return "", err
 	}
 	b, err := os.ReadFile(id.SessionPath)
 	if err != nil {
-		return "", fmt.Errorf("cannot read session %q: %w", p.Target, err)
+		return "", fmt.Errorf("cannot read session %q: %w", target, err)
 	}
 	if len(b) > n {
 		// Cut at a line boundary when we can, so the reader is not handed a
@@ -933,6 +947,39 @@ func (t readSessionTailTool) Execute(_ context.Context, args json.RawMessage) (s
 		"bytes":     len(b),
 		"truncated": len(b) == n,
 		"tail":      string(b),
+	})
+	return string(out), nil
+}
+
+// executeOutline is the tl1833 outline path: the same trailing window rendered
+// as intent-summary lines (see session_outline.go), streamed so a tens-of-MB
+// transcript is never loaded whole. The envelope keys carry over; `tail` now
+// holds outline lines and `mode`/`turns` make the mode observable.
+func (t readSessionTailTool) executeOutline(target string, n int) (string, error) {
+	ids := scanAddressable(t.cfg.SessionDir, t.cfg.WorkspaceRoot)
+	id, err := ResolveTarget(ids, target)
+	if err != nil {
+		return "", err
+	}
+	f, err := os.Open(id.SessionPath)
+	if err != nil {
+		return "", fmt.Errorf("cannot read session %q: %w", target, err)
+	}
+	defer f.Close()
+	text, turns, truncated, err := RenderSessionOutline(f, n, OutlineOptions{})
+	if err != nil {
+		return "", fmt.Errorf("cannot outline session %q: %w", target, err)
+	}
+	out, _ := json.Marshal(map[string]any{
+		"title":     id.Title,
+		"purpose":   id.Purpose,
+		"contactId": id.ContactID,
+		"topicId":   id.TopicID,
+		"mode":      "outline",
+		"turns":     turns,
+		"bytes":     len(text),
+		"truncated": truncated,
+		"tail":      text,
 	})
 	return string(out), nil
 }

@@ -353,7 +353,9 @@ straight to the matching expert and the secretariat never touches it.
 - **Someone else's duty**: pass ` + "`target`" + `. Only do this when you have evidence:
   - ` + "`read_session_tail(target)`" + ` reads the last 10 KiB (default) of their
     transcript — use it before writing a duty line so the registration is
-    grounded in what that session actually did, not just its title.
+    grounded in what that session actually did, not just its title. Pass
+    mode=outline for intent-summary lines (tl1833) when a quick "what has it
+    been doing" check is enough; the same budget covers far more turns.
   - Or ask them first with ` + "`talk_to_session`" + ` (ask them to call
     ` + "`set_session_purpose`" + ` themselves) — then either trust their self-report
     or register what they told you.

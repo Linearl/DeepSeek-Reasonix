@@ -54,7 +54,7 @@ var hubActionOrder = []string{
 var hubActionRows = map[string]string{
 	"send":            "send      发信给另一会话——to=contact_id|topic_id|精确标题，message=正文；新线程不传 thread_id，回信带 thread_id+hop。回执 queued≠已读，真实结局查 delivery_status。",
 	"contacts":        "contacts  列通讯录（=原 list_addressable_sessions）——query?=关键词，limit?=200，sent?=true 读自己的发件日志。拿 contact_id 用这个。",
-	"tail":            "tail      读对方会话尾部——target=contact_id|topic_id|精确标题，max_bytes?=10240。判「对方是否消费了你的派单」用这个。",
+	"tail":            "tail      读对方会话尾部——target=contact_id|topic_id|精确标题，max_bytes?=10240，mode?=full|outline（outline=意图摘要行，同预算覆盖轮次约 10 倍，快速判断对方在干什么用这个）。判「对方是否消费了你的派单」用这个。",
 	"status":          "status    判对方运行态——targets?=[contact_id…]，缺省全体在线会话。state=unknown ≠ 不会开工，别当死线。",
 	"create":          "create    建新会话并入组——title、purpose 必填；group?=\"reasonix-for-ai\"（AI 子对话默认组）；message? 首条指令随建随发。",
 	"purpose":         "purpose   改会话职责——purpose 必填，target?=别人（缺省=本会话）。看对方职责用 contacts。",
@@ -129,7 +129,8 @@ const hubParamProperties = `"to":{"type":"string","description":"send: target co
 "sent":{"type":"boolean","description":"contacts: return YOUR OWN outgoing log (misdirected-send check)."},
 "include_stats":{"type":"boolean","description":"contacts: add eventsBytes/turns/lastActivityAt per row."},
 "target":{"type":"string","description":"tail/purpose: contact_id|topic_id|exact title of one session."},
-"max_bytes":{"type":"integer","description":"tail: trailing bytes to return (default 10240, max 65536)."},
+"max_bytes":{"type":"integer","description":"tail: trailing bytes to return (default 10240, max 65536). In outline mode this budgets the outline text itself."},
+"mode":{"type":"string","enum":["full","outline"],"description":"tail only: full (default) returns raw transcript bytes; outline (tl1833) returns intent-summary lines — one [user]/[asst] line per turn plus 'tool(state): intent' per tool call — covering far more turns per KiB."},
 "targets":{"type":"array","items":{"type":"string"},"description":"status: sessions to query (mixed ids/titles); omit for every live session."},
 "include_tasks_and_subagents":{"type":"boolean","description":"status: attach background-job and running-subagent rows per session."},
 "title":{"type":"string","description":"create: session title. card create: card title."},
