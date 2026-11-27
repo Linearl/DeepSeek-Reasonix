@@ -201,6 +201,11 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             "experimentalDecisionPatternsLayered",
             // tl1816：pinnedIndex 并卡，灯键随迁（口径不变）。
             "experimentalPinnedIndex",
+            // tl1835：goalBudgetConfirm 灯键随行加入（默认关，开=卡亮）；
+            // goalTokenBudgetM 非布尔走成员行态，非默认 ≠2M 即亮（谓词见
+            // labLightKeys）。
+            "goalBudgetConfirm",
+            "goalTokenBudgetM",
           ],
           members: [
             // 任务 722 点5：指定压缩模型（707 交付项）归安全/成本控制。
@@ -235,6 +240,14 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // 注入与引入前逐字节一致（铁律 2）；开启后常驻层一行一条索引，
             // body 转按需召回。boot 快照消费（capabilityGroups 先例），重启生效。
             { id: "pinnedIndex", labelKey: "settings.pinnedIndex", tier: "optional" },
+            // tl1835：goalMode 激活确认弹窗（用户 20261127 指定归属本卡）——
+            // 开=激活 goalMode 先弹窗展示预算可调整再确认，取消=不激活；关
+            // （默认）=激活直通现状。可选档，保存即生效免重启。
+            { id: "goalBudgetConfirm", labelKey: "settings.goalBudgetConfirm", tier: "optional" },
+            // tl1835：goalMode 默认预算（M 兆 token；弹窗预填值+心跳循环的
+            // tl1312 上限来源）。UI 按 M 显示换算，键保持裸 token 语义向后兼
+            // 容；未配置=tl1312 默认 2M。非开关数值行（idleReleaseMinutes 先例）。
+            { id: "goalTokenBudgetM", labelKey: "settings.goalTokenBudgetM", tier: "optional" },
           ],
         },
         {

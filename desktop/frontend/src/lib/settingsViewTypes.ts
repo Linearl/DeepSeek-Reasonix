@@ -206,6 +206,11 @@ export interface SettingsView {
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，117 首落地，
   // 本件补实验室设置页入口，默认关）。
   stalledIntentNudge?: boolean;
+  // tl1835：goalMode 激活确认弹窗开关（goal_budget_confirm，默认关）+ 默认
+  // goal token 预算（goal_token_budget，裸 token；UI 显示/编辑按 M 换算，
+  // 0/缺省 = 未配置 = tl1312 默认 2M 语义）。
+  goalBudgetConfirm?: boolean;
+  goalTokenBudget?: number;
   // Task 801: decision-pattern extraction + solidification (default off).
   experimentalDecisionPatterns?: boolean;
   /** tl1772: injection-layering companion switch (default off = legacy

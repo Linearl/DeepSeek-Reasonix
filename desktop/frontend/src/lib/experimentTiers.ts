@@ -64,6 +64,11 @@ export type TierFeatureId =
   // tl1816：卡移组安全/成本控制卡成员行（tl1772 memoryIndexSlim 同款），
   // 注册表标注保留（562 展示面），档位不动。
   | "pinnedIndex"
+  // tl1835：goalMode 激活确认弹窗（安全/成本控制卡成员行，可选档默认关；
+  // 开=激活 goalMode 先弹预算确认，取消=不激活）+ 默认预算数值行（M 兆
+  // token 显示层换算，键保持裸 token 语义向后兼容）。
+  | "goalBudgetConfirm"
+  | "goalTokenBudgetM"
   // tl1733: 记忆注入瘦身（实验室「提效」组新卡；可选档，默认关——关=默认
   // 瘦身注入管线；开=应急旁路仅注入 pinned）。boot 快照消费，重启生效。
   | "memoryIndexSlim"
@@ -282,6 +287,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1487 八组：未稳定→可选（用户 20261107 八组清单；默认关=铁律 2 不变，
   // Go 渲染表同步翻）。
   pinnedIndex: "optional",
+  // tl1835：goalMode 激活确认弹窗 + 默认预算行——安全/成本控制卡成员行，
+  // 均可选档（不开启零行为：弹窗不弹、预算跟随 tl1312 默认 2M）。
+  goalBudgetConfirm: "optional",
+  goalTokenBudgetM: "optional",
   // ── efficiency（提效，11 项；任务 517 B3 并入 safetyCostControl；────
   //    任务 650：optimisticParallel 自自动化组迁入——减少写锁等待属提效。
   //    tl1733：memoryIndexSlim 记忆注入瘦身入组，可选档）

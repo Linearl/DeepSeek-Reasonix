@@ -655,6 +655,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
   // 草稿态（onBlur 落盘，配置层自行钳制；绑定仍在 labParamFields 注册表）。
   const [gcPercentDraft, setGcPercentDraft] = useState<string>(String(s.gcPercent ?? 100));
   const [idleReleaseDraft, setIdleReleaseDraft] = useState<string>(String(s.detachedIdleReleaseMinutes ?? 0));
+  // tl1835：goalMode 默认预算草稿态（M 兆 token 显示层换算——桥接/配置键保持
+  // 裸 token 语义不变；未配置 0 显示为 tl1312 默认 2）。onBlur 落盘同款手感。
+  const [goalBudgetMDraft, setGoalBudgetMDraft] = useState<string>(() => String((s.goalTokenBudget ?? 0) > 0 ? (s.goalTokenBudget as number) / 1_000_000 : 2));
   // Task 19: the addressable roster is read on demand, not on every settings
   // load — a session only appears once it has registered a purpose.
   const [sessionCollabRoster, setSessionCollabRoster] = useState<Awaited<ReturnType<typeof app.ListAddressableSessions>>>([]);
@@ -2657,6 +2660,48 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                     </button>
                   ))}
                 </SettingsOptions>
+              </SettingsField>
+              {/* tl1835（用户 20261127 指定归属）：goalMode 激活确认弹窗开关——
+                  开=激活 goalMode（composer 草稿提交与 /goal 命令两条用户显式
+                  入口）先弹窗展示目标名+默认预算可调整再确认，取消=不激活；
+                  关（默认）=激活直通现状逐字节不变。心跳自动激活路径不经弹窗
+                  （非目标）。保存即生效免重启。 */}
+              <SettingsField testId="lab-toggle-goalBudgetConfirm" label={labLabel("goalBudgetConfirm", t("settings.goalBudgetConfirm"))} hint={t("settings.goalBudgetConfirmHint")} icon={<Sparkles size={18} />}>
+                <SettingsOptions layout="field" className="set-seg">
+                  {[false, true].map((on) => (
+                    <button
+                      key={String(on)}
+                      className={`set-seg__btn${Boolean(s.goalBudgetConfirm) === on ? " set-seg__btn--on" : ""}`}
+                      disabled={busy}
+                      onClick={() => void apply(() => app.SetGoalBudgetConfirm(on))}
+                    >
+                      {t(on ? "settings.goalBudgetConfirm.on" : "settings.goalBudgetConfirm.off")}
+                    </button>
+                  ))}
+                </SettingsOptions>
+              </SettingsField>
+              {/* tl1835：goalMode 默认预算（M 兆 token）——弹窗的预填值，也是
+                  心跳无人值守循环的 tl1312 上限来源（goal_token_budget）。UI
+                  显示/编辑按 M 换算，桥接写裸 token（向后兼容：既有手写值不
+                  迁移照常生效）。0/空=跟随 tl1312 默认 2M。未来会话生效。 */}
+              <SettingsField testId="lab-toggle-goalTokenBudgetM" label={labLabel("goalTokenBudgetM", t("settings.goalTokenBudgetM"))} hint={t("settings.goalTokenBudgetMHint")} icon={<Sparkles size={18} />}>
+                <input
+                  type="number"
+                  min={0.1}
+                  max={10000}
+                  step={0.1}
+                  value={goalBudgetMDraft}
+                  disabled={busy}
+                  onChange={(e) => setGoalBudgetMDraft(e.target.value)}
+                  onBlur={() => {
+                    const m = Number(goalBudgetMDraft);
+                    if (!Number.isFinite(m) || m <= 0) return;
+                    void apply(async () => {
+                      await app.SetGoalTokenBudget(Math.round(m * 1_000_000));
+                      setGoalBudgetMDraft(String(m));
+                    });
+                  }}
+                />
               </SettingsField>
             </>
           )}

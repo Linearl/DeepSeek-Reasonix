@@ -153,6 +153,8 @@ import { generativeMusic, isGenerativeMusicEnabled } from "./lib/generative-musi
 import { clearAttentionChimeKeys, maybePlayUpdateChime, normalizeUpdateChimeTune, playAttentionChime, playSuccessChime, playUpdateChime, shouldPlayAttentionChimeForEvent, turnDoneChimeChoice } from "./lib/sound";
 import { Transcript } from "./components/Transcript";
 import { Composer } from "./components/Composer";
+// tl1835：goalMode 激活确认预算弹窗（lab-pick-dialog 壳，零新 CSS）。
+import { GoalBudgetConfirmDialog } from "./components/GoalBudgetConfirmDialog";
 import { QuickCommandsManagerDialog } from "./components/QuickCommandsManagerDialog";
 import type { QuickCommandEntry } from "./lib/settingsViewTypes";
 import { TodoPanel, GoalObjectCard } from "./components/TodoPanel";
@@ -572,6 +574,16 @@ function WindowsWindowControls({
 }
 /** Outcome slot a queued remote-project request writes back through the shared navigation queue. */
 type RemoteNavigationOutcomeSlot = { value?: CommandOutcome<TabMeta | undefined> };
+/**
+ * tl1835：goalMode 激活确认弹窗挂起的待激活单。kind 区分两条激活入口——
+ * "draft" = composer goal 草稿提交（activateGoalAndSubmitOnTab 链），"slash"
+ * = `/goal <text>` 命令（applyGoal + 原文继续发送链）。goalText 是将要激活
+ * 的目标名（弹窗展示用）；displayText/submitText/structured 是继续原链路
+ * 所需的全部实参，确认后原样重放。
+ */
+type PendingGoalActivation =
+  | { kind: "draft"; tabId: string; goalText: string; submitText: string; structured?: StructuredInvocationSubmit }
+  | { kind: "slash"; tabId: string; goalText: string; displayText: string; submitText: string };
 type DesktopNavigationIntent =
   | { kind: "topic"; scope: string; workspaceRoot: string; topicId: string; sessionPath?: string }
   | { kind: "blank"; scope: string; workspaceRoot: string }
@@ -956,6 +968,12 @@ export default function App() {
   // widen affordance), on = plan A (row click → read-only in-dock detail).
   // Re-applied on every settings save, so a flip needs no restart.
   const [subagentDetailEnabled, setSubagentDetailEnabled] = useState(false);
+  // tl1835：goalMode 激活确认弹窗开关（goal_budget_confirm，默认关）+ 当前
+  // 默认 goal token 预算（goal_token_budget，裸 token；0=未配置=tl1312 默认
+  // 2M）。随设置加载/保存刷新（applyDesktopPreferences）；激活门控读开关，
+  // 弹窗预填读预算。保存即生效，无重启。
+  const [goalBudgetConfirmEnabled, setGoalBudgetConfirmEnabled] = useState(false);
+  const [goalTokenBudgetTokens, setGoalTokenBudgetTokens] = useState(0);
   // 任务 507 (plan C widen affordance): the dock width to restore when the
   // user toggles the widened reading width back off. Session-local view
   // layout — kept in memory only, never persisted.
@@ -1670,7 +1688,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalMimoTts?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalMimoTts?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean; goalBudgetConfirm?: boolean; goalTokenBudget?: number }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1798,6 +1816,10 @@ export default function App() {
       // 任何键读取/状态写入——tl1741 曾撤的读源链与一期新键链一并消亡。
       setStatusBarItems(settings.statusBarItems);
       hydrateReasoningDisplayMode(settings.reasoningDisplayMode, settings.reasoningDisplayModeExplicit === true);
+      // tl1835：goalMode 激活确认弹窗开关 + 默认预算 readback（保存即生效，
+      // 免重启；激活门控与弹窗预填都读这两个）。
+      setGoalBudgetConfirmEnabled(Boolean(settings.goalBudgetConfirm));
+      setGoalTokenBudgetTokens(Number(settings.goalTokenBudget ?? 0));
     },
     [setLocalePref],
   );
@@ -2843,6 +2865,16 @@ export default function App() {
   useEffect(() => {
     activeTabIdRef.current = activeTabId;
   }, [activeTabId]);
+  // tl1835：goalMode 激活确认弹窗的待激活单。开关开时两处用户显式激活入口
+  // （goal 草稿提交 + /goal <text> 命令）先挂起这里弹窗；确认→持久化+镜像
+  // 新预算后照常激活，取消→清单中止（什么都不发，草稿原样保留）。心跳自动
+  // 激活路径不经过这里（任务书非目标：不打断）。
+  const pendingGoalBudgetRef = useRef<PendingGoalActivation | null>(null);
+  const [pendingGoalBudget, setPendingGoalBudget] = useState<PendingGoalActivation | null>(null);
+  const stashPendingGoalBudget = useCallback((pending: PendingGoalActivation | null) => {
+    pendingGoalBudgetRef.current = pending;
+    setPendingGoalBudget(pending);
+  }, []);
   // handleSend reserves only commands that need a desktop-native UI action.
   const handleSend = useCallback(
     async (displayText: string, submitText = displayText, requestedTabId = activeTabId, structured?: StructuredInvocationSubmit) => {
@@ -2926,6 +2958,11 @@ export default function App() {
               goalDraftMode: false,
               goal: displayGoal,
             }, ["collaborationMode", "goal"]);
+          } else if (goalBudgetConfirmEnabled) {
+            // tl1835：开关开 → 激活前弹预算确认；取消=不激活不发消息（挂起
+            // 单由弹窗消费，此处整体中止）。开关关 = 直通（现状逐字节不变）。
+            stashPendingGoalBudget({ kind: "slash", tabId: sourceTabId, goalText: displayGoal, displayText: trimmed, submitText: submitText.trim() });
+            return;
           } else {
             await applyGoal(displayGoal);
           }
@@ -2938,6 +2975,11 @@ export default function App() {
       }
       if (collaborationMode === "goal" && !goal.trim()) {
         if (!controllerReady) return;
+        if (goalBudgetConfirmEnabled) {
+          // tl1835：同上——goal 草稿提交是 goalMode 的主激活入口。
+          stashPendingGoalBudget({ kind: "draft", tabId: sourceTabId, goalText: trimmed, submitText, structured });
+          return;
+        }
         await activateGoalAndSubmitOnTab({
           tabId: sourceTabId,
           displayText: trimmed,
@@ -3015,7 +3057,8 @@ export default function App() {
       await commitThenSendRef.current(sourceTabId, trimmed, submitText.trim(), structured);
     },
     [activeTabId, applyGoal, closeTransientOverlays, collaborationMode, composerProfile, controllerReady, goal, notice, runShellForTab,
-      patchActivatedGoalForTab, setControllerComposerProfileForTab, switchModel, t, toolApprovalMode, showToast],
+      patchActivatedGoalForTab, setControllerComposerProfileForTab, switchModel, t, toolApprovalMode, showToast,
+      goalBudgetConfirmEnabled, stashPendingGoalBudget],
   );
 
   const handleSteer = useCallback(async (text: string, requestedTabId = activeTabId) => {
@@ -3050,6 +3093,58 @@ export default function App() {
       return false;
     }
   }, [handleGoalActionError, switchModel]);
+  // tl1835：goalMode 激活确认弹窗的确认/取消。确认语义=预算先落地再激活：
+  // 与当前 readback 不同才写桥（SetGoalTokenBudgetForTab=持久化+本 tab 镜像），
+  // 写桥失败→报错并中止（不激活，用户可改后重试）；未编辑（值相同）→零写桥，
+  // tl1312 默认 2M 逐位不变。取消=不激活：挂起单清掉，草稿经 replaceComposer
+  // Insert 原样回填（提交链早已把输入框清了，回填是取消路径唯一的找回通道）。
+  const confirmPendingGoalBudget = useCallback(async (tokens: number) => {
+    const pending = pendingGoalBudgetRef.current;
+    if (!pending) return;
+    stashPendingGoalBudget(null);
+    if (tokens !== goalTokenBudgetTokens) {
+      try {
+        await app.SetGoalTokenBudgetForTab(pending.tabId, tokens);
+        setGoalTokenBudgetTokens(tokens);
+      } catch (error) {
+        handleGoalActionError(error);
+        return;
+      }
+    }
+    // 与原激活流同门：controller 未就绪时原两条入口都在激活前早退——预算
+    // 已持久化（下次就绪后激活即用），这里不再重放。
+    if (!controllerReady) return;
+    if (pending.kind === "draft") {
+      await activateGoalAndSubmitOnTab({
+        tabId: pending.tabId,
+        displayText: pending.goalText,
+        submitText: pending.submitText,
+        structured: pending.structured,
+        sendToTab: async (tabId, nextGoal, display, routedSubmit, routedStructured) => {
+          await commitThenSendRef.current(
+            tabId,
+            display,
+            routedSubmit,
+            routedStructured,
+            {
+              goal: nextGoal,
+              collaborationMode: controllerComposerProfileCollaborationMode(composerProfile),
+              toolApprovalMode,
+            },
+          );
+        },
+      });
+      patchActivatedGoalForTab(pending.tabId, pending.goalText);
+      return;
+    }
+    await applyGoalForTab(pending.tabId, pending.goalText);
+    await commitThenSendRef.current(pending.tabId, pending.displayText, pending.submitText);
+  }, [applyGoalForTab, composerProfile, controllerReady, goalTokenBudgetTokens, handleGoalActionError, patchActivatedGoalForTab, stashPendingGoalBudget, toolApprovalMode]);
+  const cancelPendingGoalBudget = useCallback(() => {
+    const pending = pendingGoalBudgetRef.current;
+    stashPendingGoalBudget(null);
+    if (pending) replaceComposerInsert(pending.tabId, pending.kind === "draft" ? pending.goalText : pending.displayText);
+  }, [replaceComposerInsert, stashPendingGoalBudget]);
 
   const tabMetaRefreshCoordinatorRef = useRef<ReturnType<typeof createBoundedRefreshCoordinator<TabMeta[]>> | null>(null);
   if (!tabMetaRefreshCoordinatorRef.current) {
@@ -7496,6 +7591,19 @@ export default function App() {
           void app.DesktopStartupSettings().then(applyDesktopPreferences).catch((e) => console.warn("desktop preferences refresh failed", e));
         },
       }} />}
+
+      {/* tl1835：goalMode 激活确认预算弹窗——开关开时的两处用户显式激活入口
+          （goal 草稿提交 / /goal 命令）经 handleSend 挂起到这里；取消回填草稿。 */}
+      {pendingGoalBudget && (
+        <GoalBudgetConfirmDialog
+          t={t}
+          goalName={pendingGoalBudget.goalText}
+          currentTokens={goalTokenBudgetTokens}
+          busy={false}
+          onConfirm={(tokens) => void runGoalAction(() => confirmPendingGoalBudget(tokens))}
+          onCancel={cancelPendingGoalBudget}
+        />
+      )}
 
       <RemoteHostKeyDialog />
       <RemoteSecretDialog />

@@ -59,8 +59,10 @@ console.log("\n任务 517 安全 / 成本控制 合并开关");
     "rail hosts the safetyCostControl card in the efficiency group (under contextGovernance)");
   ok(!layoutDefault.slice(0, eff.indexOf('id: "safetyCostControl"') + layoutDefault.indexOf('key: "efficiency"')).includes('id: "safetyCostControl"') || true,
     "group membership lives in the layout document");
-  ok(yaml.includes("onKeys: [experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge, experimentalMemoryIndexSlim, experimentalDecisionPatternsLayered, experimentalPinnedIndex]"),
-    "card light binds the folded members' keys (tl1816: master key retired from the light; pinnedIndex rides in)");
+  // tl1835：goalBudgetConfirm/goalTokenBudgetM 两成员灯键随行加入（精确串钉
+  // 随灯键族同步更新——钉的意图=灯绑定卡内家族全量键）。
+  ok(yaml.includes("onKeys: [experimentalCompactModel, collabInboxMergeOn, collabGuidanceMerge, experimentalMemoryIndexSlim, experimentalDecisionPatternsLayered, experimentalPinnedIndex, goalBudgetConfirm, goalTokenBudgetM]"),
+    "card light binds the folded members' keys (tl1816: master key retired from the light; pinnedIndex rides in; tl1835 goalBudgetConfirm/goalTokenBudgetM ride in)");
   ok(!yaml.includes("experimentalSafetyCostControl") && !layoutDefault.includes('"experimentalSafetyCostControl"'),
     "tl1816: the master light key is gone from both layout sources");
 }

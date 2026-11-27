@@ -901,6 +901,23 @@ func (a *App) SetStalledIntentNudge(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetStalledIntentNudge(enabled) })
 }
 
+// SetGoalBudgetConfirm toggles the tl1835 goalMode activation confirm dialog
+// (goal_budget_confirm, default off). Config-only write: the frontend gates
+// the dialog off the live readback, so a flip lands on the very next
+// activation without a restart. Off = the pre-tl1835 direct path verbatim.
+func (a *App) SetGoalBudgetConfirm(enabled bool) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetGoalBudgetConfirm(enabled) })
+}
+
+// SetGoalTokenBudget writes the default goal token ceiling (goal_token_budget,
+// raw tokens — the M unit lives only in the UI layer). Config-only: future
+// sessions (new tabs, heartbeat runs) pick it up at controller construction;
+// the settings page uses this, the activation dialog uses the ForTab variant
+// so the current tab also mirrors it live.
+func (a *App) SetGoalTokenBudget(tokens int) error {
+	return a.applyConfigOnly(func(c *config.Config) error { return c.SetGoalTokenBudget(tokens) })
+}
+
 // SetDecisionPatternFilePath overrides the solidified decision-patterns file
 // location (task 801 修订七). Empty restores the default global-workspace/docs
 // path. The heartbeat solidification, its backups, and the autopilot injection

@@ -2265,6 +2265,13 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalTraceAsState(enabled: boolean): Promise<void>;
   // 任务 1069：模型提前结束判定器续轮提醒（stalled_intent_nudge，默认关）。
   SetStalledIntentNudge(enabled: boolean): Promise<void>;
+  // tl1835：goalMode 激活确认弹窗开关（goal_budget_confirm，默认关）+
+  // 默认 goal token 预算（goal_token_budget，裸 token——M 换算只在 UI 层）。
+  // ForTab 变体在持久化之外把新预算 mirror 进该 tab 的运行中 controller，
+  // 确认弹窗用；设置页行用无 tab 的 config-only 变体。
+  SetGoalBudgetConfirm(enabled: boolean): Promise<void>;
+  SetGoalTokenBudget(tokens: number): Promise<void>;
+  SetGoalTokenBudgetForTab(tabId: string, tokens: number): Promise<void>;
   // Task 801: decision-pattern extraction + solidification (experimental).
   SetExperimentalDecisionPatterns(enabled: boolean): Promise<void>;
   // tl1772: injection-layering companion switch (experimental; the injection
@@ -7546,6 +7553,9 @@ function makeMockApp(): AppBindings {
     async SetColdCacheCompactIdleMinutes() {},
     async SetExperimentalTraceAsState() {},
     async SetStalledIntentNudge() {},
+    async SetGoalBudgetConfirm() {},
+    async SetGoalTokenBudget() {},
+    async SetGoalTokenBudgetForTab() {},
     async SetExperimentalDecisionPatterns() {},
     async SetExperimentalDecisionPatternsLayered() {},
     async SetExperimentalPinnedIndex() {},

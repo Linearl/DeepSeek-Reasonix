@@ -152,6 +152,14 @@ export const LAB_LIGHT_KEYS = {
   experimentalPinnedIndex: (s: SettingsView) => Boolean(s.experimentalPinnedIndex),
   /** tl1733 注入瘦身灯：实验开关开即亮（boot 快照消费，重启生效）。 */
   experimentalMemoryIndexSlim: (s: SettingsView) => Boolean(s.experimentalMemoryIndexSlim),
+  /** tl1835 激活确认弹窗灯：开关开即亮（保存即生效免重启）。 */
+  goalBudgetConfirm: (s: SettingsView) => Boolean(s.goalBudgetConfirm),
+  /** tl1835 默认预算灯：非默认 ≠2M 即亮（未配置 0 = tl1312 默认 2M 语义，
+   *  手写显式 2000000 与缺省等价，同样不亮）。 */
+  goalTokenBudgetM: (s: SettingsView) => {
+    const tokens = s.goalTokenBudget ?? 0;
+    return tokens > 0 && tokens !== 2_000_000;
+  },
 } as const;
 
 /** The validation whitelist: every id a layout document may reference. */

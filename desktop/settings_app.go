@@ -587,6 +587,10 @@ type SettingsView struct {
 	// 本件补实验室设置页入口）。
 	StalledIntentNudge      bool `json:"stalledIntentNudge"`
 	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
+	// tl1835：goalMode 激活确认弹窗开关 + 默认 goal token 预算（裸 token；
+	// UI 层按 M 换算显示）。弹窗与安全/成本控制卡两行都读这两个 readback。
+	GoalBudgetConfirm bool `json:"goalBudgetConfirm"`
+	GoalTokenBudget   int  `json:"goalTokenBudget"`
 	// Task 801: decision-pattern extraction + solidification readback. The
 	// file path resolves to the default global-workspace/docs location when
 	// the config leaves it empty, so the panel shows the effective path.
@@ -978,6 +982,10 @@ type DesktopStartupSettingsView struct {
 	// 该键原为纯 TOML（117），本件补实验室设置页入口后纳入 SettingsView。
 	StalledIntentNudge      bool `json:"stalledIntentNudge"`
 	ExperimentalPerfMonitor bool `json:"experimentalPerfMonitor"`
+	// tl1835：goalMode 激活确认弹窗开关 + 默认 goal token 预算 readback
+	// （裸 token；UI 层按 M 换算显示，0=未配置=tl1312 默认 2M 语义）。
+	GoalBudgetConfirm bool `json:"goalBudgetConfirm"`
+	GoalTokenBudget   int  `json:"goalTokenBudget"`
 	// Task 501: threshold-triggered heap snapshot switch readback.
 	ExperimentalHeapHighProfile bool `json:"experimentalHeapHighProfile"`
 	PerfMonitorIntervalSeconds  int  `json:"perfMonitorIntervalSeconds"`
@@ -1836,6 +1844,9 @@ func (a *App) DesktopStartupSettings() (view DesktopStartupSettingsView) {
 		view.ExperimentalTraceAsState = cfg.Agent.TraceAsState
 		// 任务 1069：模型提前结束判定器续轮提醒 readback（stalled_intent_nudge）。
 		view.StalledIntentNudge = cfg.Agent.StalledIntentNudge
+		// tl1835：goalMode 激活确认弹窗开关 + 默认预算 readback。
+		view.GoalBudgetConfirm = cfg.Agent.GoalBudgetConfirm
+		view.GoalTokenBudget = cfg.Agent.GoalTokenBudget
 		// tl1816: master-switch readback retired — the three sub-switch readbacks
 		// below are the only surface (load materializes every nil).
 		// Task 722: sub-switch override readback (nil stays nil = inherit).
@@ -2132,6 +2143,9 @@ func (a *App) Settings() SettingsView {
 		ExperimentalTraceAsState:            cfg.Agent.TraceAsState,
 		// 任务 1069：模型提前结束判定器续轮提醒 readback。
 		StalledIntentNudge: cfg.Agent.StalledIntentNudge,
+		// tl1835：goalMode 激活确认弹窗开关 + 默认预算 readback。
+		GoalBudgetConfirm: cfg.Agent.GoalBudgetConfirm,
+		GoalTokenBudget:   cfg.Agent.GoalTokenBudget,
 		// Task 801: decision-pattern readback (empty path resolves to default).
 		ExperimentalDecisionPatterns: cfg.Agent.ExperimentalDecisionPatterns,
 		DecisionPatternFilePath:      decisionPatternPathForView(cfg),

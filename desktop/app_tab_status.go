@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
@@ -419,6 +420,38 @@ func ctrlTodos(ctrl control.SessionAPI) *[]evidence.TodoItem {
 
 func (a *App) SetGoal(goal string) error {
 	return a.SetGoalForTab("", goal)
+}
+
+// SetGoalTokenBudgetForTab (tl1835) persists a confirmed goal budget
+// (goal_token_budget, raw tokens) AND mirrors it live into the tab's
+// controller, so the goal the user activates right after the confirm dialog
+// runs under the new ceiling without a restart. Negative tokens are rejected
+// before anything is written; 0 restores the unset semantics (heartbeat loops
+// fall back to the tl1312 default).
+func (a *App) SetGoalTokenBudgetForTab(tabID string, tokens int) error {
+	if tokens < 0 {
+		return fmt.Errorf("goal_token_budget: 负数不是合法预算 (got %d)", tokens)
+	}
+	tab := a.tabByID(tabID)
+	if tab == nil {
+		return a.workspaceNotReadyErr(nil)
+	}
+	if err := a.SetGoalTokenBudget(tokens); err != nil {
+		return err
+	}
+	tab.turnStartMu.Lock()
+	defer tab.turnStartMu.Unlock()
+	a.mu.Lock()
+	if a.tabs[tab.ID] != tab {
+		a.mu.Unlock()
+		return a.workspaceNotReadyErr(nil)
+	}
+	ctrl := tab.Ctrl
+	a.mu.Unlock()
+	if ctrl != nil {
+		ctrl.SetGoalTokenBudget(tokens)
+	}
+	return nil
 }
 
 // SetGoalForTab activates or clears a Goal on the given tab.
