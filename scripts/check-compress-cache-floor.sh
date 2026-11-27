@@ -56,7 +56,13 @@ fi
 # request looks like after a fold. Kept deliberately wide (task 1378's curate
 # increments live in the same domain); a false-positive run costs one go test.
 compress_chain=()
-for file in "${changed_input:-}"; do
+# tl1828b: split the manifest into one word per line before matching. The old
+# quoted for-loop saw the whole newline-separated list as a single word, so the
+# gate went green whenever the first entry wasn't a compression-chain file
+# (only a first-line pattern, with glob * swallowing the remaining lines, ever
+# matched).
+mapfile -t changed_files <<< "${changed_input:-}"
+for file in "${changed_files[@]}"; do
   [[ -z "$file" ]] && continue
   case "$file" in
     internal/agent/compact*|\
