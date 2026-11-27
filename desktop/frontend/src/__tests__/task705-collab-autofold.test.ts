@@ -10,6 +10,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+// tl1844：LAB_TIER_COUNTS 改活注册表归并导出（无常量字面可 grep），下界钉的
+// 文本正则取值换代为常量导入取值（语义不变，见下方钉注）。
+import { LAB_TIER_COUNTS } from "../lib/experimentTiers";
 
 let passed = 0;
 function ok(cond: boolean, label: string) {
@@ -100,10 +103,10 @@ ok(settingsPrefs.includes("func (a *App) SetExperimentalSessionCollabAutoFold(en
 ok(tiers.includes('| "sessionCollabAutoFold"') && tiers.includes('sessionCollabAutoFold: "recommended"'), "frontend tier registry: sessionCollabAutoFold = recommended");
 ok(goRender.includes('{"sessionCollabAutoFold", LabTierRecommended, []string{"experimental_session_collab_auto_fold"}}'), "Go labFeatureTiers: sessionCollabAutoFold = recommended");
 // 811 修预存红：这里曾写死 "optional: 22,"，后续每加一个 optional 实验特性
-// 就红一次（现值 28，案C 升档 29→28）。705 真正要守的是「计数不倒退」——22
-// 是 727 推进后的下界，跌破即说明有人删了登记。
-const optionalCount = Number(/optional:\s*(\d+),/.exec(tiers)?.[1] ?? -1);
-ok(optionalCount >= 22, `LAB_TIER_COUNTS optional 计数不低于 727 下界 22（当前 ${optionalCount}）`);
+// 就红一次。705 真正要守的是「计数不倒退」——22 是 727 推进后的下界，跌破
+// 即说明有人删了登记。tl1844 换代：原文本正则取值（/optional:\s*(\d+),/）
+// 随 LAB_TIER_COUNTS 改活注册表归并导出失效 → 常量导入取值，下界语义不变。
+ok(LAB_TIER_COUNTS.optional >= 22, `LAB_TIER_COUNTS optional 计数不低于 727 下界 22（当前 ${LAB_TIER_COUNTS.optional}）`);
 
 // 6. Settings feed: App writes the store once per settings load (and on save).
 ok(
