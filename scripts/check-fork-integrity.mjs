@@ -1622,6 +1622,16 @@ export const CHECKS = [
   { feature: "tl1819 release notes 数据源存在性（embed 本体）", file: "release-notes/releases.json", patterns: ["\"schemaVersion\":"] },
   { feature: "tl1819 release notes 消费链（import + 运行时读取字面量）", file: "internal/productdocs/docs.go", patterns: ["releasenotes \"reasonix/release-notes\"", "releasenotes.Content", "fs.ReadFile(releaseNotesFS, \"releases.json\")"] },
 
+  // ── tl1841 变更同步 A：会话换位登记链收口（清单×白名单×投影通知）────
+  // 三张登记表/通知点缺一即复发「转正换位无归档销毁」（tl1748 承诺在换位链
+  // 失效）与「cancel 重启投影 drop」。差集属性本体由包级守卫测试
+  // TestSessionBackupAllowlistGateCoversStaticInventory 钉（新增数据侧车两处
+  // 清单同 commit 登记）；此处锚段防上游 merge 静默丢行。
+  { feature: "tl1841 preserve 入会话工件清单（G1/G6：删除/换位/迁移三链随行）", file: "internal/store/session.go", patterns: ["SessionConflictPreserveLog(sessionPath)"] },
+  { feature: "tl1841 归档白名单补登三侧车（G2：转正先归档后换位）", file: "internal/agent/session_selfheal.go", patterns: ["strings.TrimPrefix(store.SessionConflictPreserveLogSuffix, \".\")", "strings.TrimPrefix(store.SessionSpliceLedgerSuffix, \".\")", "strings.TrimPrefix(store.SessionRewriteAttributionLogSuffix, \".\")"] },
+  { feature: "tl1841 差集门禁守卫（清单×白名单新增即红）", file: "internal/agent/session_backup_allowlist_gate_tl1841_test.go", patterns: ["TestSessionBackupAllowlistGateCoversStaticInventory", "TestSessionBackupAllowlistGateRedOnInjectedSidecar"] },
+  { feature: "tl1841 cancel 截断通知投影层（G3 对齐 rewind）", file: "internal/control/controller.go", patterns: ["c.executor.InvalidateProjectionIfStale()"] },
+
 ];
 
 // Run the checklist against `root` (defaults to the full CHECKS manifest).
