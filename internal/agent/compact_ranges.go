@@ -153,6 +153,8 @@ func (m ContextManager) rangesFoldBeforeTrigger(ctx context.Context, policy Cont
 		// 主动通道失败:留痕、不传播、不失败轮次(与压力路径的关键差异)。
 		slog.Warn("agent: ranges fold failed (below-trigger lane parks this attempt)",
 			"trigger", policy.Trigger, "reason", report.reason, "err", err)
+		// tl1837：失败现场落侧车（desktop.log 轮转不再吞掉 ranges 失败）。
+		a.recordCompactMetrics(foldFailedMetricsRecord(policy.Trigger, err.Error()))
 	}
 	if report.outcome == CompactionInstalled {
 		slog.Info("agent: ranges fold installed below the fold trigger",
@@ -209,12 +211,16 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 	decline := func(reason string, fields ...any) (rangesFoldReport, error) {
 		fields = append([]any{"reason", reason}, fields...)
 		slog.Info("agent: ranges fold declined", fields...)
+		// tl1837：拒因落侧车（fold refused 半边，跨轮转可查）。
+		a.recordCompactMetrics(foldDeclinedMetricsRecord(trigger, reason))
 		report.reason = reason
 		return report, nil
 	}
 	abandon := func(reason string, tele *CompactionTelemetry, fields ...any) (rangesFoldReport, error) {
 		fields = append([]any{"reason", reason}, fields...)
 		slog.Info("agent: ranges fold abandoned", fields...)
+		// tl1837：中途放弃与 decline 同型落侧车。
+		a.recordCompactMetrics(foldDeclinedMetricsRecord(trigger, reason))
 		report.reason = reason
 		if tele != nil {
 			a.emitCompactionTelemetry(*tele)
@@ -434,6 +440,11 @@ func (a *Agent) compactRangesFoldLocked(ctx context.Context, trigger, instructio
 		"proj_tokens", projTokens,
 		"source_tokens", sourceTokens,
 		"trigger", trigger)
+	// tl1837：增量折叠观测落侧车（频次×缓存半边与压缩比，跨轮转可查）。
+	a.recordCompactMetrics(rangesFoldMetricsRecord(trigger, idx,
+		max(0, (now-prev)/int64(time.Millisecond)),
+		preservedTokens, segTokens, estimateTextTokens(summary), rangesHit,
+		projTokens, sourceTokens))
 	a.logCompactionMissAttribution(trigger, tele, sourceTokens)
 	// tl1640 O2: same conversation-gap field as the projection fold's done
 	// line — both compaction shapes answer "how quiet was it" on one line

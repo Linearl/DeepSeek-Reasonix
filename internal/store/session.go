@@ -66,8 +66,17 @@ const (
 	// 登记/段边界/校验值都记在这份 sidecar 上，投影内容一个字节不动。与
 	// repairlog 同纪律：元信息审计侧车，不进会话列表，删除会话时一并清掉。
 	SessionSpliceLedgerSuffix = ".splices.json"
-	SessionEventIndexSuffix   = ".event-index.json"
-	SessionDisplayIndexSuffix = ".display-index.json"
+	// SessionCompactMetricsLogSuffix 是压缩/折叠关键读数日志（tl1837：
+	// <stem>.compactmetrics.jsonl）。折叠计划/执行读数（buckets 分项、
+	// covered_tokens、source→projection 压缩比、fold completed/refused 及
+	// 其触发源）此前只写 desktop.log——日志轮转/进程重启后即不可得（20261127
+	// 案B 调查被轮转卡住：fold 计划 1384 实际 329 的现场无历史可查）。本侧车
+	// 每次压缩事件同步追加一行 JSON，尾部截断保上界；与 repairlog 同纪律：
+	// 追加式审计侧车，不进会话列表（IsSessionTranscriptName 显式排除），
+	// 删除会话时一并清掉。
+	SessionCompactMetricsLogSuffix = ".compactmetrics.jsonl"
+	SessionEventIndexSuffix        = ".event-index.json"
+	SessionDisplayIndexSuffix      = ".display-index.json"
 	// SessionGuardianTranscriptSuffix 是 guardian 伴随转录的尾缀
 	// （<stem>.guardian.jsonl）。它是会话形态的伴随文件：经同一会话层存取、带
 	// 自己的 meta/events/index 侧车，但不进会话列表（IsSessionTranscriptName
@@ -95,6 +104,7 @@ func IsSessionTranscriptName(name string) bool {
 		!strings.HasSuffix(name, SessionRepairLogSuffix) &&
 		!strings.HasSuffix(name, SessionRewriteAttributionLogSuffix) &&
 		!strings.HasSuffix(name, SessionConflictPreserveLogSuffix) &&
+		!strings.HasSuffix(name, SessionCompactMetricsLogSuffix) &&
 		!strings.HasSuffix(name, SessionGuardianTranscriptSuffix)
 }
 
@@ -421,6 +431,17 @@ func SessionRewriteAttributionLog(sessionPath string) string {
 	return sessionStem(sessionPath) + SessionRewriteAttributionLogSuffix
 }
 
+// SessionCompactMetricsLog is the compaction/fold key-metrics journal of a
+// session (tl1837: <stem>.compactmetrics.jsonl). It stays beside the
+// transcript like every other sidecar so deleting the session removes the
+// metrics trail too.
+func SessionCompactMetricsLog(sessionPath string) string {
+	if sessionPath == "" {
+		return ""
+	}
+	return sessionStem(sessionPath) + SessionCompactMetricsLogSuffix
+}
+
 // SessionSpliceLedger is the pre-repair fork splice dossier of a session
 // (tl1787 续作, tl1674 阶段二定案: <stem>.splices.json). The merge is a pure
 // metadata operation — splice-point registration, segment boundaries and
@@ -552,6 +573,9 @@ func SessionSidecarFiles(sessionPath string) []string {
 		// commit 生效）。
 		SessionSpliceLedger(sessionPath),
 		SessionRewriteAttributionLog(sessionPath),
+		// tl1837：压缩/折叠关键读数（buckets/fold 指标）随家族走删除/还原/
+		// 身份换位全链——清单单一来源纪律（加一行=全删除链同 commit 生效）。
+		SessionCompactMetricsLog(sessionPath),
 		// tl1841（d1 扫描 G1+G6）：takeover 保全日志同纪律随行。此前它只在
 		// 注释里承诺「像其他 sidecar 一样随行」，登记表却没收——删除链靠
 		// stem 兜底清扫每次 WARN 捡走、转正换位链被副本同名件无归档覆盖、
