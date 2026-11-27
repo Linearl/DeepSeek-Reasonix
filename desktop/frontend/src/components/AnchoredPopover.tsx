@@ -58,6 +58,7 @@ function calculatePosition(
 export function AnchoredPopover({
   open,
   anchorRef,
+  fallbackAnchorRef,
   onClose,
   className,
   children,
@@ -69,6 +70,10 @@ export function AnchoredPopover({
 }: {
   open: boolean;
   anchorRef: RefObject<HTMLElement | null>;
+  /** tl1840: alternate anchor used while the primary anchor is unmeasurable
+   * (all-zero rect, e.g. hidden by the composer tools fold's display:none).
+   * Popovers whose anchor never hides leave this unset — behaviour identical. */
+  fallbackAnchorRef?: RefObject<HTMLElement | null>;
   onClose: () => void;
   className: string;
   children: ReactNode;
@@ -122,7 +127,18 @@ export function AnchoredPopover({
     };
     const updatePosition = () => {
       frame = null;
-      const anchor = anchorRef.current?.getBoundingClientRect();
+      // tl1840: a display:none anchor (composer tools fold hides the flat
+      // buttons via CSS) still returns an element but with an all-zero rect;
+      // positioning against it clamps to the viewport corner. Prefer the
+      // fallback anchor whenever the primary rect is unmeasurable so the same
+      // positioning math anchors to the visible fold toggle instead.
+      const primaryRect = anchorRef.current?.getBoundingClientRect();
+      const primaryUsable = primaryRect !== undefined && (primaryRect.width > 0 || primaryRect.height > 0);
+      const fallbackRect = primaryUsable
+        ? undefined
+        : fallbackAnchorRef?.current?.getBoundingClientRect();
+      const fallbackUsable = fallbackRect !== undefined && (fallbackRect.width > 0 || fallbackRect.height > 0);
+      const anchor = primaryUsable ? primaryRect : fallbackUsable ? fallbackRect : primaryRect;
       const menu = popoverRef.current?.getBoundingClientRect();
       // Keep an existing valid position while either element is temporarily
       // unavailable. Before the first measurement, the render fallback below
@@ -147,11 +163,13 @@ export function AnchoredPopover({
     scheduleUpdate();
 
     const anchor = anchorRef.current;
+    const fallbackAnchor = fallbackAnchorRef?.current;
     const menu = popoverRef.current;
     let observer: ResizeObserver | null = null;
     if (typeof ResizeObserver !== "undefined") {
       observer = new ResizeObserver(scheduleUpdate);
       if (anchor) observer.observe(anchor);
+      if (fallbackAnchor) observer.observe(fallbackAnchor);
       if (menu) observer.observe(menu);
     }
     // Portaled popovers use viewport coordinates; scrollable ancestors move the anchor.
@@ -166,7 +184,7 @@ export function AnchoredPopover({
       window.visualViewport?.removeEventListener("scroll", scheduleUpdate);
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);
     };
-  }, [rendered, anchorRef, align, offset, placement]);
+  }, [rendered, anchorRef, fallbackAnchorRef, align, offset, placement]);
 
   useEffect(() => {
     if (!open || closing) return;

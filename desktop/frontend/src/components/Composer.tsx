@@ -6898,6 +6898,10 @@ export function Composer({
                   <AnchoredPopover
                     open={emojiPickerOpen}
                     anchorRef={emojiPickerAnchorRef}
+                    // tl1840：折叠态（窄宽断点或 tools-default-fold）把本钮容器
+                    // display:none，锚 rect 全零 → 弹层落到窗口左上角。主锚不可
+                    // 测时换锚到工具组折叠按钮（⋯），未折叠主锚可见=行为零变化。
+                    fallbackAnchorRef={toolsMenuAnchorRef}
                     onClose={() => setEmojiPickerOpen(false)}
                     className="composer-emoji-popover composer-menu-surface"
                     align="end"
@@ -6959,6 +6963,10 @@ export function Composer({
                   <AnchoredPopover
                     open={historyPickerOpen}
                     anchorRef={historyPickerAnchorRef}
+                    // tl1840：折叠态本钮容器 display:none → 锚 rect 全零 → 弹层
+                    // 落窗口左上角（用户 20261127 报障）。主锚不可测时换锚到工
+                    // 具组折叠按钮（⋯），未折叠主锚可见=行为零变化。
+                    fallbackAnchorRef={toolsMenuAnchorRef}
                     onClose={closeHistoryPicker}
                     className="composer-history-menu composer-menu-surface"
                     align="end"
