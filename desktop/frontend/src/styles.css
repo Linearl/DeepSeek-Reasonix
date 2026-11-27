@@ -26252,7 +26252,7 @@ button.statusbar__mcp:focus-visible {
 :root[data-theme="light"] .theme-card__swatches[data-theme-style-card="nocturne"] .theme-card__swatch--accent { background: linear-gradient(120deg, #6366f1, #8b5cf6); }
 :root[data-theme="light"] .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--bg { background: #f5f6f9; }
 :root[data-theme="light"] .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--surface { background: #ffffff; }
-:root[data-theme="light"] .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--accent { background: linear-gradient(120deg, #dd5b28, #ef8a4a); }
+:root[data-theme="light"] .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--accent { background: linear-gradient(120deg, #dd5b28, #c44d20); }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="graphite"] .theme-card__swatch--bg { background: #f4f3ef; }
   :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="graphite"] .theme-card__swatch--surface { background: #ffffff; }
@@ -26271,7 +26271,7 @@ button.statusbar__mcp:focus-visible {
   :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="nocturne"] .theme-card__swatch--accent { background: linear-gradient(120deg, #6366f1, #8b5cf6); }
   :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--bg { background: #f5f6f9; }
   :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--surface { background: #ffffff; }
-  :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--accent { background: linear-gradient(120deg, #dd5b28, #ef8a4a); }
+  :root:not([data-theme]) .theme-card__swatches[data-theme-style-card="amber"] .theme-card__swatch--accent { background: linear-gradient(120deg, #dd5b28, #c44d20); }
 }
 .settings-config-path {
   margin-top: 18px;

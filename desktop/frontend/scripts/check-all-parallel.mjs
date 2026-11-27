@@ -48,6 +48,7 @@ const checks = [
     "src/components/RemoteConnectWizard.css",
   ]],
   ["check:theme-token", "node", ["scripts/check-theme-token-contract.mjs"]],
+  ["check:swatch-sync", "node", ["scripts/check-theme-swatch-sync.mjs"]],
   ["check:color-ratchet", "node", ["scripts/check-css-color-ratchet.mjs"]],
   ["check:class-contract", "node", ["scripts/check-class-contract.mjs"]],
   ["check:bridge-json-tags", "node", ["../../scripts/check-bridge-json-tags.mjs", "../.."]],
