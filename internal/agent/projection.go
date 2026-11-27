@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -153,10 +154,10 @@ type ContextMaintenanceReceipt struct {
 	// stands for. Distinct from Archive, which means the transcript was
 	// archived to a NEW session; FoldPointer names an in-session fold whose
 	// content stays verbatim in canonical.
-	FoldPointer string `json:"fold_pointer,omitempty"`
-	CacheBreak          bool   `json:"cache_break,omitempty"`
-	Reason              string `json:"reason,omitempty"`
-	BlockedInputHash    string `json:"blocked_input_hash,omitempty"`
+	FoldPointer      string `json:"fold_pointer,omitempty"`
+	CacheBreak       bool   `json:"cache_break,omitempty"`
+	Reason           string `json:"reason,omitempty"`
+	BlockedInputHash string `json:"blocked_input_hash,omitempty"`
 	// FoldInstalled marks a failed/blocked summary refresh that follows an
 	// already-installed fold in the same maintenance pass (task 303): the
 	// compaction is kept and only the refresh is missing. The desktop renders
@@ -391,6 +392,29 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
 }
 
+// sanitizedPipeline is the shared fingerprint pipeline (tl1831c): the
+// provider-visible view of msgs[:n] after the exact wire preparation
+// coveredPrefixHash fingerprints (modelInputMessages → SanitizeToolPairing).
+// Every per-message comparison reads slots from THIS pipeline — never from the
+// canonical transcript — because the two orders drift apart exactly when
+// sanitize drops LocalOnly records or repairs tool pairing.
+func sanitizedPipeline(msgs []provider.Message, n int) []provider.Message {
+	if n <= 0 || n > len(msgs) {
+		return nil
+	}
+	return provider.SanitizeToolPairing(modelInputMessages(msgs[:n]))
+}
+
+// perMessageFingerprints fingerprints each pipeline slot individually; slot i
+// of the output corresponds to visible[i].
+func perMessageFingerprints(visible []provider.Message) []string {
+	out := make([]string, len(visible))
+	for i := range visible {
+		out[i] = providerVisibleFingerprint(visible[i : i+1])
+	}
+	return out
+}
+
 // coveredMessageFingerprints (tl1651) fingerprints each message of the
 // sanitized covered prefix individually, through the exact pipeline
 // coveredPrefixHash uses (modelInputMessages → SanitizeToolPairing), so a
@@ -398,15 +422,64 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 // per-message hashes are read side by side against the sidecar's persisted
 // CoveredMessageHashes; the index where they diverge is the rewrite point.
 func coveredMessageFingerprints(msgs []provider.Message, n int) []string {
+	visible := sanitizedPipeline(msgs, n)
+	if visible == nil {
+		return nil
+	}
+	return perMessageFingerprints(visible)
+}
+
+// pipelineSourceMarkerPrefix marks the index-tagging twin inside
+// pipelineCanonicalIndexes. \x00 keeps the marker out of any real transcript
+// identity; the pipeline never reads Message.ID and
+// providerVisibleFingerprint never serializes it.
+const pipelineSourceMarkerPrefix = "\x00tl1831c-src:"
+
+// pipelineCanonicalIndexes (tl1831c) maps each slot of the sanitized pipeline
+// back to the index of its source message in the canonical transcript, so
+// pipeline-slot observations (role gate, diff logs) can name the canonical
+// message they are actually looking at. Sanitize drops LocalOnly records,
+// drops orphan tool results, and fabricates placeholder results for
+// unanswered calls — the 20261127 08:58 shape had 11 LocalOnly drops, which
+// put a tool result at pipeline slot 2139 while canonical msgs[2139] was a
+// user message, and the index-equality approximation misread the tl1785 role
+// gate into rejecting a tolerable repair-drift mismatch. The mapping is built
+// by re-running the REAL pipeline over an index-marked twin, so it cannot
+// drift from the fingerprint pipeline by construction: Message.ID is local
+// transcript identity that normalize decisions never read (they use Role,
+// LocalOnly, and the ToolCalls/ToolCallID/Name fields) and
+// providerVisibleFingerprint never serializes. Fabricated slots (placeholder
+// results with no canonical source) map to -1.
+func pipelineCanonicalIndexes(msgs []provider.Message, n int) []int {
+	visible := sanitizedPipeline(markCanonicalIndexes(msgs, n), n)
+	if visible == nil {
+		return nil
+	}
+	out := make([]int, len(visible))
+	for i := range visible {
+		out[i] = -1
+		if source, ok := strings.CutPrefix(visible[i].ID, pipelineSourceMarkerPrefix); ok {
+			if v, err := strconv.Atoi(source); err == nil {
+				out[i] = v
+			}
+		}
+	}
+	return out
+}
+
+// markCanonicalIndexes returns a copy of msgs[:n] whose Message.ID fields
+// carry the pipelineSourceMarkerPrefix-tagged canonical index. Pure: the input
+// slice is never mutated.
+func markCanonicalIndexes(msgs []provider.Message, n int) []provider.Message {
 	if n <= 0 || n > len(msgs) {
 		return nil
 	}
-	visible := provider.SanitizeToolPairing(modelInputMessages(msgs[:n]))
-	out := make([]string, len(visible))
-	for i := range visible {
-		out[i] = providerVisibleFingerprint(visible[i : i+1])
+	twin := make([]provider.Message, n)
+	copy(twin, msgs[:n])
+	for i := range twin {
+		twin[i].ID = pipelineSourceMarkerPrefix + strconv.Itoa(i)
 	}
-	return out
+	return twin
 }
 
 // projectionMismatchEvidence is the tl1651 diagnosis of one hash_mismatch
@@ -427,10 +500,19 @@ type projectionMismatchEvidence struct {
 	DiffIndex      int    // first diverging index in the sanitized pipeline order; -1 unknown
 	StoredMsgHash  string // stored fingerprint at DiffIndex ("" when unavailable)
 	CurrentMsgHash string // current fingerprint at DiffIndex
-	DiffRole       string // role of the current message at DiffIndex
-	DiffOrigin     string // origin of the current message at DiffIndex
-	StoredMsgLen   int    // sanitized pipeline length the stored side describes
-	CurrentMsgLen  int    // sanitized pipeline length the current transcript produces
+	// DiffRole / DiffOrigin are the PIPELINE slot's own fields at DiffIndex
+	// (tl1831c correction): the pre-tl1831c twin read canonical msgs[DiffIndex]
+	// under the pipeline≈canonical approximation, which broke exactly when
+	// sanitize dropped LocalOnly records (the 08:58 log printed diff_role=user
+	// for what was really a tool slot).
+	DiffRole   string
+	DiffOrigin string
+	// DiffCanonicalIndex is the canonical transcript index the diverging
+	// pipeline slot maps to (tl1831c, pipelineCanonicalIndexes); -1 when the
+	// slot is a sanitize-fabricated placeholder or the mapping is unavailable.
+	DiffCanonicalIndex int
+	StoredMsgLen       int // sanitized pipeline length the stored side describes
+	CurrentMsgLen      int // sanitized pipeline length the current transcript produces
 }
 
 // diagnoseProjectionMismatch localizes a covered-prefix hash mismatch (tl1651
@@ -438,15 +520,23 @@ type projectionMismatchEvidence struct {
 // single most likely writer — LoadSession's NormalizeSession repair —
 // directly), then the persisted per-message hashes, then degrades to the
 // whole-prefix hash pair. Pure function: reads only its arguments.
+//
+// tl1831c: role/origin are read from the sanitized pipeline slot and the slot
+// is mapped back to its canonical index, so the evidence stays truthful when
+// sanitize dropped or fabricated earlier messages (the pipeline≈canonical
+// approximation that misattributed the 08:58 diff_role is gone).
 func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.Message) projectionMismatchEvidence {
 	n := st.Projection.CoveredCount
 	ev := projectionMismatchEvidence{
-		StoredPrefixHash:  st.Projection.CoveredPrefixHash,
-		CurrentPrefixHash: coveredPrefixHash(msgs, n),
-		CoveredCount:      n,
-		DiffIndex:         -1,
+		StoredPrefixHash:   st.Projection.CoveredPrefixHash,
+		CurrentPrefixHash:  coveredPrefixHash(msgs, n),
+		CoveredCount:       n,
+		DiffIndex:          -1,
+		DiffCanonicalIndex: -1,
 	}
-	currentFP := coveredMessageFingerprints(msgs, n)
+	visible := sanitizedPipeline(msgs, n)
+	canonIdx := pipelineCanonicalIndexes(msgs, n)
+	currentFP := perMessageFingerprints(visible)
 	ev.CurrentMsgLen = len(currentFP)
 
 	// B1: load-repair attribution. If the pre-repair transcript still hashes to
@@ -458,14 +548,14 @@ func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.M
 		ev.Source = "load_repair"
 		preFP := coveredMessageFingerprints(preRepair, n)
 		ev.StoredMsgLen = len(preFP)
-		ev.StoredMsgHash, ev.DiffIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(preFP, currentFP, msgs)
+		ev.StoredMsgHash, ev.DiffIndex, ev.DiffCanonicalIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(preFP, currentFP, visible, canonIdx)
 		return ev
 	}
 	// B2: persisted per-message hashes from the sidecar.
 	if stored := st.Projection.CoveredMessageHashes; len(stored) > 0 {
 		ev.Source = "persisted_hashes"
 		ev.StoredMsgLen = len(stored)
-		ev.StoredMsgHash, ev.DiffIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(stored, currentFP, msgs)
+		ev.StoredMsgHash, ev.DiffIndex, ev.DiffCanonicalIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(stored, currentFP, visible, canonIdx)
 		return ev
 	}
 	// B3: no corpus — the whole-prefix pair is all the evidence available.
@@ -474,15 +564,15 @@ func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.M
 }
 
 // firstFingerprintDivergence returns the first index where stored and current
-// per-message fingerprints differ, with the stored fingerprint at that slot and
-// a best-effort role/origin of the current message there. A length mismatch is
-// itself the divergence (structural insert/delete inside the covered prefix):
-// the slot is the shorter length, i.e. the first position where one side has no
-// counterpart. Role/origin are read from the CURRENT canonical transcript at
-// the pipeline index — approximate when sanitization dropped or fabricated
-// earlier messages, exact when the pipeline is 1:1 with canonical (the common
-// healthy-history case, since the fast path passes clean input through).
-func firstFingerprintDivergence(stored, current []string, msgs []provider.Message) (storedHash string, idx int, role, origin string) {
+// per-message fingerprints differ, with the stored fingerprint at that slot,
+// the pipeline slot's own role/origin, and the slot's canonical source index.
+// A length mismatch is itself the divergence (structural insert/delete inside
+// the covered prefix): the slot is the shorter length, i.e. the first position
+// where one side has no counterpart. Role/origin come from the CURRENT
+// sanitized pipeline slot (tl1831c) — truthful even when sanitization dropped
+// or fabricated earlier messages; the returned canonical index is -1 for a
+// sanitize-fabricated slot.
+func firstFingerprintDivergence(stored, current []string, visible []provider.Message, canonIdx []int) (storedHash string, idx, canonicalIdx int, role, origin string) {
 	idx = -1
 	limit := len(stored)
 	if len(current) < limit {
@@ -498,13 +588,18 @@ func firstFingerprintDivergence(stored, current []string, msgs []provider.Messag
 		idx = limit
 	}
 	if idx < 0 {
-		return "", -1, "", ""
+		return "", -1, -1, "", ""
 	}
-	if idx < len(msgs) {
-		role = string(msgs[idx].Role)
-		origin = string(msgs[idx].Origin)
+	if idx < len(visible) {
+		role = string(visible[idx].Role)
+		origin = string(visible[idx].Origin)
 	}
-	return storedHashOr(stored, idx), idx, role, origin
+	if idx < len(canonIdx) {
+		canonicalIdx = canonIdx[idx]
+	} else {
+		canonicalIdx = -1
+	}
+	return storedHashOr(stored, idx), idx, canonicalIdx, role, origin
 }
 
 func storedHashOr(stored []string, idx int) string {
@@ -724,30 +819,75 @@ func migrateLoadRepairedPrefixHash(st *CompactionState, current, preRepair []pro
 	return true
 }
 
-// projectionRepairDriftKeep (tl1785) decides whether a first-load
-// hash_mismatch is attributable to the transcript-repair rewrite family —
-// NormalizeSession repairs accumulated across loads, or an installer
-// upgrade's changed normalization rules (the tl1116 recurrence family, e.g.
-// the 20261123 装机重启 incident: stored prefix 6bc3bee8 vs current 8c6106d0,
-// whole body dropped, 2,011,859-token full-canonical fallback) — in which case
-// the projection body is kept and marked stale instead of being discarded.
+// projectionDriftKeepVerdict is the tl1831c structured form of the tl1785
+// stale-keep decision: the keep slots when the repair-drift tolerance applies,
+// or — when it refuses — WHICH gate refused and the class of the refusing
+// difference, so the drop path can log 失配在哪条/哪类差异 (tl1651 修复方向 a)
+// instead of an unattributable nil.
+type projectionDriftKeepVerdict struct {
+	// keep lists the diverging pipeline slots when the tolerance applies
+	// (non-nil). Empty/nil means drop.
+	keep []int
+	// refusal names the gate that refused, "" when keep applies:
+	//   "covered_overflow"        — covered_count past the transcript end
+	//   "missing_corpus"          — no tl1651 per-message evidence corpus
+	//   "structural"              — pipeline length ≠ corpus length (insert/
+	//                               delete inside the covered prefix)
+	//   "content"                 — a diverging slot sits on a user/system
+	//                               slot: real divergence, never repair drift
+	//   "no_divergence"           — whole-prefix mismatch with an all-equal
+	//                               corpus (fingerprint-pipeline discrepancy)
+	refusal string
+	// detail* carry the first refusing slot's coordinates for the drop log.
+	detailIndex int
+	detailRole  string
+	// storedLen/currentLen carry the two pipeline lengths for the structural
+	// class.
+	storedLen  int
+	currentLen int
+	// keepRoles / keepCanonIdx describe each kept slot: the pipeline slot's
+	// own role and the slot's canonical source index (pipelineCanonicalIndexes;
+	// -1 fabricated). Both are indexed parallel to keep.
+	keepRoles    []string
+	keepCanonIdx []int
+}
+
+// projectionRepairDriftKeep (tl1785, gates corrected by tl1831c) decides
+// whether a first-load hash_mismatch is attributable to the transcript-repair
+// rewrite family — NormalizeSession repairs accumulated across loads, or an
+// installer upgrade's changed normalization rules (the tl1116 recurrence
+// family, e.g. the 20261123 装机重启 incident: stored prefix 6bc3bee8 vs
+// current 8c6106d0, whole body dropped, 2,011,859-token full-canonical
+// fallback) — in which case the projection body is kept and marked stale
+// instead of being discarded. The 20261127 08:58 incident (stored a3213691 vs
+// current 59cadec5, 2.9M-token fallback) was this lane's double failure: the
+// structural gate demanded pipeline length == covered_count, which no session
+// whose sanitize pipeline dropped LocalOnly records can satisfy (2360 ≠
+// 2371), and the role gate read canonical msgs[i] at pipeline index i, which
+// misread a tool slot as user once the drops shifted the coordinates.
 //
 // The gates are deliberately fail-closed; every non-passing shape keeps the
 // pre-tl1785 wholesale drop:
 //
 //  1. Evidence gate — the sidecar must carry the tl1651 per-message corpus
 //     (CoveredMessageHashes). Without it there is nothing to attribute with.
-//  2. Structural gate — the current sanitized pipeline must have the same
-//     length as the stored corpus AND be 1:1 with the covered canonical
-//     prefix. An insert/delete inside the covered prefix (rewind, branch
-//     splice, orphan-tool fabrication) is a structural rewrite, never repair
-//     drift, and also breaks the pipeline-index → canonical-index mapping the
-//     role gate relies on.
-//  3. Role gate — every diverging slot must sit on an assistant or tool
-//     message. The repair family only rewrites assistant wire bytes (tool-call
-//     name backfill #4727, truncated-argument repair #3953, decision-receipt
-//     folding) and tool bytes (placeholder pairing); a user or system edit is
-//     real divergence and still drops.
+//  2. Structural gate (tl1831c v2) — the current sanitized pipeline must have
+//     the same length as the stored corpus, and the comparison is per-entry:
+//     every slot before the first diverging fingerprint is proven intact
+//     (历史条目原样保留), and only from the divergence point onward does the
+//     background rebuild recompute anything. The old second clause (pipeline
+//     length == covered_count) is GONE: sanitize shortens the pipeline
+//     whenever LocalOnly records sit inside the covered prefix — that is the
+//     norm, not a rewrite signal. A real structural rewrite still fails here,
+//     because it changes the pipeline length against the sealed corpus.
+//  3. Role gate (tl1831c v2) — every diverging slot must sit on an assistant
+//     or tool PIPELINE slot. The repair family only rewrites assistant wire
+//     bytes (tool-call name backfill #4727, truncated-argument repair #3953,
+//     decision-receipt folding) and tool bytes (placeholder pairing); a user
+//     or system edit is real divergence and still drops. The slot's role is
+//     read from the sanitized pipeline itself, never from canonical
+//     msgs[i] — the coordinate shift sanitize introduces is exactly what the
+//     old read got wrong.
 //
 // This lane NEVER re-anchors the stored hash and never republishes the
 // sidecar: the kept body stays content-invalid, so it serves only through the
@@ -755,46 +895,69 @@ func migrateLoadRepairedPrefixHash(st *CompactionState, current, preRepair []pro
 // deliberate contrast with migrateLoadRepairedPrefixHash, whose stronger
 // proof (stored == this load's pre-repair disk prefix) justifies restoring the
 // fold as fully valid. The single-slot empty-shell corpus migration remains
-// the tl1770 乙案 candidate and is intentionally NOT implemented here.
-//
-// Returns the diverging pipeline indexes (non-empty when the keep applies) so
-// the degrade log can name the rewritten slots; an empty slice means drop.
-func projectionRepairDriftKeep(st CompactionState, msgs []provider.Message) []int {
+// the tl1770 乙案 candidate and is intentionally NOT implemented here. The
+// transient-block rewrite family (host-injected user-turn decoration
+// re-rendered) is also intentionally NOT tolerated here: with only
+// fingerprints on the stored side there is no way to prove a user-slot
+// difference is transient-only rather than a prose edit, and the tl1203
+// fail-closed line is a security钉 (the tl1831b ① dual-format vaccine owns
+// that family and was separately downgraded).
+func projectionRepairDriftKeepVerdict(st CompactionState, msgs []provider.Message) projectionDriftKeepVerdict {
 	n := st.Projection.CoveredCount
 	if n <= 0 || n > len(msgs) {
-		return nil
+		return projectionDriftKeepVerdict{refusal: "covered_overflow", storedLen: n, currentLen: len(msgs)}
 	}
 	corpus := st.Projection.CoveredMessageHashes
 	if len(corpus) == 0 {
-		return nil
+		return projectionDriftKeepVerdict{refusal: "missing_corpus"}
 	}
-	current := coveredMessageFingerprints(msgs, n)
-	// Structural gate: equal pipeline lengths, each 1:1 with the covered
-	// canonical prefix (no sanitize drops or fabrications on either side).
-	if len(current) != len(corpus) || len(current) != n {
-		return nil
+	visible := sanitizedPipeline(msgs, n)
+	current := perMessageFingerprints(visible)
+	// Structural gate v2: equal pipeline lengths — the per-entry comparison's
+	// precondition. Pipeline ≠ covered_count is the LocalOnly norm.
+	if len(current) != len(corpus) {
+		return projectionDriftKeepVerdict{refusal: "structural", storedLen: len(corpus), currentLen: len(current)}
 	}
 	var diverging []int
 	for i := 0; i < len(corpus); i++ {
 		if corpus[i] == current[i] {
 			continue
 		}
-		// Role gate: repair rewrites only ever land on assistant/tool slots.
-		// Pipeline is 1:1 with canonical here, so msgs[i] is the rewritten
-		// message itself.
-		switch msgs[i].Role {
+		// Role gate v2: repair rewrites only ever land on assistant/tool
+		// pipeline slots. The slot's own role is the truth; canonical
+		// coordinates drift when sanitize dropped earlier messages.
+		role := string(visible[i].Role)
+		switch visible[i].Role {
 		case provider.RoleAssistant, provider.RoleTool:
 		default:
-			return nil
+			return projectionDriftKeepVerdict{refusal: "content", detailIndex: i, detailRole: role, storedLen: len(corpus), currentLen: len(current)}
 		}
 		diverging = append(diverging, i)
 	}
 	if len(diverging) == 0 {
 		// Whole-prefix hash mismatch with an all-equal per-message corpus is a
 		// fingerprint-pipeline discrepancy — fail closed.
-		return nil
+		return projectionDriftKeepVerdict{refusal: "no_divergence", storedLen: len(corpus), currentLen: len(current)}
 	}
-	return diverging
+	verdict := projectionDriftKeepVerdict{keep: diverging, storedLen: len(corpus), currentLen: len(current)}
+	canonIdx := pipelineCanonicalIndexes(msgs, n)
+	for _, i := range diverging {
+		verdict.keepRoles = append(verdict.keepRoles, string(visible[i].Role))
+		idx := -1
+		if i < len(canonIdx) {
+			idx = canonIdx[i]
+		}
+		verdict.keepCanonIdx = append(verdict.keepCanonIdx, idx)
+	}
+	return verdict
+}
+
+// projectionRepairDriftKeep is the tl1785-shaped thin wrapper over
+// projectionRepairDriftKeepVerdict: diverging pipeline indexes (non-empty
+// when the keep applies), nil on every refusal. The preflight drop path uses
+// the verdict form so the refusal keeps its class.
+func projectionRepairDriftKeep(st CompactionState, msgs []provider.Message) []int {
+	return projectionRepairDriftKeepVerdict(st, msgs).keep
 }
 
 // providerVisibleFingerprint is the stable hash of fields that reach a provider.

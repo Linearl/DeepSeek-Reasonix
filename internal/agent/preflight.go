@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"path/filepath"
 	"strings"
@@ -585,6 +586,7 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 				"current_prefix_hash", ev.CurrentPrefixHash,
 				"mismatch_source", ev.Source,
 				"diff_pipeline_index", ev.DiffIndex,
+				"diff_canonical_index", ev.DiffCanonicalIndex,
 				"stored_msg_hash", ev.StoredMsgHash,
 				"current_msg_hash", ev.CurrentMsgHash,
 				"diff_role", ev.DiffRole,
@@ -600,26 +602,24 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 				"sidecar_updated_at", st.UpdatedAt.UTC().Format(time.RFC3339),
 				"canonical_msgs", len(msgs))
 		}
-		// tl1785 降级保留: a hash_mismatch attributable to the transcript-repair
-		// rewrite family (NormalizeSession repairs accumulated across loads, or
-		// an installer upgrade's normalization rules — the tl1116 recurrence
-		// family) keeps the body marked stale instead of discarding it. The
-		// stored hash is NOT re-anchored and the sidecar is NOT republished
-		// (pure-read load preserved); the body stays content-invalid, so it
-		// serves only through the tl1203 bounded stale splice and the forced
-		// rebuild below replaces it with a fresh, hash-aligned fold. Every
-		// non-attributable shape still drops fail-closed.
-		diverging := []int(nil)
+		// tl1785 降级保留 (gates corrected tl1831c): a hash_mismatch attributable
+		// to the transcript-repair rewrite family (NormalizeSession repairs
+		// accumulated across loads, or an installer upgrade's normalization
+		// rules — the tl1116 recurrence family) keeps the body marked stale
+		// instead of discarding it. The stored hash is NOT re-anchored and the
+		// sidecar is NOT republished (pure-read load preserved); the body stays
+		// content-invalid, so it serves only through the tl1203 bounded stale
+		// splice and the forced rebuild below replaces it with a fresh,
+		// hash-aligned fold. Every non-attributable shape still drops
+		// fail-closed; the verdict's refusal class names why (tl1651 修复方向 a:
+		// structural / content / no_divergence).
+		verdict := projectionDriftKeepVerdict{}
 		if failReason == projectionFailHashMismatch {
-			diverging = projectionRepairDriftKeep(st, msgs)
+			verdict = projectionRepairDriftKeepVerdict(st, msgs)
 		}
-		if len(diverging) > 0 {
+		if len(verdict.keep) > 0 {
 			keptStale = true
 			n := st.Projection.CoveredCount
-			roles := make([]string, 0, len(diverging))
-			for _, i := range diverging {
-				roles = append(roles, string(msgs[i].Role))
-			}
 			slog.Warn("agent: projection sidecar body kept stale — repair-drift covered-prefix mismatch",
 				"writer", SessionWriterID(),
 				"mismatch", failReason,
@@ -630,9 +630,10 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 				"canonical_messages", len(msgs),
 				"stored_prefix_hash", shortHash8(st.Projection.CoveredPrefixHash),
 				"current_prefix_hash", shortHash8(coveredPrefixHash(msgs, n)),
-				"diverging_slots", len(diverging),
-				"first_diverging_index", diverging[0],
-				"diverging_roles", strings.Join(roles, "+"),
+				"diverging_slots", len(verdict.keep),
+				"first_diverging_index", verdict.keep[0],
+				"diverging_roles", strings.Join(verdict.keepRoles, "+"),
+				"diverging_canonical_indexes", fmt.Sprint(verdict.keepCanonIdx),
 				"load_repair_transcript", len(preRepair) > 0,
 				"schema_version", st.SchemaVersion,
 				"session", filepath.Base(a.sess.path))
@@ -654,7 +655,12 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 			// rewrites, missing evidence corpus.
 			mismatch := projectionInvalidReason(st, msgs)
 			n := st.Projection.CoveredCount
-			slog.Warn("agent: projection sidecar body dropped — covered-prefix verification failed",
+			// tl1831c: name the stale-keep refusal class on the drop path —
+			// structural (pipeline shape moved against the sealed corpus),
+			// content (a user/system slot diverged: real divergence, the
+			// tl1203 security钉 line), or the evidence gaps. Empty string when
+			// the mismatch never reached the keep gate (pinned/legacy shapes).
+			args := []any{
 				"writer", SessionWriterID(),
 				"mismatch", mismatch,
 				"covered_count", n,
@@ -666,7 +672,17 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 				"stored_pinned_hash", shortHash8(st.Projection.PinnedContextHash),
 				"current_pinned_hash", shortHash8(pinnedContextCoverageHash(msgs, n)),
 				"schema_version", st.SchemaVersion,
-				"session", filepath.Base(a.sess.path))
+				"session", filepath.Base(a.sess.path),
+			}
+			if verdict.refusal != "" {
+				args = append(args,
+					"keep_refusal", verdict.refusal,
+					"refusal_slot", verdict.detailIndex,
+					"refusal_role", verdict.detailRole,
+					"stored_pipeline_len", verdict.storedLen,
+					"current_pipeline_len", verdict.currentLen)
+			}
+			slog.Warn("agent: projection sidecar body dropped — covered-prefix verification failed", args...)
 			st.Projection = ContextProjection{}
 		}
 	}
