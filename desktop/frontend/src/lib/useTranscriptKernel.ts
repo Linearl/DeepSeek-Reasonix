@@ -671,13 +671,18 @@ export function useTranscriptKernel({
     // as a reader; the kernel's witness-corrected verdict feeds the facts,
     // and a bottom verdict skips the line capture — the reader is at the
     // tail, there is no first line to keep.
-    const verdict = kernel.atBottomForFacts(geometry, writer.lastTailFloor);
+    // tl 1776c: the smooth follow layer's outstanding target is the second
+    // witness leg — under fast streaming with the tl 1165 switch on, the
+    // transit steady state keeps the viewport off `lastTailFloor` itself, so
+    // the floor leg alone cannot rescue the sample.
+    const verdict = kernel.atBottomForFacts(geometry, writer.lastTailFloor, writer.smoothFollowPending);
     if (verdict.witnessed) {
       recordTranscriptScrollDiagnostic("tail-floor-witness", {
         width,
         scrollTop: geometry.scrollTop,
         floor: writer.lastTailFloor,
         intent: kernel.intent,
+        smoothFollowPending: writer.smoothFollowPending,
       });
     }
     const next: PreReflowFacts = {
@@ -705,7 +710,9 @@ export function useTranscriptKernel({
     // tl 1776: same witness fusion as capturePreReflowFacts (the kernel's
     // single verdict) — the refreshed epoch must not seed the next rewrap
     // with a follow-lag misread either.
-    const atBottom = kernel.atBottomForFacts(geometry, writer.lastTailFloor).atBottom;
+    // tl 1776c: second witness leg rides along (smooth follow outstanding
+    // target), same reasoning as the capture sampler above.
+    const atBottom = kernel.atBottomForFacts(geometry, writer.lastTailFloor, writer.smoothFollowPending).atBottom;
     preReflowRef.current = {
       width: element.clientWidth,
       atBottom,

@@ -40,6 +40,19 @@ export class TranscriptViewportWriter {
    * pre-reflow facts sampler; the write path stays the single owner. */
   get lastTailFloor(): number | null { return this.tailFloor; }
 
+  /** tl 1776c: whether the smooth follow layer (tl 1165, lab switch on) holds
+   * an outstanding animation target. A tail-intent viewport while this is
+   * true is in WRITER-OWNED TRANSIT toward the floor: the tail-class write
+   * path records `tailFloor` for the LATEST floor before the outstanding-
+   * target gate defers the motion, so under fast streaming the viewport
+   * lags `lastTailFloor` by the follow-lag gap as a STEADY STATE — the floor
+   * witness alone cannot cover it. This leg can never masquerade a reader
+   * displacement: every gesture entry (wheel/key/pointer/touch) runs
+   * `interruptViewport` first, which clears the outstanding target before
+   * any reader motion exists. Read only by the pre-reflow facts sampler
+   * (second witness leg); the write path stays the single owner. */
+  get smoothFollowPending(): boolean { return this.follower.animating; }
+
   attach(element: HTMLElement | null, generation: number): void {
     this.element = element;
     this.generation = generation;

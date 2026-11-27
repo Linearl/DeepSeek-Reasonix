@@ -435,6 +435,20 @@ export class TranscriptKernel {
    * never writes scroll offsets, so the floor travels in as a parameter and
    * the writer stays the single owner of what was written.
    *
+   * tl 1776c: `smoothFollowPending` is the writer's SECOND witness leg — the
+   * smooth follow layer (tl 1165) holds an outstanding animation target. The
+   * tail-class write path records `tailFloor` for the latest floor BEFORE the
+   * outstanding-target gate defers the motion, so under fast streaming the
+   * viewport's distance from `lastTailFloor` is the follow-lag itself and the
+   * floor witness above can never fire (the transit steady state). An
+   * outstanding target while the intent is tail means the writer owns the
+   * motion toward the floor: a mid-transit sample is follow-lag, not reader
+   * intent. The leg cannot misfire for a reader — every gesture entry
+   * interrupts the animation before any reader displacement exists, and a
+   * reader intent (this.intentValue === "reader") never reaches the witness.
+   * Absent/false keeps the pre-1776c semantics byte-for-byte (the switch-off
+   * instant-write path never animates).
+   *
    * `witnessed` is true only when the witness CHANGED the verdict (measured
    * not-at-bottom, rescued to at-bottom) — the hook uses it for the
    * tail-floor-witness diagnostic, so a field report can tell a rescued
@@ -443,12 +457,14 @@ export class TranscriptKernel {
   atBottomForFacts(
     snapshot: { scrollTop: number; scrollHeight: number; clientHeight: number },
     lastTailFloor: number | null,
+    smoothFollowPending?: boolean,
   ): { atBottom: boolean; witnessed: boolean } {
     const measured = this.isViewportAtBottom(snapshot);
     if (measured) return { atBottom: true, witnessed: false };
     const witnessed = this.intentValue === "tail"
-      && lastTailFloor != null
-      && Math.abs(snapshot.scrollTop - lastTailFloor) <= BOTTOM_THRESHOLD_PX;
+      && (smoothFollowPending === true
+        || (lastTailFloor != null
+          && Math.abs(snapshot.scrollTop - lastTailFloor) <= BOTTOM_THRESHOLD_PX));
     return { atBottom: witnessed, witnessed };
   }
 
