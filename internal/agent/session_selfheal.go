@@ -67,6 +67,16 @@ var sessionBackupAllowlist = map[string]struct{}{
 	strings.TrimPrefix(store.SessionTranscriptZstSuffix, "."):             {}, // jsonl.zst
 	strings.TrimPrefix(store.SessionEventLogRotatingSuffix, "."):          {}, // events.jsonl.rotating
 	strings.TrimPrefix(store.SessionTurnEventLogSuffix, ".") + ".damaged": {}, // turns.jsonl.damaged
+	// tl1841（d1 扫描 G2，同机制第三例）：新数据侧车补登记——tl1787 续作
+	// （splices）与 tl1652（rewritelog）进了 store 删除清单没跟到这份归档
+	// 白名单，tl1748（conflict-preserved）两处清单都没进（store 侧 tl1841 同
+	// commit 补登）。转正链依赖本白名单做「先归档后换位」（tl1748「覆盖不再
+	// 是销毁」在换位链兑现），缺键 = 主线原件无归档销毁。差集门禁
+	// TestSessionBackupAllowlistGateCoversStaticInventory 钉「清单×白名单新增
+	// 即红」，本类漂移不再靠注释记账。
+	strings.TrimPrefix(store.SessionSpliceLedgerSuffix, "."):          {}, // splices.json
+	strings.TrimPrefix(store.SessionRewriteAttributionLogSuffix, "."): {}, // rewritelog.jsonl
+	strings.TrimPrefix(store.SessionConflictPreserveLogSuffix, "."):   {}, // conflict-preserved.jsonl
 	"context.json":    {},
 	"turns.jsonl":     {},
 	"goal-state.json": {},
@@ -86,6 +96,13 @@ var sessionBackupAllowlist = map[string]struct{}{
 	"guardian" + store.SessionDisplayIndexSuffix: {},
 	"guardian" + store.SessionEventIndexSuffix:   {},
 	"guardian.cursor.json":                       {},
+	// tl1841：guardian 家族同批补登——conflict-preserved/splices/rewritelog 进
+	// store.SessionSidecarFiles 后经静态换位清单同样派生到 guardian 路径
+	// （SessionStaticTrashSidecars 对 guardianPath 再跑一遍构造器），转正链对
+	// 它们的归档义务与主线同罪同罚。
+	"guardian" + store.SessionConflictPreserveLogSuffix:   {},
+	"guardian" + store.SessionSpliceLedgerSuffix:          {},
+	"guardian" + store.SessionRewriteAttributionLogSuffix: {},
 }
 
 // SelfHealOptions picks which repair steps run. Every step is independent and

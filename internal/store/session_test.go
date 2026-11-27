@@ -187,6 +187,10 @@ func TestSessionSidecarFiles(t *testing.T) {
 		// tl1652：改写归因日志（.rewritelog.jsonl）是会话拥有的审计侧车——
 		// 漏列等于删会话时把归因史留在盘上（孤儿文件）。
 		"/home/u/.reasonix/sessions/abc.rewritelog.jsonl",
+		// tl1841（d1 扫描 G1+G6）：takeover 保全日志（.conflict-preserved.jsonl）
+		// 是被弃侧消息的唯一副本所在——登记进清单后删除/换位/迁移三链随行，
+		// 转正链配合归档白名单补键（同 commit）兑现「先归档后换位」。
+		"/home/u/.reasonix/sessions/abc.conflict-preserved.jsonl",
 		"/home/u/.reasonix/sessions/abc.recovery.json",
 		"/home/u/.reasonix/sessions/abc.context.json",
 		"/home/u/.reasonix/sessions/abc.pinned-context.json",

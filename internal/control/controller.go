@@ -6279,6 +6279,13 @@ func (c *Controller) replaceSessionAfterCancel(msgs []provider.Message) {
 	c.snapshotMu.Lock()
 	defer c.snapshotMu.Unlock()
 	c.executor.Session().Replace(append([]provider.Message(nil), msgs...))
+	// tl1841（d1 扫描 G3）：截断后通知投影层，与同构路径 rewind
+	// （rewind.go：Rewrite → InvalidateProjectionIfStale → persist）同一顺序。
+	// 投影仍有效（cancel 只删 covered 之外的尾部）时零成本返回；回合中折叠
+	// （compact_active_turn）把活跃轮前段冻进 covered 前缀后 cancel 回退进
+	// 前缀即在此当场失效并退役盘上失配侧车——否则重启撞 covered_count_overflow
+	// → 投影 drop → 全量回退重建（20261116/20261117 事故家族的非计划入口）。
+	c.executor.InvalidateProjectionIfStale()
 	// Rebuild canonical todo state from the truncated transcript so
 	// Controller.Todos(), goal readiness, and the task panel no longer see
 	// the in_progress items written by the cancelled turn.

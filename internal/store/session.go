@@ -552,6 +552,14 @@ func SessionSidecarFiles(sessionPath string) []string {
 		// commit 生效）。
 		SessionSpliceLedger(sessionPath),
 		SessionRewriteAttributionLog(sessionPath),
+		// tl1841（d1 扫描 G1+G6）：takeover 保全日志同纪律随行。此前它只在
+		// 注释里承诺「像其他 sidecar 一样随行」，登记表却没收——删除链靠
+		// stem 兜底清扫每次 WARN 捡走、转正换位链被副本同名件无归档覆盖、
+		// native 迁移链留旧 stem 孤儿（三条链一行同 commit 收口）。转正链的
+		// 「先归档后换位」另需归档白名单同 commit 补键（session_selfheal.go，
+		// 差集门禁 TestSessionBackupAllowlistGateCoversStaticInventory 钉两表
+		// 不再漂移）。
+		SessionConflictPreserveLog(sessionPath),
 		SessionRecoveryState(sessionPath),
 		SessionContext(sessionPath),
 		SessionPinnedContext(sessionPath),
