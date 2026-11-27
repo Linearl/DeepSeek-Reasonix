@@ -8,12 +8,30 @@ Reasonix 不再提供产品化的 `reasonix-guard` 恢复壳。崩溃记录、pe
 ```text
 reasonix doctor
 reasonix doctor repair
+reasonix doctor repair --undo
 reasonix report         # 诊断报告：list / show / send
 ```
 
 - **doctor**：检查配置、桌面派生状态与常见安装问题，不加载 Wails。
 - **doctor repair**：在用户明确选择后做安全修复。
+- **doctor repair --undo**：撤销最近一次已记录的修复（见下文）。
 - 崩溃上报仍为用户授权后发送，且不会改变下次启动模式。
+
+## 撤销修复（undo）
+
+每一步会改动文件的修复动作都先记录再执行。给 `doctor repair` 传 `--undo`
+即可撤销最近一次已记录的修复：它会精确还原该修复移开的那些文件，并把撤销
+所顶替的当前状态以带时间戳的 redo 副本留在各目标旁边——撤销不会销毁修复
+前后的任何一侧。
+
+- 撤销是一次性的：成功后对同一次修复再执行 `--undo` 会被拒绝（退出码 1）。
+- 没有已记录的修复时，`--undo` 直接失败（退出码 1），不会假装成功。
+- `--undo` 不能与 `--apply`、`--project` 组合使用。
+- 若记录的备份缺失或内容已与记录不符，撤销会在改动任何文件前被整体拒绝，
+  不会做一半。
+- `--undo` 覆盖所有进入事务记录的修复：配置隔离与 last-known-good 快照
+  还原、快照还原、派生状态重建。更新回滚走自己的回滚路径，不在
+  `--undo` 范围内。
 
 ## 安装布局（v1.20+）
 
