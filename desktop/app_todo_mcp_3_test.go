@@ -18,7 +18,7 @@ import (
 	"reasonix/internal/tool"
 )
 
-func TestAuthorizeAndConnectMCPServerSerializesConcurrentDisable(t *testing.T) {
+func TestReconnectMCPServerSerializesConcurrentDisable(t *testing.T) {
 	releaseConnection := make(chan struct{})
 	gateAddr, attempts := newDesktopMCPStartGate(t, func(attempt int, conn net.Conn) {
 		if attempt == 2 {
@@ -36,7 +36,7 @@ func TestAuthorizeAndConnectMCPServerSerializesConcurrentDisable(t *testing.T) {
 		}
 	}
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForDesktopMCPStartAttempt(t, attempts, 2)
 	disableDone := make(chan error, 1)
 	go func() { disableDone <- fixture.app.SetMCPServerEnabled("h", false) }()
@@ -52,7 +52,7 @@ func TestAuthorizeAndConnectMCPServerSerializesConcurrentDisable(t *testing.T) {
 	}
 	close(releaseConnection)
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	if err := <-disableDone; err != nil {
 		t.Fatalf("SetMCPServerEnabled(h,false): %v", err)
@@ -71,7 +71,7 @@ func TestAuthorizeAndConnectMCPServerSerializesConcurrentDisable(t *testing.T) {
 // RemovePlugin disconnects the uninstalled plugin's MCP servers, so it must
 // serialize on the MCP lifecycle lock: an unlocked disconnect interleaving
 // with authorization lets the reconnect relaunch the just-removed server from its stale snapshot. The plugin does not need to exist — the lock is taken before the uninstall runs, which is the contract under test.
-func TestRemovePluginSerializesWithMCPAuthorization(t *testing.T) {
+func TestRemovePluginSerializesWithMCPReconnect(t *testing.T) {
 	releaseConnection := make(chan struct{})
 	gateAddr, attempts := newDesktopMCPStartGate(t, func(attempt int, conn net.Conn) {
 		if attempt == 2 {
@@ -89,7 +89,7 @@ func TestRemovePluginSerializesWithMCPAuthorization(t *testing.T) {
 		}
 	}
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForDesktopMCPStartAttempt(t, attempts, 2)
 	removeDone := make(chan error, 1)
 	go func() { removeDone <- fixture.app.RemovePlugin("not-an-installed-plugin") }()
@@ -105,7 +105,7 @@ func TestRemovePluginSerializesWithMCPAuthorization(t *testing.T) {
 	}
 	close(releaseConnection)
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	// The uninstall itself is expected to fail (the plugin is not installed);
 	// only the ordering matters. It must complete once the lock is free.
@@ -216,7 +216,7 @@ func TestRemovePluginRechecksActiveWorkUnderLock(t *testing.T) {
 		}
 	}
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForDesktopMCPStartAttempt(t, attempts, 2)
 	removeDone := make(chan error, 1)
 	go func() { removeDone <- fixture.app.RemovePlugin("review-helper") }()
@@ -233,7 +233,7 @@ func TestRemovePluginRechecksActiveWorkUnderLock(t *testing.T) {
 	fixture.app.mu.Unlock()
 	close(releaseConnection)
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	err := <-removeDone
 	if err == nil || !strings.Contains(err.Error(), "stop background jobs") {
@@ -297,7 +297,7 @@ func TestRemovePluginRejectsBusyDetachedRuntime(t *testing.T) {
 // A turn start holds its tab's turn gate before the controller reports active
 // work, so an idle check done without the gate can go stale immediately. The
 // authorization must wait on the sibling's gate — never disconnect first — and must fail once the gated re-check sees the started work.
-func TestAuthorizeAndConnectMCPServerWaitsForSiblingTurnGate(t *testing.T) {
+func TestReconnectMCPServerWaitsForSiblingTurnGate(t *testing.T) {
 	gateAddr, attempts := newDesktopMCPStartGate(t, func(attempt int, conn net.Conn) {
 		_, _ = conn.Write([]byte{1})
 	})
@@ -309,12 +309,12 @@ func TestAuthorizeAndConnectMCPServerWaitsForSiblingTurnGate(t *testing.T) {
 	// its controller to busy while holding it.
 	sibling.turnStartMu.Lock()
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	select {
 	case got := <-attempts:
 		t.Fatalf("trust connection launched (attempt %d) while a sibling turn gate was held", got)
 	case err := <-authorizeDone:
-		t.Fatalf("AuthorizeAndConnectMCPServer returned %v without waiting for the sibling turn gate", err)
+		t.Fatalf("ReconnectMCPServer returned %v without waiting for the sibling turn gate", err)
 	case <-time.After(700 * time.Millisecond):
 	}
 	if !fixture.sharedHost.HasClient("h") {
@@ -328,7 +328,7 @@ func TestAuthorizeAndConnectMCPServerWaitsForSiblingTurnGate(t *testing.T) {
 
 	err := <-authorizeDone
 	if err == nil || !strings.Contains(err.Error(), "stop background jobs") {
-		t.Fatalf("AuthorizeAndConnectMCPServer after sibling turn start error = %v, want active-work guard", err)
+		t.Fatalf("ReconnectMCPServer after sibling turn start error = %v, want active-work guard", err)
 	}
 	if !fixture.sharedHost.HasClient("h") {
 		t.Fatal("failed authorization left the shared client disconnected")
@@ -428,7 +428,7 @@ func TestBeginTabTurnWorkspaceRepairStaysOutsideLifecycleAdmission(t *testing.T)
 	}
 }
 
-func TestAuthorizeAndConnectMCPServerSerializesCloseOfCapturedRuntime(t *testing.T) {
+func TestReconnectMCPServerSerializesCloseOfCapturedRuntime(t *testing.T) {
 	releaseConnection := make(chan struct{})
 	gateAddr, attempts := newDesktopMCPStartGate(t, func(attempt int, conn net.Conn) {
 		if attempt == 2 {
@@ -459,7 +459,7 @@ func TestAuthorizeAndConnectMCPServerSerializesCloseOfCapturedRuntime(t *testing
 	}
 
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForDesktopMCPStartAttempt(t, attempts, 2)
 	closeDone := make(chan error, 1)
 	go func() { closeDone <- fixture.app.CloseTab("active") }()
@@ -471,7 +471,7 @@ func TestAuthorizeAndConnectMCPServerSerializesCloseOfCapturedRuntime(t *testing
 
 	close(releaseConnection)
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	if err := <-closeDone; err != nil {
 		t.Fatalf("CloseTab(active) after trust: %v", err)
@@ -519,7 +519,7 @@ func TestCloseTabRemainsVisibleToPendingMCPHostGateSnapshot(t *testing.T) {
 	active.turnStartMu.Lock()
 
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForRuntimeAdmissionBarrier(t, fixture.app)
 
 	closeDone := make(chan error, 1)
@@ -541,14 +541,14 @@ func TestCloseTabRemainsVisibleToPendingMCPHostGateSnapshot(t *testing.T) {
 
 	active.turnStartMu.Unlock()
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	if err := <-closeDone; err != nil {
 		t.Fatalf("CloseTab(active): %v", err)
 	}
 }
 
-func TestAuthorizeAndConnectMCPServerKeepsInvokingWorkspaceWhenActiveTabChanges(t *testing.T) {
+func TestReconnectMCPServerKeepsInvokingWorkspaceWhenActiveTabChanges(t *testing.T) {
 	fixture := newGatedDesktopMCPLaunchFixture(t, "")
 	otherRoot := robustTempDir(t)
 	otherCtrl := control.New(control.Options{Host: plugin.NewHost(), WorkspaceRoot: otherRoot})
@@ -562,7 +562,7 @@ func TestAuthorizeAndConnectMCPServerKeepsInvokingWorkspaceWhenActiveTabChanges(
 	sibling := fixture.app.tabs["sibling"]
 	sibling.turnStartMu.Lock()
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForRuntimeAdmissionBarrier(t, fixture.app)
 	if err := fixture.app.SetActiveTab("other"); err != nil {
 		sibling.turnStartMu.Unlock()
@@ -632,7 +632,7 @@ func TestRemovePluginBlocksLateTurnAdmission(t *testing.T) {
 // A tab created during the 30s trust connection must not complete its async
 // controller build — attaching to the shared Host mid-connection can relaunch a
 // single-instance server or leave a registry the authorization never saw. The build goes through the real startTabControllerBuild path and must only run after the authorization releases the barrier.
-func TestAuthorizeAndConnectMCPServerBlocksLateControllerBuild(t *testing.T) {
+func TestReconnectMCPServerBlocksLateControllerBuild(t *testing.T) {
 	releaseConnection := make(chan struct{})
 	gateAddr, attempts := newDesktopMCPStartGate(t, func(attempt int, conn net.Conn) {
 		if attempt == 2 {
@@ -645,7 +645,7 @@ func TestAuthorizeAndConnectMCPServerBlocksLateControllerBuild(t *testing.T) {
 	dir := fixture.app.tabs["active"].WorkspaceRoot
 
 	authorizeDone := make(chan error, 1)
-	go func() { authorizeDone <- fixture.app.AuthorizeAndConnectMCPServer("h") }()
+	go func() { authorizeDone <- fixture.app.ReconnectMCPServer("h") }()
 	waitForDesktopMCPStartAttempt(t, attempts, 2) // connection launched: gates held
 
 	late := &WorkspaceTab{
@@ -671,7 +671,7 @@ func TestAuthorizeAndConnectMCPServerBlocksLateControllerBuild(t *testing.T) {
 
 	close(releaseConnection)
 	if err := <-authorizeDone; err != nil {
-		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
+		t.Fatalf("ReconnectMCPServer(h): %v", err)
 	}
 	// Completing the build means a full controller build, whose prompt stage
 	// alone has been measured at ~5.8s on an idle Windows machine and longer
