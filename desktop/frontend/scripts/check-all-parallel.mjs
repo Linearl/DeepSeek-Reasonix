@@ -52,6 +52,7 @@ const checks = [
   ["check:color-ratchet", "node", ["scripts/check-css-color-ratchet.mjs"]],
   ["check:class-contract", "node", ["scripts/check-class-contract.mjs"]],
   ["check:bridge-json-tags", "node", ["../../scripts/check-bridge-json-tags.mjs", "../.."]],
+  ["check:bridge-signatures", "node", ["../../scripts/check-bridge-signatures.mjs", "../.."]],
 ];
 
 function run(label, command, args) {

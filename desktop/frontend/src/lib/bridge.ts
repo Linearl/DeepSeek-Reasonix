@@ -763,10 +763,13 @@ function stripLegacyGoalBudgetFlags(arg: string): string {
   return parts.join(" ");
 }
 
-// AppBindings is derived from the Wails-generated Go → TS method signatures, so
-// the compiler catches drift between the Go binding surface and the frontend mock.
-// Run `wails generate module` after adding/renaming a bound method on App, then
-// `pnpm typecheck` to verify the mock still satisfies the contract.
+// AppBindings is the hand-written mirror of the Wails-generated Go → TS method
+// signatures. One doctrine since tl1842 (supersedes the earlier "generate is
+// disabled, align by hand" notes inline): after ANY change to a bound App method,
+// run `wails generate module` in desktop/ to refresh the gitignored wailsjs,
+// mirror the change here, and let `pnpm typecheck` (its pretypecheck runs
+// scripts/check-bridge-signatures.mjs) prove Go ↔ wailsjs ↔ AppBindings agree -
+// a stale wailsjs or an unmirrored signature turns that check red.
 //
 // Types for native-feel bindings, used only by AppBindings and the dev mock.
 
@@ -775,6 +778,9 @@ export interface VersionEntry {
   version: string;
   active: boolean;
   modTimeUnix: number;
+  /** task 1259: a live process still executes from this tree - never delete/prune it. */
+  occupied?: boolean;
+  occupiedPIDs?: number[];
 }
 
 /** ForkNoticeState from desktop/fork_notice.go: the first-launch notice gate (task 670). */
@@ -810,6 +816,10 @@ export interface CollabMailEntryView {
   decidedAt?: number;
   pendingMe?: boolean;
   mine?: boolean;
+  /** 任务 1016 增强项②: authoritative md behind a notification (reveal action). */
+  refPath?: string;
+  /** 任务461 P8③: identical-mail fold - 0/1 = no duplicates. */
+  duplicateCount?: number;
 }
 
 /** Task 320: revision-stamped snapshot (collabinbox.Snapshot) — contract ①. */
@@ -838,6 +848,8 @@ export interface CollabMailDetailView {
   bucket: string;
   channel?: string;
   preview: string;
+  /** 任务 1016 增强项②: mirrors the list entry's file reference (reveal action). */
+  refPath?: string;
   /** Complete mail body, untruncated. */
   body: string;
 }
@@ -850,6 +862,8 @@ export interface CollabMailChainView {
   firstAt: number;
   lastAt: number;
   preview: string;
+  /** 任务 1016: mirrors the first entry's file reference (same reveal action). */
+  refPath?: string;
   entries: CollabMailEntryView[];
 }
 
@@ -1561,7 +1575,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
    * cross-hint needs to explain why manual merge-next is unavailable. */
   GetCollabInboxMergeMode(): Promise<string>;
   /** Task 381: the fast-switch staging directory override (empty = default). */
-  GetStagingDir(): Promise<string>;
   SetStagingDir(dir: string): Promise<void>;
   UnreadMailCount(tabID: string): Promise<number>;
   SetInboxPaused(tabID: string, paused: boolean): Promise<void>;
@@ -1583,8 +1596,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   InterruptTurnForTab?(tabID: string, turnID: string): Promise<void>;
   InterruptTurnWithInboxItemsForTab?(tabID: string, turnID: string, itemIDs: string[]): Promise<{ discardedItemIds: string[]; warning?: string }>;
   TurnEventsForTab?(tabID: string, afterSeq: number): Promise<TurnEventReplayView>;
-  Approve(id: string, allow: boolean, session: boolean, persist: boolean, feedback?: string): Promise<void>;
-  ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean, feedback?: string): Promise<void>;
+  Approve(id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
+  ApproveTab(tabID: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ApproveTabForTurn?(tabID: string, turnID: string, runtimeEpoch: string, id: string, allow: boolean, session: boolean, persist: boolean): Promise<void>;
   ResolvePlanDecision(id: string, action: "start_execution" | "revise_plan" | "exit_plan"): Promise<void>;
   ResolvePlanDecisionTab(tabID: string, id: string, action: "start_execution" | "revise_plan" | "exit_plan"): Promise<void>;
@@ -1648,7 +1661,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   NewSessionForTab(tabID: string): Promise<void>;
   ClearSession(): Promise<SessionClearResult>;
   ClearSessionForTab(tabID: string): Promise<SessionClearResult>;
-  /** tl1379：重置会话费用——只清费用记账（ledger+标量+分来源），token 统计不动；契约对齐 desktop App.ResetSessionCostForTab（wails generate 禁用，手写对齐）。 */
+  /** tl1379：重置会话费用——只清费用记账（ledger+标量+分来源），token 统计不动；契约对齐 desktop App.ResetSessionCostForTab（手写契约；桥变更后 regenerate 同步，见 AppBindings 头注）。 */
   ClearSessionCost(): Promise<void>;
   ClearSessionCostForTab(tabID?: string): Promise<void>;
   History(): Promise<HistoryMessage[]>;
@@ -1701,9 +1714,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ListTrashedSessions(): Promise<SessionMeta[]>;
   ResumeSession(path: string): Promise<HistoryMessage[]>;
   ResumeSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
-  // tl1415c exported this Go method (recovery lineage switch) without a TS
-  // counterpart; freshly generated bindings fail _CheckGenToApp until declared.
-  ResumeSessionForTabExact(tabID: string, path: string): Promise<HistoryMessage[]>;
   ResumeSessionPage(path: string, limit: number): Promise<HistoryPage>;
   ResumeSessionPageForTab(tabID: string, path: string, limit: number): Promise<HistoryPage>;
   OpenChannelSessionForTab(tabID: string, path: string): Promise<HistoryMessage[]>;
@@ -1868,7 +1878,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenWorkspacePath(rel: string): Promise<void>;
   OpenWorkspacePathForTab(tabID: string, rel: string): Promise<void>;
   ResolveWorkspacePathForTab(tabID: string, rel: string): Promise<string>;
-  /** 任务 1060：转录选中路径菜单的存在性探针——返回可开的绝对路径，空串=不显示两项；契约对齐 desktop App.ResolveOpenablePathForTab（wails generate 禁用，手写对齐）。 */
+  /** 任务 1060：转录选中路径菜单的存在性探针——返回可开的绝对路径，空串=不显示两项；契约对齐 desktop App.ResolveOpenablePathForTab（手写契约；桥变更后 regenerate 同步，见 AppBindings 头注）。 */
   ResolveOpenablePathForTab(tabID: string, path: string): Promise<string>;
   /** tl1641：产物栏 dock 行菜单「在文件管理器中显示/在内置终端打开」的 reveal 探针——与 open 探针共用解析+存在性判定面，但不套 opener 可执行门禁（reveal/cd 不执行目标，.ps1 等类型同样可用）；空串=不显示两项。契约对齐 desktop App.ResolveRevealablePathForTab（手写对齐）。 */
   ResolveRevealablePathForTab(tabID: string, path: string): Promise<string>;
@@ -1885,15 +1895,16 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   OpenLocalPath(path: string): Promise<void>;
   /** tl1565：附件卡片「复制内容」读桥——opener 家族读侧延伸（normalize +
    *  可执行拒绝 + symlink 落点门禁同 OpenLocalPath；目录/二进制/超 2MiB 诚实
-   *  报错不截断）。契约对齐 desktop App.ReadLocalTextFile（wails generate
-   *  禁用，手写声明）。 */
+   *  报错不截断）。契约对齐 desktop App.ReadLocalTextFile（手写声明；桥变更后
+   *  regenerate 同步，见 AppBindings 头注）。 */
   ReadLocalTextFile(path: string): Promise<string>;
   SavePastedImage(dataUrl: string): Promise<string>;
   SaveClipboardImage(): Promise<string>;
   /** tl1441 ③：群聊附件落盘——全局工作区 .reasonix/attachments 锚点（群聊
    *  无活动工作区可锚，会话附件链落的是当前活动会话的项目目录）；返回绝对
    *  路径（消息体 @引用需跨工作区可解析）。契约对齐 desktop
-   *  App.SaveChannelAttachment（wails generate 禁用，手写声明）。 */
+   *  App.SaveChannelAttachment（手写声明；桥变更后 regenerate 同步，见
+   *  AppBindings 头注）。 */
   SaveChannelAttachment(dataUrl: string): Promise<string>;
   /** tl1465 D：原生剪贴板图片落群聊附件目录（全局工作区锚点）——粘贴链的
    *  无文件载荷回退分支（截图工具等 image-hint 剪贴板）此前锚活动会话工作
@@ -1905,16 +1916,16 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
    *  desktop App.ChannelAttachmentDataURL（手写声明）。 */
   ChannelAttachmentDataURL(path: string): Promise<string>;
   SavePastedFile(name: string, dataUrl: string): Promise<string>;
-  /** 任务 1008：音频附件保存（五格式白名单 + 50MB 上限）；wails generate 禁用，手写契约对齐 desktop App.SavePastedAudio。 */
+  /** 任务 1008：音频附件保存（五格式白名单 + 50MB 上限）；手写契约对齐 desktop App.SavePastedAudio（桥变更后 regenerate 同步，见 AppBindings 头注）。 */
   SavePastedAudio(name: string, dataUrl: string): Promise<string>;
-  /** tl1767：视频附件保存（mp4/mov/webm/mkv/avi 白名单 + 50MB 上限）；wails generate 禁用，手写契约对齐 desktop App.SavePastedVideo。 */
+  /** tl1767：视频附件保存（mp4/mov/webm/mkv/avi 白名单 + 50MB 上限）；手写契约对齐 desktop App.SavePastedVideo（桥变更后 regenerate 同步，见 AppBindings 头注）。 */
   SavePastedVideo(name: string, dataUrl: string): Promise<string>;
   PickExportFile(defaultFilename: string, mimeType: string): Promise<string>;
   SaveExportFile(path: string, payload: string, base64Encoded: boolean): Promise<void>;
   SaveExportImageFiles(path: string, payloads: string[]): Promise<void>;
   // tl 1087 desktop screenshot: full-screen capture at the cursor's monitor,
   // temp-file lifecycle, attachment save, and Ctrl+S file save. Hand-written
-  // contract (wails generate disabled); backend App methods live in
+  // contract; backend App methods live in
   // desktop/screenshot_app.go.
   CaptureScreenshotAtCursor(): Promise<{ path: string; width: number; height: number; x: number; y: number }>;
   /** tl 1088: capture the whole virtual desktop so a selection can span displays. */
@@ -1922,7 +1933,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   /** tl 1370: which monitor holds the cursor right now — a pure query, no
    *  capture side effect. Device (a \\.\DISPLAYn name) is the stable identity
    *  the overlay's cursor-follow loop compares across polls. Contract aligned
-   *  with desktop App.ScreenshotCursorMonitor (wails generate disabled). */
+   *  with desktop App.ScreenshotCursorMonitor (hand-written; regenerate after
+   *  bridge changes). */
   ScreenshotCursorMonitor(): Promise<{ device: string; x: number; y: number; width: number; height: number }>;
   ReleaseScreenshotCapture(path: string): Promise<void>;
   SaveScreenshotAttachment(dataUrl: string): Promise<string>;
@@ -1940,8 +1952,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
    *  且旧代码把错误吞成空串把覆盖层 paint 成黑屏。Go 侧判据：绝对路径 + 父目录名
    *  reasonix-screenshot- 前缀（与 ReleaseScreenshotCapture 同判据）+ 位于
    *  os.TempDir() 之下 + 图片扩展名白名单 + 字节级格式探测；违规返回明确错误，
-   *  绝不静默空串。契约对齐 desktop App.ScreenshotPreviewDataURL（wails generate
-   *  禁用，手写契约）。 */
+   *  绝不静默空串。契约对齐 desktop App.ScreenshotPreviewDataURL（手写契约；
+   *  桥变更后 regenerate 同步，见 AppBindings 头注）。 */
   ScreenshotPreviewDataURL(path: string): Promise<string>;
   AttachDropped(path: string): Promise<DroppedItem>;
   AttachmentDataURL(path: string): Promise<string>;
@@ -2003,7 +2015,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetMaxParallelWriters(n: number): Promise<void>;
   SetAutoPlan(mode: string): Promise<void>;
   SetDefaultToolApprovalMode(mode: string): Promise<void>;
-  SetDesktopAutopilot(enabled: boolean, maxRuntime: string, approvalGrace: string): Promise<void>;
   /** Task 477: the experimental ask-timeout sub-option (off = the built-in terminal stop). */
   SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number): Promise<void>;
   /** Task 544: the experimental ask auto-continue sub-option (off = the idle stop after an answered ask). */
@@ -2060,8 +2071,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalSplitView(enabled: boolean): Promise<void>;
   // Task 677: sidebar group-chat entry switch (experimental; pure frontend gate).
   SetExperimentalCollabGroupView(enabled: boolean): Promise<void>;
-  /** 任务 856 ③：协作中心入口总开关（677 collabGroupView 迁移改名）。 */
-  SetExperimentalCollabHub(enabled: boolean): Promise<void>;
   // Task 705: cross-session message auto-fold switch (experimental; pure display pref).
   SetExperimentalSessionCollabAutoFold(enabled: boolean): Promise<void>;
   // Task 704: trajectory view switch (experimental; pure frontend gate).
@@ -2181,9 +2190,8 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // （回执带 applied + needsRestart，前端据此给重启两选项）。
   LabBulkPlan(scope: string, on: boolean): Promise<LabBulkPlanView>;
   LabBulkApply(scope: string, on: boolean): Promise<LabBulkPlanView>;
-  // Task 342: WebView2 CDP debug endpoint switch (loopback-only random port;
-  // ships off; the browser args are read at startup — restart to apply).
-  SetExperimentalCDPDebugPort(enabled: boolean): Promise<void>;
+  // Task 342's WebView2 CDP debug endpoint switch is retired (App setter gone from
+  // the Go bridge); the lab card keeps its config-level persistence pins only.
   // Task 790: resident ACP listener (lab switch; listener arms at boot).
   SetExperimentalACPListen(enabled: boolean): Promise<void>;
   SetACPListenPort(port: number): Promise<void>;
@@ -2293,8 +2301,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl1456 资源管理器：一次按需读内存总览+本产品形态进程表（面板开着才轮询，
   // 关闭即零成本——Go 侧无采样器无定时器）。
   ResourceSnapshot(): Promise<ResourceSnapshotView>;
-  // Task 19: multi-session collaboration tools (experimental).
-  SetExperimentalSessionCollab(enabled: boolean): Promise<void>;
   // 任务 517 → tl1816: the merged safety/cost master switch retired — the
   // fine-grained sub-switch declarations below are the only surface.
   // 任务 722: fine-grained safety/cost sub-switch overrides.
@@ -2312,8 +2318,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   SetExperimentalOrphanHandling(enabled: boolean): Promise<void>;
   SetExperimentalOrphanLeaseReclaim(enabled: boolean): Promise<void>;
   SetExperimentalRecoveryOrphanSweep(enabled: boolean): Promise<void>;
-  // Task 363A: runtime assembly reuse pool (same root+model+effort tabs).
-  SetExperimentalRuntimeReuse(enabled: boolean): Promise<void>;
   SetSessionCollabHopLimit(limit: number): Promise<void>;
   // Task 308-O4: detached idle runtime release threshold (minutes; 0 = never).
   SetDetachedIdleReleaseMinutes(minutes: number): Promise<void>;
@@ -5507,7 +5511,6 @@ function makeMockApp(): AppBindings {
         async DeleteInboxItem() {},
         async MoveInboxItem() {},
         async GetCollabInboxMergeMode() { return "off"; },
-        async GetStagingDir() { return ""; },
         async SetStagingDir() {},
         async UnreadMailCount() { return 0; },
         async SetInboxPaused(_tabID, paused) { if (recoveryMock) (await import("./inboxRecoveryPreview")).setInboxRecoveryPreviewPaused(paused); },
@@ -5534,20 +5537,20 @@ function makeMockApp(): AppBindings {
           await withMockTabScope(_tabID, () => this.Cancel());
         },
         async CancelTabWithInboxItemsResult(_tabID, itemIDs) { await withMockTabScope(_tabID, () => this.Cancel()); return { discardedItemIds: [...itemIDs] }; },
-        async Approve(_id, allow, session, persist, feedback?: string) {
+        async Approve(_id, allow, session, persist) {
           if (!pendingApprovalPreview) return;
           pendingApprovalPreview = false;
           pendingApprovalPreviewPrompt = undefined;
           const suffix = persist ? "grant saved" : session ? "grant active this session" : "allowed once";
-          const detail = allow ? suffix : feedback ? `denied with feedback: ${feedback}` : "denied";
+          const detail = allow ? suffix : "denied";
           emit({
             kind: "message",
             text: `approval preview answered: ${detail}`,
           });
           emitMockTurnDone();
         },
-        async ApproveTab(_tabID, id, allow, session, persist, feedback?: string) {
-          await withMockTabScope(_tabID, () => this.Approve(id, allow, session, persist, feedback));
+        async ApproveTab(_tabID, id, allow, session, persist) {
+          await withMockTabScope(_tabID, () => this.Approve(id, allow, session, persist));
         },
         async ResolvePlanDecision(id, action) {
           const active = mockTabs.find((tab) => tab.active);
@@ -5621,7 +5624,7 @@ function makeMockApp(): AppBindings {
         async ResolvePromptForTab(tabID, promptID, _turnID, _runtimeEpoch, kind, answer) {
           await withMockTabScope(tabID, async () => {
             if (kind === "ask") return this.AnswerQuestion(promptID, answer.questions ?? []);
-            if (kind === "approval") return this.Approve(promptID, Boolean(answer.allow), Boolean(answer.session), Boolean(answer.persist), answer.feedback);
+            if (kind === "approval") return this.Approve(promptID, Boolean(answer.allow), Boolean(answer.session), Boolean(answer.persist));
             if (kind === "plan") return this.ResolvePlanDecisionTab(tabID, promptID, (answer.action ?? "exit_plan") as "start_execution" | "revise_plan" | "exit_plan");
             if (kind === "recovery") return this.ResolveRecoveryTab(tabID, promptID, answer.action ?? "revise", answer.feedback ?? "");
             if (kind === "mcp") return this.AnswerMCPInteractionForTab(tabID, promptID, (answer.action ?? "cancel") as "accept" | "decline" | "cancel", answer.content ?? null);
@@ -5934,13 +5937,10 @@ function makeMockApp(): AppBindings {
         { role: "assistant", content: "This is a mock resumed transcript — the real one comes from the kernel." },
       ];
     },
-	    async ResumeSessionForTab(_tabID: string, path: string) {
-	      return this.ResumeSession(path);
-	    },
-	    async ResumeSessionForTabExact(_tabID: string, path: string) {
-	      return this.ResumeSession(path);
-	    },
-	    async ResumeSessionPage(path: string, limit = 60) {
+    async ResumeSessionForTab(_tabID: string, path: string) {
+      return this.ResumeSession(path);
+    },
+    async ResumeSessionPage(path: string, limit = 60) {
 	      return mockHistoryPage(await this.ResumeSession(path), 0, limit);
 	    },
 	    async ResumeSessionPageForTab(_tabID: string, path: string, limit = 60) {
@@ -7388,7 +7388,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalSessionMonitor() {},
     async SetExperimentalSplitView() {},
     async SetExperimentalCollabGroupView() {},
-    async SetExperimentalCollabHub() {},
     async SetExperimentalSessionCollabAutoFold() {},
     async SetExperimentalTrajectoryView() {},
     async SetExperimentalTodoSidebar() {},
@@ -7488,7 +7487,6 @@ function makeMockApp(): AppBindings {
     async GetActivePlanFamily(_tabID?: string) { return ""; },
     async SetExperimentalSubagentTps() {},
     async SetExperimentalCompletionSummary() {},
-    async SetExperimentalCDPDebugPort() {},
     async SetExperimentalACPListen() {},
     async SetACPListenPort() {},
     async ACPListenStatus() {
@@ -7587,7 +7585,6 @@ function makeMockApp(): AppBindings {
         subagents: [],
       };
     },
-    async SetExperimentalSessionCollab() {},
     async SetSafetyIdleTerminate() {},
     async SetSafetyLoopStreakNote() {},
     async SetSafetyEventWaitRecheck() {},
@@ -7597,7 +7594,6 @@ function makeMockApp(): AppBindings {
     async SetExperimentalOrphanHandling() {},
     async SetExperimentalOrphanLeaseReclaim() {},
     async SetExperimentalRecoveryOrphanSweep() {},
-    async SetExperimentalRuntimeReuse() {},
     async SetSessionCollabHopLimit() {},
     async SetDetachedIdleReleaseMinutes() {},
     async SetGCPercent() {},
@@ -7793,7 +7789,6 @@ function makeMockApp(): AppBindings {
     async ChannelCancelFromHuman(_ref: string, _messageID: string) {
       throw new Error("channel storage is unavailable in the dev shell");
     },
-    // tl1741：SetDesktopAutopilot dev-shell 实现随撤开关删除（App 层 setter 已退役）。
     async SetDesktopAutopilotAskTimeout(enabled: boolean, seconds: number) {
       if (enabled && seconds !== 0 && (!Number.isFinite(seconds) || !Number.isInteger(seconds) || seconds < 1 || seconds > 3600)) {
         throw new Error(`autopilot ask timeout must be between 1 and 3600 seconds, got ${seconds}`);

@@ -38,7 +38,7 @@ ok(panel.includes("app.SetStagingDir(e.target.value)"), "the staging input commi
 ok(panel.includes('app.SetStagingDir("")'), "the reset button clears the override back to the default");
 ok(panel.includes("settings.stagingDirReset"), "the reset control carries its own label");
 ok(viewTypes.includes("stagingDir?: string"), "SettingsView exposes stagingDir");
-ok(bridge.includes("GetStagingDir(): Promise<string>") && bridge.includes("SetStagingDir(dir: string): Promise<void>"), "bridge exposes get/set for the staging override");
+ok(bridge.includes("SetStagingDir(dir: string): Promise<void>") && !bridge.includes("GetStagingDir("), "bridge exposes the staging override setter (the Go-side getter is retired, tl1842)");
 ok(goPrefs.includes("func (a *App) SetStagingDir(dir string) error") && goPrefs.includes("applyConfigOnly"), "the backend setter uses the light save path (no rebuild bounce)");
 ok(render.includes("staging_dir = %q"), "the config renderer writes the override (empty stays byte-identical default)");
 for (const [name, table] of [["en", en], ["zh", zh], ["zh-TW", zhTW]] as const) {
