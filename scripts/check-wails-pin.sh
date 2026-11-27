@@ -54,13 +54,20 @@ for workflow in "${workflow_pins[@]}"; do
 done
 
 # The workflows are not the only way developers build a release. Reject every
-# tracked install source except the three supported ways to read the shared pin.
+# tracked install source except the whitelisted ones below: each line pairs a
+# tracked file with the exact string of one of the supported ways to read the
+# shared pin (workflows via $GITHUB_WORKSPACE/.wails-version, Makefile via
+# WAILS_VERSION, prod_test via $wails_pin). A file that installs the CLI the
+# supported way but is missing here shows up as an unsupported source — tl1828b
+# fixed exactly that false red for app-memory.yml / pr-build-gate.yml.
 install_lines="$(git -C "$root" grep -nF "$module@" -- . || true)"
 unexpected_sources="$(awk -v module="$module" '
   index($0, ".github/workflows/ci.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, ".github/workflows/release-desktop.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, ".github/workflows/transcript-native-smoke.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, ".github/workflows/release-fork.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
+  index($0, ".github/workflows/app-memory.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
+  index($0, ".github/workflows/pr-build-gate.yml:") == 1 && index($0, module "@$(cat \"$GITHUB_WORKSPACE/.wails-version\")") { next }
   index($0, "Makefile:") == 1 && index($0, module "@$(WAILS_VERSION)") { next }
   index($0, "prod_test:") == 1 && index($0, module "@$wails_pin") { next }
   { print }

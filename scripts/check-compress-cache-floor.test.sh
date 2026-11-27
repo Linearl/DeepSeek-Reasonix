@@ -47,4 +47,21 @@ if [[ "$listed" -lt 11 ]]; then
   exit 1
 fi
 
+# 6. tl1828b regression: a compression-chain file must trigger the gate no
+#    matter which line of the manifest it sits on. The old quoted for-loop
+#    matched the whole list as one word and silently went green whenever the
+#    first entry was unrelated (argv and env manifests alike).
+out="$("$check" docs/GUIDE.md internal/agent/compact_projection.go)"
+if [[ "$out" != *"Prefix-cache floor gate passed."* ]]; then
+  echo "chain file after a non-chain line did not trigger the gate: $out" >&2
+  exit 1
+fi
+out="$(COMPRESS_FLOOR_CHANGED_FILES="$(
+  printf '%s\n' docs/GUIDE.md internal/agent/compact_projection.go
+)" "$check")"
+if [[ "$out" != *"Prefix-cache floor gate passed."* ]]; then
+  echo "env manifest with a non-chain first line did not trigger the gate: $out" >&2
+  exit 1
+fi
+
 echo "compress-cache-floor contract tests: PASS (filter matched $listed tests)"
