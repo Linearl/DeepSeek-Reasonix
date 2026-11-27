@@ -212,7 +212,12 @@ export function GoalObjectCard({ goal }: { goal: GoalObjectInfo }) {
 // TodoTree renders one batch: task 1107 focus-mode rows (group headers +
 // plain tree rows) with depth-based indent, dotted hierarchy codes, and
 // per-parent collapse.
-function TodoTree({
+// tl1836: also the single rendering unit for the right-dock sealed
+// previous-turn list (TodoDockEmptyState's expanded record) — one presentation
+// for the live list and the sealed record, so codes/badges/grouping cannot
+// drift apart again. The export is additive; the live panel's behaviour is
+// untouched.
+export function TodoTree({
   stateKey,
   todos,
   running,

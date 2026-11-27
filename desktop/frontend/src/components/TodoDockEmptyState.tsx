@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Translator } from "../lib/i18n";
-import { todoDockEmptyState, todoTerminalStatus, type TodoDockEmptyItemSignal, type TodoBatch } from "../lib/todoVisibility";
+import { todoBatchKey, todoDockEmptyState, todoTerminalStatus, type TodoDockEmptyItemSignal, type TodoBatch } from "../lib/todoVisibility";
+import { TodoTree } from "./TodoPanel";
 import type { Todo } from "../lib/tools";
 
 /**
@@ -41,12 +42,14 @@ export function TodoDockEmptyState({
   // snapshot IS the sealed live list (todo_read reads it back verbatim), then
   // the newest archived batch, then the resolved list. No source with items →
   // the plain single-copy shape (identical markup to the pre-tl1353 state).
-  const sealedTodos = view.state === "sealed"
+  // tl1836: copied into a mutable array — the shared tree unit's pure helpers
+  // (todoBatchKey / TodoTree) take Todo[], and the record never mutates it.
+  const sealedTodos: Todo[] = view.state === "sealed"
     ? (canonicalTodos && canonicalTodos.length > 0
-      ? canonicalTodos
+      ? [...canonicalTodos]
       : archive && archive[0] && archive[0].todos.length > 0
-        ? archive[0].todos
-        : todos && todos.length > 0 ? todos : [])
+        ? [...archive[0].todos]
+        : todos && todos.length > 0 ? [...todos] : [])
     : [];
   // tl1682: the header copy must never read as "the list is empty / purely
   // historical" while the folded snapshot still holds in-progress or pending
@@ -55,6 +58,15 @@ export function TodoDockEmptyState({
   // The count rides the snapshot that actually renders on expand, so the
   // header and the revealed list always agree.
   const sealedActive = sealedTodos.filter((todo) => !todoTerminalStatus(todo.status)).length;
+  // tl1836: the expanded record renders the SAME tree unit as the live panel
+  // (TodoTree — hierarchy codes, status chips, focus grouping). The sealed
+  // list is a record of a finished turn, so the runtime presentation flags
+  // are off: an in-flight item shows the paused face, never a live "waiting"
+  // state. The tree's per-group disclosure state keys off the snapshot's
+  // batch key, so group open/closed follows the record content the same way
+  // the live panel's follows the batch.
+  const sealedTreeKey = `todo-sealed:${todoBatchKey(sealedTodos)}`;
+  const sealedCurrentRef = useRef<HTMLLIElement | null>(null);
   const copy = view.state === "sealed"
     ? sealedTodos.length > 0
       ? sealedActive > 0
@@ -84,39 +96,18 @@ export function TodoDockEmptyState({
           {t("rightDock.todoSealedExpand", { count: sealedTodos.length })}
         </button>
         {sealedExpanded && (
-          <ul className="workbench-dock__todo-sealed-list" data-todo-sealed-list>
-            {sealedTodos.map((todo, index) => {
-              const status = sealedTodoStatus(todo.status);
-              return (
-                <li key={index} className={`workbench-dock__todo-sealed-item workbench-dock__todo-sealed-item--${status}`}>
-                  <span className="workbench-dock__todo-sealed-item-icon" aria-hidden="true">
-                    {status === "completed" || status === "archived" ? "✔" : status === "abandoned" ? "✕" : "○"}
-                  </span>
-                  <span className="workbench-dock__todo-sealed-item-text">{todo.content}</span>
-                </li>
-              );
-            })}
-          </ul>
+          <div data-todo-sealed-list>
+            <TodoTree
+              stateKey={sealedTreeKey}
+              todos={sealedTodos}
+              running={false}
+              pendingPrompt={false}
+              currentRef={sealedCurrentRef}
+            />
+          </div>
         )}
       </div>
     </div>
   );
 }
 
-// sealedTodoStatus narrows a stored status for the read-only record rows —
-// the same glyph convention the live panel's group previews use; anything
-// unrecognized renders as pending (TodoPanel's normalizeTodoStatus fallback).
-function sealedTodoStatus(status: Todo["status"]): "pending" | "in_progress" | "completed" | "abandoned" | "archived" {
-  switch (String(status ?? "").trim()) {
-    case "completed":
-      return "completed";
-    case "in_progress":
-      return "in_progress";
-    case "abandoned":
-      return "abandoned";
-    case "archived":
-      return "archived";
-    default:
-      return "pending";
-  }
-}

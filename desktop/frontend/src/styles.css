@@ -31367,27 +31367,10 @@ button.statusbar__mcp:focus-visible {
 .workbench-dock__todo-sealed-toggle:hover {
   color: var(--fg);
 }
-.workbench-dock__todo-sealed-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  color: var(--fg-dim);
-}
-.workbench-dock__todo-sealed-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  overflow-wrap: anywhere;
-}
-.workbench-dock__todo-sealed-item-icon {
-  flex: 0 0 auto;
-}
-.workbench-dock__todo-sealed-item-text {
-  min-width: 0;
-}
+/* tl1836: the expanded record reuses the live panel's tree unit (todobar__*)
+   inside the [data-todo-sealed-list] wrapper — the old bespoke sealed
+   item/glyph styles (workbench-dock__todo-sealed-list/-item/-icon/-text)
+   are retired with their renderer. */
 
 /* Task 495: right-dock subagent directory (running/ended sections, folded
    rows, 20-per-page reveal). Theme-token contract: same variable set as the
