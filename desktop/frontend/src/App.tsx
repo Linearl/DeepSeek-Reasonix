@@ -382,7 +382,7 @@ import { setStatusBarItems, setStatusBarStyle, useShellPrefsStore } from "./stor
 import { setCollabAutoFold } from "./store/collabDisplay";
 import { useInvocationMetadata } from "./app-runtime/useInvocationMetadata";
 import { UnfiledInputsBanner } from "./components/UnfiledInputsBanner";
-import { countUnhandled, readHandledTurns, unfiledSessionKeyOf, useUnfiledInputs, withUnfiledNoticeItems } from "./lib/unfiledInputs";
+import { countUnhandled, readHandledTurns, unfiledSessionKeyOf, useUnfiledInputs, withUnfiledNoticeItems, unfiledRecoverySyncKey, shouldSyncSurfaceForUnfiled } from "./lib/unfiledInputs";
 // Hold reasoning UI until the authoritative desktop startup settings arrive;
 // this prevents a hidden preference from flashing content during first paint.
 setReasoningDisplayPending();
@@ -4476,6 +4476,23 @@ export default function App() {
     () => withUnfiledNoticeItems(visibleTranscriptItems, unfiled.entries, unfiledHandledTurns, unfiledNoticeTitle),
     [visibleTranscriptItems, unfiled.entries, unfiledHandledTurns, unfiledNoticeTitle],
   );
+  // tl1845 恢复表面回读：横幅条目出现 = 对账认为 transcript 缺这轮，但 20261127
+  // 实录证明数据常在档（13:39/13:48 两轮检查点/文件/上下文齐全，唯独表面没画，
+  // 关 tab 重开才恢复）。条目内容签名变化且表面安静时，走一次 retrySession
+  // History（与重开 tab 同一条 hydrate 路径）把文件页画回主流。安静门见
+  // shouldSyncSurfaceForUnfiled——turn 活跃/乐观行未落位时绝不换底，等安静后
+  // effect 随依赖变化重跑补做；签名保证同一批条目只回读一次，不形成循环。
+  const unfiledSyncKey = useMemo(() => unfiledRecoverySyncKey(unfiled.entries), [unfiled.entries]);
+  const unfiledSyncQuiet = shouldSyncSurfaceForUnfiled(state, unfiled.entries);
+  const unfiledSyncKeyByTabRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const tabId = visibleTranscriptTabId;
+    if (!tabId || !unfiledSyncKey) return;
+    if (unfiledSyncKeyByTabRef.current[tabId] === unfiledSyncKey) return;
+    if (!unfiledSyncQuiet) return;
+    unfiledSyncKeyByTabRef.current[tabId] = unfiledSyncKey;
+    void retrySessionHistory(tabId);
+  }, [unfiledSyncKey, unfiledSyncQuiet, visibleTranscriptTabId, retrySessionHistory]);
   // Task 151 (round 3): the render-side half of a tab switch, for desktop.log. The data
   // layer already reports its own stages (switch-tab `total=0ms` plus a
   // `history fetch skipped reason=local-snapshot` line), so the open question is only how

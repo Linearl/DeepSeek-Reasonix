@@ -1221,7 +1221,7 @@ func Run(ctx context.Context, payload Payload, hooks []ResolvedHook, spawner Spa
 			Decision:  decision,
 			ExitCode:  r.ExitCode,
 			Stdout:    r.Stdout,
-			Stderr:    stderrFor(r, timeout),
+			Stderr:    stderrFor(r, timeout, h),
 			TimedOut:  r.TimedOut,
 			Truncated: r.Truncated,
 			Duration:  time.Since(start),
@@ -1305,8 +1305,12 @@ func readContextFile(path string) SpawnResult {
 }
 
 // stderrFor returns the best human message for an outcome: real stderr, else a
-// spawn-error message, else a timeout note.
-func stderrFor(r SpawnResult, timeout time.Duration) string {
+// spawn-error message, else a timeout note. h names the hook so the remediation
+// can point at the file the timeout is actually configured in: a plugin-scope
+// hook's timeout lives on its plugin-manifest entry, not settings.json
+// (tl1845 — the settings.json advice sent users hunting for a field that does
+// not exist for that hook).
+func stderrFor(r SpawnResult, timeout time.Duration, h ResolvedHook) string {
 	if r.Stderr != "" {
 		return r.Stderr
 	}
@@ -1317,12 +1321,23 @@ func stderrFor(r SpawnResult, timeout time.Duration) string {
 		// Task 314: the old bare "hook timed out after 5s" told the reader
 		// nothing actionable. Keep the fail-closed block, but say why it
 		// happens and what to do about it (315-style cause + workaround).
+		where := `"timeout" in settings.json (e.g. 15000)`
+		if h.Scope == ScopePlugin {
+			// tl1845: the entry lives in the plugin manifest; that manifest file
+			// is where its timeout is adjustable (settings.json has no such
+			// field for a plugin hook).
+			source := h.Source
+			if source == "" {
+				source = "the hook's plugin manifest"
+			}
+			where = `"timeout" (milliseconds) on this hook's entry in its plugin manifest (` + source + `)`
+		}
 		return fmt.Sprintf(
 			"hook timed out after %s: the hook script did not finish within its budget "+
 				"(usual causes: script cold start, antivirus scanning, or a disk stall). "+
 				"The call stays blocked fail-closed so the gate keeps its meaning. "+
 				"What to do: retry the tool once; if it keeps happening, raise this hook's "+
-				"\"timeout\" in settings.json (e.g. 15000) or temporarily disable the hook (task 314).",
+				where+" or temporarily disable the hook (task 314).",
 			timeout)
 	}
 	return ""

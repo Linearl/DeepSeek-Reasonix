@@ -117,10 +117,30 @@ func (c *Controller) UnfiledInputs() []UnfiledInput {
 		opts.RecoveredTexts = recoveryForkUserTexts(c.SessionPath())
 	}
 	gaps := unfiled.ReconcileGaps(inputs, texts, opts)
+	// tl1845 in-flight 入档窗口豁免：beginCheckpoint 在 UserPromptSubmit hook
+	// 之前开档（turn_orchestrator.go:288），用户消息要等 hook 返回后才 append
+	// （:301 之后）。hook 慢（如 5s 预算的 bat 冷启动）时，对账撞进这个窗口会
+	// 把「正在入档」的最新 checkpoint 误报成「未进入对话」——20261127 13:49 假
+	// 横幅的机理（消息随后完整落档，transcript/上下文俱在）。run 活跃期只豁免
+	// 最新一条 checkpoint（唯一可能还在窗口内的）；run 一结束，真缺口照报，
+	// task 1023 语义不变。
+	c.mu.Lock()
+	running := c.running
+	c.mu.Unlock()
+	inFlightTurn := -1
+	hasInFlight := false
+	if running && len(metas) > 0 {
+		// Checkpoints() 按 turn 升序（checkpoint.Store.List 排序），末位=最新。
+		inFlightTurn = metas[len(metas)-1].Turn
+		hasInFlight = true
+	}
 	out := make([]UnfiledInput, 0, len(gaps))
 	for _, g := range gaps {
 		// 已折叠存档桶免报：原文进过对话、被折叠归档，不是缺口。
 		if g.Class == unfiled.GapFoldedArchive {
+			continue
+		}
+		if hasInFlight && g.Turn == inFlightTurn {
 			continue
 		}
 		anchor := ""

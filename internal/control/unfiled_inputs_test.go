@@ -179,6 +179,61 @@ func TestUnfiledInputsPendingRecoveryBucket(t *testing.T) {
 	}
 }
 
+// tl1845 红测试：in-flight 入档窗口豁免。事故链（20261127 13:48 实录）：
+// beginCheckpoint 在 UserPromptSubmit hook 之前开档（turn_orchestrator.go:288），
+// 用户消息在 hook 返回后才落档（:301 之后 runModelTurn 才 append）——hook 慢
+// （5s 超时的 computer-use bat）时对账撞进窗口，把「正在入档」的 prompt 误报成
+// 「未进入对话」，用户看到假横幅「未入档输入（已从检查点恢复）」而消息其实
+// 已完整落档。三态钉：run 活跃期不报 / 落档后不报（containment 既有口径）/
+// run 结束仍缺照报（task 1023 真缺口语义不变）。
+func TestUnfiledInputsInFlightFilingWindowExempt(t *testing.T) {
+	setRunning := func(c *Controller, running bool) {
+		c.mu.Lock()
+		c.running = running
+		c.mu.Unlock()
+	}
+
+	// ① run 活跃 + 最新 checkpoint 消息未落：入档窗口内不报。
+	c := newUnfiledTestController(t)
+	c.beginCheckpoint(context.Background(), "正在入档的输入")
+	setRunning(c, true)
+	if got := c.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("an in-flight turn's own checkpoint must not surface as unfiled, got %+v", got)
+	}
+
+	// ② hook 返回后消息落档：containment 命中，running 与否都不报（既有口径）。
+	c.executor.Session().Add(provider.Message{Role: provider.RoleUser, ID: "msg-filed", Content: "<context-state>x</context-state>\n正在入档的输入"})
+	if got := c.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("a filed prompt must stay reconciled while running, got %+v", got)
+	}
+	setRunning(c, false)
+	if got := c.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("a filed prompt must stay reconciled after the turn, got %+v", got)
+	}
+
+	// ③ run 结束消息仍缺：真缺口照报（1023 语义不变）。
+	c2 := newUnfiledTestController(t)
+	c2.beginCheckpoint(context.Background(), "丢失的输入")
+	setRunning(c2, true)
+	if got := c2.UnfiledInputs(); len(got) != 0 {
+		t.Fatalf("in-flight exemption must hold while running, got %+v", got)
+	}
+	setRunning(c2, false)
+	if got := c2.UnfiledInputs(); len(got) != 1 {
+		t.Fatalf("a settled gap must still be reported after the run ends, got %+v", got)
+	}
+
+	// ④ 只豁免最新 checkpoint：更早的崩溃缺口在 run 活跃期照报。
+	c3 := newUnfiledTestController(t)
+	c3.beginCheckpoint(context.Background(), "崩溃轮丢的输入")
+	c3.beginCheckpoint(context.Background(), "进行中的输入")
+	setRunning(c3, true)
+	got := c3.UnfiledInputs()
+	if len(got) != 1 || got[0].Prompt != "崩溃轮丢的输入" {
+		t.Fatalf("only the newest checkpoint is in-flight; the older crashed gap must still report, got %+v", got)
+	}
+}
+
 // 不同根的 recovery 副本（别的会话 topic）不得充当证据。
 func TestUnfiledInputsPendingRecoveryIgnoresForeignForks(t *testing.T) {
 	c := newUnfiledTestController(t)

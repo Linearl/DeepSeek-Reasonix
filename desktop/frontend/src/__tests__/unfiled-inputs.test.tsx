@@ -5,7 +5,7 @@
 import { JSDOM } from "jsdom";
 import { strict as assert } from "node:assert";
 import { readFile } from "node:fs/promises";
-import { countUnhandled, readHandledTurns, markHandledTurns, unfiledSessionKeyOf, withUnfiledNoticeItems } from "../lib/unfiledInputs";
+import { countUnhandled, readHandledTurns, markHandledTurns, unfiledSessionKeyOf, withUnfiledNoticeItems, unfiledRecoverySyncKey, shouldSyncSurfaceForUnfiled } from "../lib/unfiledInputs";
 import type { UnfiledInputView } from "../lib/types";
 import type { Item } from "../lib/useController";
 
@@ -184,6 +184,33 @@ console.log("\nunfiled inputs: tl1372 dismiss key normalization (recovery fork f
   ok(readHandledTurns(keyParent).has(9), "a mark made on a nested fork lands on the shared parent key");
   const otherKey = unfiledSessionKeyOf("C:/sessions/another-session-recovery-0123456789abcdef.jsonl");
   ok(otherKey === "C:/sessions/another-session.jsonl" && !readHandledTurns(otherKey).has(7), "a different session topic never sees the parent's handled set");
+}
+
+console.log("\nunfiled inputs: tl1845 recovery surface sync (恢复轮次画回主流)");
+{
+  // tl1845 验收①②：横幅出现 = 对账认为 transcript 里缺这轮；但 20261127 实录
+  // 证明数据常在档（13:39/13:48 两轮检查点/文件/上下文三处齐全，唯独表面没画，
+  // 关 tab 重开才恢复）。修复 = 横幅条目出现且表面安静时做一次 history 回读
+  // （retrySessionHistory → history_replace 画回文件页）。这里钉两件：
+  // 签名稳定（同一批条目只回读一次，content 定 不受数组引用/refetch 影响），
+  // 回读门（turn 活跃/乐观行未落位时绝不回读——重演 13:47:44 误 reset 会把
+  // 刚提交的乐观行抹掉）。
+  const a = [entry(1, 1000), entry(2, 2000)];
+  const b = [entry(2, 2000), entry(1, 1000)];
+  ok(unfiledRecoverySyncKey(a) !== "", "non-empty entries produce a sync key");
+  ok(unfiledRecoverySyncKey(a) === unfiledRecoverySyncKey(b), "key is content-based (order-insensitive) — refetch array identity never re-triggers");
+  ok(unfiledRecoverySyncKey([]) === "" && unfiledRecoverySyncKey([entry(1, 1000)]) !== unfiledRecoverySyncKey([entry(1, 1001)]), "empty stays empty; a changed entry set changes the key");
+  ok(shouldSyncSurfaceForUnfiled({ running: false, turnActive: false, pendingSubmissionId: undefined }, a), "quiet surface syncs so the recovered turns get painted");
+  ok(!shouldSyncSurfaceForUnfiled({ running: true, turnActive: false, pendingSubmissionId: undefined }, a), "a running turn blocks the sync (reset would erase live rows)");
+  ok(!shouldSyncSurfaceForUnfiled({ running: false, turnActive: true, pendingSubmissionId: undefined }, a), "an active turn blocks the sync");
+  ok(!shouldSyncSurfaceForUnfiled({ running: false, turnActive: false, pendingSubmissionId: "sub-1" }, a), "an unconfirmed optimistic submission blocks the sync");
+  ok(!shouldSyncSurfaceForUnfiled({ running: false, turnActive: false, pendingSubmissionId: undefined }, []), "no entries, no sync");
+  // 接线契约：App 必须把「条目签名 + 安静门」接到 retrySessionHistory——
+  // tab 重开不再成为唯一恢复手段（验收②）。
+  const app = await readFile(new URL("../App.tsx", import.meta.url), "utf8");
+  ok(app.includes("unfiledRecoverySyncKey"), "App derives the content signature from unfiled entries");
+  ok(app.includes("shouldSyncSurfaceForUnfiled"), "App gates the sync on the quiet-surface predicate");
+  ok(app.includes("retrySessionHistory"), "the sync rides retrySessionHistory (the tab-reopen-equivalent reload path)");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);
