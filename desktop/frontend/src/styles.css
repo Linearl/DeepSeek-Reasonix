@@ -42282,6 +42282,20 @@ button.statusbar__mcp:focus-visible {
 .rc-pretable__size { text-align: right; }
 .rc-pretable__ops { text-align: right; white-space: nowrap; }
 .rc-pretable__badge { display: block; }
+/* tl1834 件3: 排序表头——列头按钮化（点击生效/同键再点切换方向），方向
+   箭头缀尾；未排序列无箭头（默认态=后端原序）。右对齐列（时间/大小）由
+   单元格 text-align 带住按钮贴右。 */
+.rc-pretable__sort {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+.rc-pretable__arrow { margin-left: 3px; }
 /* 任务 1064：删除入口——危险动作用 danger 色区分于普通次级按钮，但按钮本体
    仍是常规尺寸（面板里的行内操作，不做大红块）。副本行的操作格里复选框与
    按钮并排，右对齐贴住列尾。 */

@@ -163,6 +163,9 @@ function volumeDeltaText(before: number, after: number, t: Translator): string {
  *  移出已合入组，仍多副本时它（重新扫描后）回到待处理组。 */
 type Phase = "todo" | "merged";
 
+/** tl1834: 备份表排序键——名称/时间/大小三键（表头点击生效）。 */
+type PreRepairSortKey = "name" | "time" | "size";
+
 /** copiesNeedingMeasurement is what stands between "not measured" and "mergeable".
  *
  *  An orphan copy has no canonical transcript to be compared against, so it can
@@ -663,6 +666,10 @@ export function RecoveryCopiesSection() {
   // tl1674b 阶段二：手动拼接的在途标记按行记（同口径）——预览+登记两次桥
   // 调用期间只禁自己那一行。
   const [preRepairSplicing, setPreRepairSplicing] = useState<Set<string>>(new Set());
+  // tl1834: 备份表排序态。null=后端原序（默认态行序零扰动——tl1603/tl1674b/
+  // tl1787 的钉按 `[data-pre-repair-list] > li` 行序取行，不点表头不动行序）。
+  // 点击表头按键生效、同键再点切换方向。
+  const [preRepairSort, setPreRepairSort] = useState<{ key: PreRepairSortKey; dir: "asc" | "desc" } | null>(null);
   // tl1658 现场①：批量的逐项进度（pre-repair-cleanup:progress 事件驱动）。
   // 181 项/3.4GB 的清理是分钟级阻塞桥调用，此前全程零反馈——用户无从知道
   // 是否在跑（dag-migration:progress 同一先例）。null=不在途/无进度。
@@ -807,6 +814,38 @@ export function RecoveryCopiesSection() {
     }
     return { todo, merged };
   }, [composedGroups, versionGroups]);
+
+  // tl1834: 备份表展示行——排序只重排展示序，数据层零触碰（non-goal）。
+  // 时间键解析 modifiedAt（ISO），解析失败落 0（诚实排最旧一端，不冒充新）；
+  // Array.prototype.sort 自 ES2019 起稳定，等键行保持后端原序。
+  const preRepairRows = useMemo(() => {
+    if (!preRepairSort) return preRepairs;
+    const factor = preRepairSort.dir === "asc" ? 1 : -1;
+    const rows = [...preRepairs];
+    rows.sort((a, b) => {
+      let cmp = 0;
+      if (preRepairSort.key === "name") {
+        cmp = a.label.localeCompare(b.label);
+      } else if (preRepairSort.key === "time") {
+        const ta = Date.parse(a.modifiedAt);
+        const tb = Date.parse(b.modifiedAt);
+        cmp = (Number.isNaN(ta) ? 0 : ta) - (Number.isNaN(tb) ? 0 : tb);
+      } else {
+        cmp = a.bytes - b.bytes;
+      }
+      return cmp * factor;
+    });
+    return rows;
+  }, [preRepairs, preRepairSort]);
+
+  // tl1834: 表头点击——首键给该键的惯用方向（名称 A→Z / 时间最新在上 /
+  // 大小最大在上），同键再点切换，换键重置为新键的惯用方向。
+  const togglePreRepairSort = (key: PreRepairSortKey) => {
+    setPreRepairSort((current) => {
+      if (current?.key !== key) return { key, dir: key === "name" ? "asc" : "desc" };
+      return { key, dir: current.dir === "asc" ? "desc" : "asc" };
+    });
+  };
 
   const toggle = (path: string) =>
     setSelected((current) => {
@@ -3386,14 +3425,76 @@ export function RecoveryCopiesSection() {
                           <div className="rc-pretable" data-pre-repair-table="">
                             <div className="rc-pretable__head" data-pre-repair-head="">
                               <span className="rc-pretable__check" aria-hidden="true" />
-                              <span className="rc-pretable__cell rc-pretable__cell--name" role="columnheader">
-                                {t("settings.recoveryCopiesColLine")}
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--name"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "name"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                {/* tl1834 件3: 三键排序表头——点击生效（首键=名称
+                                    A→Z / 时间·大小惯用降序），同键再点切换。 */}
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="name"
+                                  onClick={() => togglePreRepairSort("name")}
+                                >
+                                  {t("settings.recoveryCopiesColLine")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "name" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
                               </span>
-                              <span className="rc-pretable__cell rc-pretable__cell--when" role="columnheader">
-                                {t("settings.recoveryCopiesColModified")}
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--when"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "time"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="time"
+                                  onClick={() => togglePreRepairSort("time")}
+                                >
+                                  {t("settings.recoveryCopiesColModified")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "time" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
                               </span>
-                              <span className="rc-pretable__cell rc-pretable__cell--size" role="columnheader">
-                                {t("settings.recoveryCopiesColSize")}
+                              <span
+                                className="rc-pretable__cell rc-pretable__cell--size"
+                                role="columnheader"
+                                aria-sort={
+                                  preRepairSort?.key === "size"
+                                    ? preRepairSort.dir === "asc"
+                                      ? "ascending"
+                                      : "descending"
+                                    : undefined
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  className="rc-pretable__sort"
+                                  data-pre-repair-sort="size"
+                                  onClick={() => togglePreRepairSort("size")}
+                                >
+                                  {t("settings.recoveryCopiesColSize")}
+                                  <span className="rc-pretable__arrow" aria-hidden="true">
+                                    {preRepairSort?.key === "size" ? (preRepairSort.dir === "asc" ? "▲" : "▼") : ""}
+                                  </span>
+                                </button>
                               </span>
                               <span className="rc-pretable__cell rc-pretable__cell--state" role="columnheader">
                                 {t("settings.recoveryCopiesPreRepairColState")}
@@ -3403,7 +3504,7 @@ export function RecoveryCopiesSection() {
                               </span>
                             </div>
                             <ul className="rc-versions__issues rc-pretable__body" data-pre-repair-list="">
-                              {preRepairs.map((view) => {
+                              {preRepairRows.map((view) => {
                                 return (
                                   <li key={view.dir} className="rc-pretable__row" title={view.dir}>
                                     <span className="rc-pretable__check">
