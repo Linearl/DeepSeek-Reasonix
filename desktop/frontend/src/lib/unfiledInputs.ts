@@ -187,3 +187,49 @@ export function withUnfiledNoticeItems(
 export function countUnhandled(entries: UnfiledInputView[], handledTurns: Set<number>): number {
   return entries.filter((entry) => !handledTurns.has(entry.turn)).length;
 }
+
+// ── tl1845 恢复表面回读（recovery surface sync）───────────────────────────────
+//
+// 20261127 13:19~13:55 实录（tl1845）：检查点对账报了「未入档」，但 13:39/13:48
+// 两轮在 transcript 文件、模型上下文、检查点三处齐全——唯独前端表面没画，关
+// tab 重开（= 重新 hydrate）才恢复。横幅出现时表面值得回读一次：retrySession
+// History 走 history_replace 把文件页画回主流，已恢复的轮次本体随之可见，
+// 「重开 tab」不再是唯一恢复手段。
+//
+// 两个纯函数供测试与 App 接线共用：
+// 1. unfiledRecoverySyncKey —— 条目内容签名。同一批条目只回读一次；refetch
+//    产生的新数组引用、条目顺序都不改变签名，绝不形成回读循环。
+// 2. shouldSyncSurfaceForUnfiled —— 回读门。turn 活跃或有未确认乐观行时绝不
+//    回读：history_replace 会整体换底，13:47:44 的「missed turn-done reset」
+//    已经演示过一次把刚提交的乐观行抹掉是什么样子。
+
+// unfiledRecoverySyncKey collapses the entry set into a stable content
+// signature: sorted (turn, time, prompt-hash) join. Empty stays empty — the
+// caller treats "" as "nothing to sync".
+export function unfiledRecoverySyncKey(entries: UnfiledInputView[]): string {
+  if (!Array.isArray(entries) || entries.length === 0) return "";
+  const parts = entries
+    .map((entry) => `${Number(entry?.turn) || 0}:${Number(entry?.time) || 0}:${entry?.prompt?.length ?? 0}:${entry?.prompt ?? ""}`)
+    .sort();
+  return parts.join("|");
+}
+
+// SyncGateSurface is the slice of tab state the sync decision reads.
+export interface SyncGateSurface {
+  /** A turn is being processed (or finishing) — never rebase under it. */
+  running?: boolean;
+  turnActive?: boolean;
+  /** An optimistic composer row not yet confirmed by history — replace would erase it. */
+  pendingSubmissionId?: string | undefined;
+}
+
+// shouldSyncSurfaceForUnfiled reports whether the quiet-surface sync may fire:
+// there is something to recover AND the surface holds nothing that a wholesale
+// history_replace would destroy.
+export function shouldSyncSurfaceForUnfiled(surface: SyncGateSurface | undefined, entries: UnfiledInputView[]): boolean {
+  if (!entries || entries.length === 0) return false;
+  if (!surface) return false;
+  if (surface.running || surface.turnActive) return false;
+  if (surface.pendingSubmissionId !== undefined) return false;
+  return true;
+}

@@ -1945,7 +1945,7 @@ func TestWellFormedNodeEvalKeepsShellSemantics(t *testing.T) {
 // user/agent sees must say why it happened and what to do next, instead of
 // the old bare "hook timed out after 5s".
 func TestStderrForTimeoutGivesActionableGuidance(t *testing.T) {
-	msg := stderrFor(SpawnResult{TimedOut: true}, 5*time.Second)
+	msg := stderrFor(SpawnResult{TimedOut: true}, 5*time.Second, ResolvedHook{})
 	if !strings.HasPrefix(msg, "hook timed out after 5s") {
 		t.Fatalf("timeout message must keep its searchable prefix, got %q", msg)
 	}
@@ -1957,5 +1957,20 @@ func TestStderrForTimeoutGivesActionableGuidance(t *testing.T) {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("timeout message missing %q:\n%s", want, msg)
 		}
+	}
+}
+
+// tl1845 验收③：plugin 作用域的 hook（如 computer-use 的 UserPromptSubmit 条目）
+// timeout 落在插件 manifest 条目上，settings.json 里根本没有这条可调——超时
+// 文案必须指到真正能改的地方（manifest 文件），否则用户照文案找不到字段
+// （20261127 报障原话「配置里没这个字段可调」）。
+func TestStderrForTimeoutNamesPluginManifestForPluginHooks(t *testing.T) {
+	h := ResolvedHook{HookConfig: HookConfig{Command: "reasonix-computer-use.bat"}, Scope: ScopePlugin, Source: "C:/skills/computer-use/reasonix-plugin.json"}
+	msg := stderrFor(SpawnResult{TimedOut: true}, 5*time.Second, h)
+	if !strings.Contains(msg, "reasonix-plugin.json") {
+		t.Fatalf("plugin-scope timeout hint must name the hook's manifest file, got:\n%s", msg)
+	}
+	if !strings.Contains(msg, `"timeout"`) {
+		t.Fatalf("plugin-scope timeout hint must name the timeout field, got:\n%s", msg)
 	}
 }
