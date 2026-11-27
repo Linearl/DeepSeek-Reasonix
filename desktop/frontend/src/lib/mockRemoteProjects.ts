@@ -43,9 +43,6 @@ export function createMockRemoteProjects(tabs: MockRemoteTabCatalog): {
     async RemoveRemoteProject(hostId, workspace) {
       projects = projects.filter((project) => project.hostId !== hostId || project.workspace !== workspace);
     },
-    async ListRemoteProjects() {
-      return projects.slice();
-    },
     async OpenRemoteProjectTab(hostId, workspace, opts) {
       const id = tabIdFor(hostId, workspace);
       if (!recoveryInjected && (recoveryScenario === "connection" || recoveryScenario === "history")) {
@@ -152,14 +149,10 @@ export function createMockRemoteProjects(tabs: MockRemoteTabCatalog): {
     async SteerRemoteTab() {},
     async SetRemoteTabComposerProfile() { return []; },
     async SetRemoteTabToolApprovalMode() {},
-    async SetRemoteTabPlanMode() {},
     async CompactRemoteTab() {},
     async ReplayRemoteTabPrompts() { return []; },
     async ForkRemoteTab() {},
     async SummarizeRemoteTab() {},
-    async ForgetRemoteTab() {},
-    async RemoteTabBranches() { return []; },
-    async RemoteTabSkills() { return []; },
   };
 
   return {

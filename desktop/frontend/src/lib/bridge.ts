@@ -1823,11 +1823,9 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   ExtensionActions(tabID: string): Promise<ExtensionActionView[]>;
   InvokeExtensionAction(tabID: string, name: string, args: Record<string, string>): Promise<string>;
   SubmitExtensionForm(tabID: string, pluginID: string, surfaceID: string, values: Record<string, unknown>): Promise<void>;
-  AddMCPServer(input: MCPServerInput): Promise<number>;
   InstallMCPServer(input: MCPServerInput): Promise<MCPInstallResult>;
   UpdateMCPServer(name: string, input: MCPServerInput): Promise<void>;
   RemoveMCPServer(name: string): Promise<void>;
-  AuthorizeAndConnectMCPServer(name: string): Promise<void>;
   AuthenticateMCPServer(name: string): Promise<void>;
   ReconnectMCPServer(name: string): Promise<void>;
   ClearMCPServerAuthentication(name: string): Promise<void>;
@@ -1849,7 +1847,6 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   TrySubagentProfile(input: SubagentProfileInput, task: string): Promise<string>;
   CancelTrySubagentProfile(): Promise<void>;
   SetMCPServerEnabled(name: string, enabled: boolean): Promise<void>;
-  SetMCPServerTier(name: string, tier: string): Promise<void>;
   SlashArgs(input: string): Promise<SlashArgsResult>;
   ListDir(rel: string): Promise<DirEntry[]>;
   ListDirForTab(tabID: string, rel: string): Promise<DirEntry[]>;
@@ -3292,7 +3289,7 @@ function bridgeBreadcrumb(method: string): string {
   if (/^(SetConnectionKey|AddProviderConnection|RenameProviderConnections|SaveProvider|SetProviderWebSearch|SaveProviderModelCatalogs|AddOfficialProviderAccess|UpgradeDeepSeekProviderAccess|AddProviderPresetAccess|ResetProviderPresetAccess|RemoveProviderAccess|RemoveProviderAccesses|DeleteProvider|SaveProviderKey|SetProviderKey|ClearProviderKey|TestProviderModel|FetchProviderModelCatalog|FetchAllProviderModelCatalogs|FetchProviderModels|FetchAllProviderModels|ConnectKey)/.test(method))
     return `provider ${method}`;
   if (/^(CheckUpdate|ApplyUpdateRequest|ForkApplyUpdate|OpenDownloadPage|OpenUserConfigPath|ReloadUserConfig)/.test(method)) return `update ${method}`;
-  if (/^(AddMCPServer|InstallMCPServer|UpdateMCPServer|RemoveMCPServer|AuthorizeAndConnectMCPServer|AuthenticateMCPServer|ReconnectMCPServer|ClearMCPServerAuthentication|SetMCPServer)/.test(method))
+  if (/^(InstallMCPServer|UpdateMCPServer|RemoveMCPServer|AuthenticateMCPServer|ReconnectMCPServer|ClearMCPServerAuthentication|SetMCPServer)/.test(method))
     return `mcp ${method}`;
   if (/^(AddSkillPath|RemoveSkillPath|SetSkillPathEnabled|RefreshSkills|SetSkillEnabled|SetSkillImplicitInvocation|AcceptSkillSuggestion|AvailableSubagentTools|CreateSubagentProfile|UpdateSubagentProfile|DeleteSubagentProfile|SetSubagentProfileModel|SetSubagentProfileEffort|TrySubagentProfile|CancelTrySubagentProfile)/.test(method))
     return `skill ${method}`;
@@ -6544,7 +6541,7 @@ function makeMockApp(): AppBindings {
         error: "plugin is not installed",
       };
     },
-    async AddMCPServer(input: MCPServerInput) {
+    async InstallMCPServer(input: MCPServerInput) {
       const tools = input.transport === "stdio" ? 3 : 5;
       capServers.push({
         name: input.name,
@@ -6566,10 +6563,6 @@ function makeMockApp(): AppBindings {
           description: `Mock tool ${i + 1} exposed by ${input.name}.`,
         })),
       });
-      return tools;
-    },
-    async InstallMCPServer(input: MCPServerInput) {
-      const tools = await this.AddMCPServer(input);
       return { name: input.name, state: "ready" as const, toolCount: tools, action: "none" as const, message: `${input.name} is ready` };
     },
     async UpdateMCPServer(name: string, input: MCPServerInput) {
@@ -6596,11 +6589,6 @@ function makeMockApp(): AppBindings {
     },
     async RemoveMCPServer(name: string) {
       capServers = capServers.filter((s) => s.name !== name);
-    },
-    async AuthorizeAndConnectMCPServer(name: string) {
-      capServers = capServers.map((s) => s.name === name
-        ? { ...s, status: "connected", runtimeState: "ready", tools: s.tools || 4, error: undefined, requiresLaunchApproval: false }
-        : s);
     },
     async AuthenticateMCPServer(name: string) {
       capServers = capServers.map((s) => s.name === name
@@ -6748,13 +6736,6 @@ function makeMockApp(): AppBindings {
             }
           : s,
       );
-    },
-    async SetMCPServerTier(name: string, tier: string) {
-      capServers = capServers.map((s) => {
-        if (s.name !== name) return s;
-        const tools = s.tools || (s.transport === "stdio" ? 3 : 5);
-        return { ...s, tier, autoStart: true, status: "connected", tools, error: undefined, authStatus: undefined, authUrl: undefined };
-      });
     },
     async SlashArgs(input: string) {
       // Mirror a slice of the real arg hints so the menu is exercisable in browser dev.

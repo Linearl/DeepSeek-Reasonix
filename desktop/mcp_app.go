@@ -175,63 +175,6 @@ func (a *App) lockRuntimeMutation(operation string) func() {
 	}
 }
 
-// AuthorizeAndConnectMCPServer is retained for older generated Wails clients.
-// Project configuration is trusted by default now, so the normal path simply
-// reconnects the effective entry. Explicitly gated host specs still record
-// their exact launch grant before reconnecting.
-func (a *App) AuthorizeAndConnectMCPServer(name string) error {
-	defer a.lockMCPMutation("authorize-connect")()
-
-	tab, ctrl, root := a.activeMCPRuntime()
-	if tab == nil || ctrl == nil {
-		return fmt.Errorf("no active session")
-	}
-	host, releaseGates, err := a.lockMCPHostTurnGates("MCP authorization", ctrl)
-	if err != nil {
-		return err
-	}
-	defer releaseGates()
-	entry, found, err := desktopEffectiveMCPServer(root, name)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no configured MCP server named %q", name)
-	}
-	spec, err := a.mcpLaunchSpec(root, name)
-	if err != nil {
-		return err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	if spec.RequireLaunchApproval {
-		if err := plugin.AuthorizeProjectSpecLaunch(ctx, spec); err != nil {
-			return err
-		}
-	}
-
-	controllers := a.mcpControllersSharingHost(host, name, ctrl)
-	for i := range controllers {
-		if controllers[i].ctrl == ctrl {
-			controllers[i].enabled = true
-		}
-	}
-	// Drop any previous identity, then start the effective configured server
-	// once and refresh every enabled registry sharing this Host.
-	disconnectMCPServerControllers(name, ctrl, controllers)
-	if host != nil {
-		host.ClearFailure(name)
-	}
-	if err := reconnectMCPServerControllers(entry, controllers); err != nil {
-		recordMCPFailure(ctrl, entry, err)
-		return err
-	}
-	a.mu.Lock()
-	delete(tab.disabledMCP, name)
-	a.mu.Unlock()
-	return nil
-}
-
 type mcpControllerTarget struct {
 	ctrl    control.SessionAPI
 	enabled bool
@@ -878,19 +821,6 @@ func persistMCPInstallActivation(entry config.PluginEntry, root string) error {
 	return store.SetServerEnabled(entry, root, true)
 }
 
-// AddMCPServer is retained for old generated Wails clients. New clients use
-// InstallMCPServer so authentication and retry states remain structured.
-func (a *App) AddMCPServer(in MCPServerInput) (int, error) {
-	result, err := a.InstallMCPServer(in)
-	if err != nil {
-		return 0, err
-	}
-	if result.State != "ready" {
-		return 0, fmt.Errorf("%s", result.Message)
-	}
-	return result.ToolCount, nil
-}
-
 // UpdateMCPServer edits a persisted external MCP server. The name is the stable
 // identity; callers must remove + add if they want to rename a server.
 func (a *App) UpdateMCPServer(name string, in MCPServerInput) error {
@@ -1187,47 +1117,6 @@ func (a *App) registerConfiguredMCPServerForTab(tab *WorkspaceTab, name string) 
 	}
 	return 0, fmt.Errorf("no configured MCP server named %q", name)
 }
-
-// SetMCPServerTier is kept for old desktop bindings. New config writes drop the
-// retired tier field.
-func (a *App) SetMCPServerTier(name, tier string) error {
-	defer a.lockMCPMutation("set-tier")()
-
-	tier = normalizeMCPTier(tier)
-	tab, ctrl, root := a.activeMCPRuntime()
-	if tab != nil {
-		if err := rebuildControllerActiveWorkErrorFor(ctrl, "MCP server"); err != nil {
-			return err
-		}
-	}
-	updated, found, err := a.desktopMCPServerForEdit(root, name)
-	if err != nil {
-		return err
-	}
-	if !found {
-		return fmt.Errorf("no configured MCP server named %q", name)
-	}
-	updated.Tier = tier
-	if !updated.ShouldAutoStart() {
-		on := true
-		updated.AutoStart = &on
-	}
-	if err := a.saveDesktopMCPServer(root, updated); err != nil {
-		return err
-	}
-	a.bumpExtensionGeneration()
-	if tab != nil && ctrl != nil && !mcpConnected(ctrl, name) {
-		if _, err := ctrl.ConnectMCPServer(updated); err != nil {
-			recordMCPFailure(ctrl, updated, err)
-			return nil
-		}
-		a.mu.Lock()
-		delete(tab.disabledMCP, name)
-		a.mu.Unlock()
-	}
-	return nil
-}
-
 func (a *App) desktopMCPServerForEdit(root, name string) (config.PluginEntry, bool, error) {
 	// Edit the same effective declaration the runtime selected. The entry's
 	// provenance is retained so saveDesktopMCPServer writes it back to the
@@ -1279,20 +1168,6 @@ func findPluginEntry(entries []config.PluginEntry, name string) (config.PluginEn
 	}
 	return config.PluginEntry{}, false
 }
-
-func normalizeMCPTier(tier string) string {
-	switch strings.ToLower(strings.TrimSpace(tier)) {
-	case "eager":
-		return "eager"
-	case "background", "lazy":
-		return "background"
-	case "":
-		return "background"
-	default:
-		return "background"
-	}
-}
-
 func normalizeMCPTransport(transport string) string {
 	switch strings.ToLower(strings.TrimSpace(transport)) {
 	case "http", "streamable-http":

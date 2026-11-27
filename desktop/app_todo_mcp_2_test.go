@@ -397,7 +397,7 @@ func TestAuthorizeAndConnectMCPServerStartsProjectOnlyOnce(t *testing.T) {
 		t.Fatal("sibling registry missing initial h tool")
 	}
 
-	if err := fixture.app.AuthorizeAndConnectMCPServer("h"); err != nil {
+	if err := fixture.app.ReconnectMCPServer("h"); err != nil {
 		t.Fatalf("AuthorizeAndConnectMCPServer(h): %v", err)
 	}
 	waitForDesktopMCPStartAttempt(t, attempts, 2)

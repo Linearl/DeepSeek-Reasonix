@@ -9,19 +9,6 @@ import (
 	"reasonix/internal/store"
 )
 
-// ListRemoteProjects returns every pinned remote workspace in config order.
-func (a *App) ListRemoteProjects() ([]RemoteProjectView, error) {
-	cfg, err := config.Load()
-	if err != nil {
-		return nil, err
-	}
-	out := make([]RemoteProjectView, 0, len(cfg.Remote.Projects))
-	for _, p := range cfg.Remote.Projects {
-		out = append(out, remoteProjectEntryToView(p))
-	}
-	return out, nil
-}
-
 func (a *App) AddRemoteProject(hostID, workspace string) (RemoteProjectView, error) {
 	hostID = strings.TrimSpace(hostID)
 	workspace = strings.TrimSpace(workspace)
