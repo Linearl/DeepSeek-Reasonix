@@ -51,6 +51,26 @@ func TestParseThemePackManifestValid(t *testing.T) {
 	}
 }
 
+// TestThemePackIDLenPinnedToConstant pins that the theme pack id length limit
+// comes only from themePackMaxIDLen: an id exactly at the constant-derived
+// bound is accepted, one past it is rejected, both on the regex and on the
+// manifest validation path. Changing the constant must change the enforced
+// limit; this test needs no edit when that happens.
+func TestThemePackIDLenPinnedToConstant(t *testing.T) {
+	atLimit := strings.Repeat("a", themePackMaxIDLen)
+	if !themePackIDRe.MatchString(atLimit) {
+		t.Fatalf("id of exactly themePackMaxIDLen=%d chars must be accepted", themePackMaxIDLen)
+	}
+	overLimit := strings.Repeat("a", themePackMaxIDLen+1)
+	if themePackIDRe.MatchString(overLimit) {
+		t.Fatalf("id longer than themePackMaxIDLen=%d chars must be rejected", themePackMaxIDLen)
+	}
+	raw := `{"schemaVersion":1,"id":"` + overLimit + `","name":"A","baseStyle":"graphite"}`
+	if _, err := parseThemePackManifest([]byte(raw)); err == nil {
+		t.Fatal("manifest validation must reject id over themePackMaxIDLen")
+	}
+}
+
 func TestParseThemePackManifestRejects(t *testing.T) {
 	cases := []struct {
 		name string
