@@ -353,8 +353,11 @@ func TestRecoveryTrashSidecarsCoversFullInventory(t *testing.T) {
 	for _, p := range store.SessionSidecarFiles(path) {
 		want = append(want, base(p))
 	}
-	// guardian 家族：guardian 转录按会话层保存，自带同一套数据侧车 + 游标。
-	for _, p := range store.SessionSidecarFiles(guardian) {
+	// guardian 家族（tl1850 收窄口径）：guardian 转录按会话层保存，自带
+	// 实际数据面侧车（meta/events/双 index）+ 游标——goal/recovery/context/
+	// pinned-context/turns/conflicts/zst/damaged/审计五件在 guardian 路径
+	// 从未有写入方（tl1849 实证），不再派生。
+	for _, p := range store.SessionGuardianSidecarFiles(guardian) {
 		want = append(want, base(p))
 	}
 	want = append(want,

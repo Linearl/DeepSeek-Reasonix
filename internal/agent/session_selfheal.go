@@ -96,13 +96,11 @@ var sessionBackupAllowlist = map[string]struct{}{
 	"guardian" + store.SessionDisplayIndexSuffix: {},
 	"guardian" + store.SessionEventIndexSuffix:   {},
 	"guardian.cursor.json":                       {},
-	// tl1841：guardian 家族同批补登——conflict-preserved/splices/rewritelog 进
-	// store.SessionSidecarFiles 后经静态换位清单同样派生到 guardian 路径
-	// （SessionStaticTrashSidecars 对 guardianPath 再跑一遍构造器），转正链对
-	// 它们的归档义务与主线同罪同罚。
-	"guardian" + store.SessionConflictPreserveLogSuffix:   {},
-	"guardian" + store.SessionSpliceLedgerSuffix:          {},
-	"guardian" + store.SessionRewriteAttributionLogSuffix: {},
+	// tl1850：tl1841 曾对 guardian 家族同批补登 conflict-preserved/splices/
+	// rewritelog 三审计键——实施重核三键均无 guardian 写入方（takeover 保全
+	// 梯子只挂主会话、desktop 拼接链 owner 恒主会话、rewritelog 四个入队源对
+	// guardian 会话无触发面），tl1850 清单收窄后清单侧不再派生 guardian 版，
+	// 三死键同 commit 删除。主会话三键（上方 TrimPrefix 行）不受影响。
 }
 
 // SelfHealOptions picks which repair steps run. Every step is independent and
