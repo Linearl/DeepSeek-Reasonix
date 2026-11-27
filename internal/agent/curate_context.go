@@ -230,7 +230,9 @@ type curateProjectionCommit struct {
 // downstream consumers keep reading the last real summary as the last summary.
 func (a *Agent) commitCurateProjection(commit curateProjectionCommit) (CompactionState, error) {
 	now := time.Now().UTC()
-	coveredHash := coveredPrefixHash(commit.canonical, commit.covered)
+	// tl1831b: new checkpoints always seal the stripped recipe; the CAS stale
+	// check below compares both sides under that same recipe.
+	coveredHash := strippedCoveredPrefixHash(commit.canonical, commit.covered)
 	receipt := &ContextMaintenanceReceipt{
 		OperationID: fmt.Sprintf("curate-%d-%s", commit.projectionVersion+1, commit.outputHash), Status: "applied",
 		Action: "curate", Trigger: CompactionTriggerTool, SourceProjection: commit.projectionVersion,
@@ -245,8 +247,11 @@ func (a *Agent) commitCurateProjection(commit curateProjectionCommit) (Compactio
 		Projection: ContextProjection{
 			Messages: commit.projected, TranscriptVersion: commit.transcriptVersion,
 			ProjectionVersion: commit.projectionVersion + 1, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
+			// tl1831b: the sealed recipe rides the sidecar so readers verify
+			// under the algorithm that produced these hashes.
+			HashFormat: projectionHashFormatStripped,
 			// tl1651: per-message diagnostic corpus for future mismatch localization.
-			CoveredMessageHashes: coveredMessageFingerprints(commit.canonical, commit.covered),
+			CoveredMessageHashes: strippedCoveredMessageFingerprints(commit.canonical, commit.covered),
 			PinnedContextHash:    pinnedContextCoverageHash(commit.canonical, commit.covered),
 			SummaryHash:          commit.summaryHash, SourceTokens: commit.sourceTokens, ProjectionTokens: commit.projectionTokens,
 			ViewInputHash: commit.inputHash, ViewOutputHash: commit.outputHash, CreatedAt: now,
@@ -257,7 +262,7 @@ func (a *Agent) commitCurateProjection(commit curateProjectionCommit) (Compactio
 	current, currentVersion := a.sess.conversation.snapshotMessagesVersion()
 	if currentVersion != commit.transcriptVersion ||
 		len(current) != len(commit.canonical) ||
-		coveredPrefixHash(current, len(current)) != coveredPrefixHash(commit.canonical, len(commit.canonical)) ||
+		strippedCoveredPrefixHash(current, len(current)) != strippedCoveredPrefixHash(commit.canonical, len(commit.canonical)) ||
 		a.sess.compactionState.Projection.ProjectionVersion != commit.projectionVersion ||
 		a.sess.compactionState.Generation != commit.generation {
 		a.sess.compactionMu.Unlock()

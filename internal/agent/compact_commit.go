@@ -66,7 +66,10 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 	projectionVersion := commit.projectionVersion + 1
 	now := time.Now().UTC()
 	summaryHash := summaryContentHash(commit.summary)
-	coveredHash := coveredPrefixHash(commit.canonical, commit.covered)
+	// tl1831b: new checkpoints always seal the stripped recipe (transient
+	// user-turn blocks excluded), so future rendering changes to clock anchors
+	// or the context-state copy never read as a prefix rewrite.
+	coveredHash := strippedCoveredPrefixHash(commit.canonical, commit.covered)
 	// tl1691: a pointer fold is not a summary — the receipt must say which
 	// lane produced the checkpoint, or the token account reads as if the
 	// full-prefill summary request was spent when it was not.
@@ -93,8 +96,11 @@ func (a *Agent) summaryProjectionState(commit summaryProjectionCommit) Compactio
 		Projection: ContextProjection{
 			Messages: commit.projected, TranscriptVersion: commit.transcriptVersion,
 			ProjectionVersion: projectionVersion, CoveredCount: commit.covered, CoveredPrefixHash: coveredHash,
+			// tl1831b: the sealed recipe rides the sidecar so readers verify
+			// under the algorithm that produced these hashes.
+			HashFormat: projectionHashFormatStripped,
 			// tl1651: per-message diagnostic corpus for future mismatch localization.
-			CoveredMessageHashes: coveredMessageFingerprints(commit.canonical, commit.covered),
+			CoveredMessageHashes: strippedCoveredMessageFingerprints(commit.canonical, commit.covered),
 			PinnedContextHash:    pinnedContextCoverageHash(commit.canonical, commit.covered),
 			SummaryHash:          summaryHash, SourceTokens: commit.sourceTokens, ProjectionTokens: commit.projectionTokens,
 			ViewInputHash: commit.inputHash, ViewOutputHash: commit.outputHash, CreatedAt: now,

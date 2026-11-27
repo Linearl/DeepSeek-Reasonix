@@ -163,7 +163,9 @@ func projectionDriftEvidence(st CompactionState, msgs []provider.Message, curVer
 	n := st.Projection.CoveredCount
 	actual := ""
 	if n > 0 && n <= len(msgs) {
-		actual = coveredPrefixHash(msgs, n)
+		// tl1831b: compare under the sidecar's own recipe so the drift reading
+		// names a real divergence on stripped-format sidecars too.
+		actual = coveredPrefixHashForFormat(st.Projection.HashFormat, msgs, n)
 	}
 	systems := 0
 	for systems < len(msgs) && msgs[systems].Role == provider.RoleSystem {

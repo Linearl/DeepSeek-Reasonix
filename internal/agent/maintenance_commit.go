@@ -34,7 +34,9 @@ func (a *Agent) installMaintenanceProjection(in maintenanceInstall) (bool, error
 	outputHash := providerVisibleFingerprint(modelInputMessages(projected))
 	projectionVersion := in.state.Projection.ProjectionVersion + 1
 	now := time.Now().UTC()
-	coveredHash := coveredPrefixHash(in.canonical, len(in.canonical))
+	// tl1831b: new checkpoints always seal the stripped recipe; the CAS stale
+	// check below compares against that same recipe's reading.
+	coveredHash := strippedCoveredPrefixHash(in.canonical, len(in.canonical))
 	receipt := &ContextMaintenanceReceipt{
 		OperationID: fmt.Sprintf("%s-%d-%s", in.action, projectionVersion, outputHash), Status: "applied", Action: in.action,
 		Trigger: in.trigger, SourceProjection: in.state.Projection.ProjectionVersion, ProjectionVersion: projectionVersion,
@@ -50,8 +52,11 @@ func (a *Agent) installMaintenanceProjection(in maintenanceInstall) (bool, error
 	next.Projection = ContextProjection{
 		Messages: projected, TranscriptVersion: in.transcriptVersion, ProjectionVersion: projectionVersion,
 		CoveredCount: len(in.canonical), CoveredPrefixHash: coveredHash, SourceTokens: sourceTokens,
+		// tl1831b: the sealed recipe rides the sidecar so readers verify under
+		// the algorithm that produced these hashes.
+		HashFormat: projectionHashFormatStripped,
 		// tl1651: per-message diagnostic corpus for future mismatch localization.
-		CoveredMessageHashes: coveredMessageFingerprints(in.canonical, len(in.canonical)),
+		CoveredMessageHashes: strippedCoveredMessageFingerprints(in.canonical, len(in.canonical)),
 		PinnedContextHash:    pinnedContextCoverageHash(in.canonical, len(in.canonical)),
 		ProjectionTokens:     resultTokens, ViewInputHash: inputHash, ViewOutputHash: outputHash, CreatedAt: now,
 	}
@@ -61,7 +66,7 @@ func (a *Agent) installMaintenanceProjection(in maintenanceInstall) (bool, error
 	a.sess.compactionMu.Lock()
 	current, currentVersion := a.sess.conversation.snapshotMessagesVersion()
 	if currentVersion != in.transcriptVersion || len(current) != len(in.canonical) ||
-		coveredPrefixHash(current, len(current)) != coveredHash ||
+		strippedCoveredPrefixHash(current, len(current)) != coveredHash ||
 		a.sess.compactionState.Projection.ProjectionVersion != in.state.Projection.ProjectionVersion ||
 		a.sess.compactionState.Generation != in.state.Generation {
 		a.sess.compactionMu.Unlock()

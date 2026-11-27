@@ -117,6 +117,15 @@ type ContextProjection struct {
 	// canonical prefix. Provider bytes omit Origin, so CoveredPrefixHash alone
 	// cannot detect provenance edits that change checkpoint reconstruction.
 	PinnedContextHash string `json:"pinned_context_hash,omitempty"`
+	// HashFormat (tl1831b 双格式) versions the recipe that sealed
+	// CoveredPrefixHash and CoveredMessageHashes, so a recipe change never
+	// invalidates sidecars sealed under the old one. Readers pick the
+	// verification algorithm from this marker; writers always seal the current
+	// one. Absent/0 = legacy recipe (transient user-turn blocks fingerprinted
+	// verbatim — every sidecar written before tl1831b); 1 = transient-stripped
+	// recipe. An unknown future format fails closed into a hash_mismatch drop +
+	// rebuild rather than silently verifying under the wrong algorithm.
+	HashFormat int `json:"hash_format,omitempty"`
 	SummaryHash       string `json:"summary_hash,omitempty"`
 	SourceTokens      int    `json:"source_tokens,omitempty"`
 	ProjectionTokens  int    `json:"projection_tokens,omitempty"`
@@ -379,10 +388,35 @@ func summaryContentHash(summary string) string {
 	return hex.EncodeToString(sum[:16])
 }
 
-// coveredPrefixHash fingerprints the current model-visible prefix of msgs[:n].
-// Tool Content is the stable bounded provider representation; RawContent is
-// local-only. SanitizeToolPairing applies the same deterministic repair used on
-// the wire, keeping hashes stable when LoadSession repairs a transcript.
+// Projection covered-prefix hash recipe versions (tl1831b 双格式). The recipe
+// rides the sidecar (ContextProjection.HashFormat) so a recipe change is
+// backward-compatible by construction: old sidecars keep verifying under the
+// recipe that sealed them, new writes seal the current one. The 20261127
+// 08:58 装机重启 incident (stored a3213691 vs current 59cadec5, covered_count
+// 2371 → wholesale drop → 2.9M-token full-canonical fallback) was a recipe
+// change wearing a rewrite costume: the context-state copy edit changed the
+// transient blocks inside historical user turns, which the legacy recipe
+// fingerprints verbatim.
+const (
+	// projectionHashFormatLegacy fingerprints transient user-turn blocks
+	// verbatim. Every sidecar written before tl1831b carries it implicitly
+	// (zero value, field absent in JSON).
+	projectionHashFormatLegacy = 0
+	// projectionHashFormatStripped strips transient user-turn blocks before
+	// fingerprinting (tl1831b). The hash exists to distinguish "conversation
+	// grew append-only" from "history was rewritten"; a rendering change to a
+	// clock anchor or a context-state copy line is neither.
+	projectionHashFormatStripped = 1
+)
+
+// coveredPrefixHash fingerprints the current model-visible prefix of msgs[:n]
+// under the LEGACY recipe (projectionHashFormatLegacy): transient user-turn
+// blocks fingerprint verbatim. It verifies every sidecar written before
+// tl1831b and remains one half of the dual-format pair; new writes seal
+// strippedCoveredPrefixHash instead. Tool Content is the stable bounded
+// provider representation; RawContent is local-only. SanitizeToolPairing
+// applies the same deterministic repair used on the wire, keeping hashes
+// stable when LoadSession repairs a transcript.
 func coveredPrefixHash(msgs []provider.Message, n int) string {
 	if n <= 0 || n > len(msgs) {
 		return ""
@@ -391,22 +425,104 @@ func coveredPrefixHash(msgs []provider.Message, n int) string {
 	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
 }
 
+// transientStrippedView returns a request-side copy of msgs with host-injected
+// transient blocks removed from user turns (tl1831b). The blocks registered in
+// TransientUserBlockTags (current-time, context-state, language pins, …) are
+// runtime decoration the host prepends per turn — preview/title derivation,
+// steer recognition, and the reasoning-replay anchor already strip them
+// (StripTransientUserBlocks is the single source of truth). Everything else
+// (roles, assistant/tool bytes, tool-call signatures, user prose) is passed
+// through untouched.
+func transientStrippedView(msgs []provider.Message) []provider.Message {
+	out := make([]provider.Message, len(msgs))
+	copy(out, msgs)
+	for i := range out {
+		if out[i].Role == provider.RoleUser {
+			out[i].Content = StripTransientUserBlocks(out[i].Content)
+		}
+	}
+	return out
+}
+
+// strippedCoveredPrefixHash fingerprints msgs[:n] under the tl1831b recipe
+// (projectionHashFormatStripped): transient user-turn blocks are stripped
+// before fingerprinting, so a rendering change to a clock anchor or a
+// context-state copy line no longer reads as a prefix rewrite. It still fails
+// closed on real edits: user prose, assistant/tool bytes, and tool-call
+// signatures all keep hashing.
+func strippedCoveredPrefixHash(msgs []provider.Message, n int) string {
+	if n <= 0 || n > len(msgs) {
+		return ""
+	}
+	visible := transientStrippedView(modelInputMessages(msgs[:n]))
+	return providerVisibleFingerprint(provider.SanitizeToolPairing(visible))
+}
+
+// coveredPrefixHashForFormat picks the prefix-hash recipe a sidecar was sealed
+// with (tl1831b). Unknown future formats return "" — which can never equal a
+// stored hash — so a reader one version behind fails closed into the
+// hash_mismatch drop + rebuild path instead of verifying under the wrong
+// algorithm.
+func coveredPrefixHashForFormat(format int, msgs []provider.Message, n int) string {
+	switch format {
+	case projectionHashFormatLegacy:
+		return coveredPrefixHash(msgs, n)
+	case projectionHashFormatStripped:
+		return strippedCoveredPrefixHash(msgs, n)
+	default:
+		return ""
+	}
+}
+
 // coveredMessageFingerprints (tl1651) fingerprints each message of the
 // sanitized covered prefix individually, through the exact pipeline
 // coveredPrefixHash uses (modelInputMessages → SanitizeToolPairing), so a
 // whole-prefix mismatch can be narrowed to the first edited message. The
 // per-message hashes are read side by side against the sidecar's persisted
 // CoveredMessageHashes; the index where they diverge is the rewrite point.
+// tl1831b: this is the LEGACY recipe; readers of a stripped-format sidecar
+// go through coveredMessageFingerprintsForFormat instead.
 func coveredMessageFingerprints(msgs []provider.Message, n int) []string {
 	if n <= 0 || n > len(msgs) {
 		return nil
 	}
 	visible := provider.SanitizeToolPairing(modelInputMessages(msgs[:n]))
+	return perMessageFingerprints(visible)
+}
+
+// strippedCoveredMessageFingerprints is the tl1831b stripped-recipe twin of
+// coveredMessageFingerprints: transient user-turn blocks are stripped before
+// the per-message pipeline, matching strippedCoveredPrefixHash exactly.
+func strippedCoveredMessageFingerprints(msgs []provider.Message, n int) []string {
+	if n <= 0 || n > len(msgs) {
+		return nil
+	}
+	visible := provider.SanitizeToolPairing(transientStrippedView(modelInputMessages(msgs[:n])))
+	return perMessageFingerprints(visible)
+}
+
+// perMessageFingerprints fingerprints each message of an already-sanitized
+// pipeline slice individually.
+func perMessageFingerprints(visible []provider.Message) []string {
 	out := make([]string, len(visible))
 	for i := range visible {
 		out[i] = providerVisibleFingerprint(visible[i : i+1])
 	}
 	return out
+}
+
+// coveredMessageFingerprintsForFormat picks the per-message recipe a sidecar
+// was sealed with (tl1831b). Unknown future formats return nil, mirroring the
+// fail-closed prefix-hash selector.
+func coveredMessageFingerprintsForFormat(format int, msgs []provider.Message, n int) []string {
+	switch format {
+	case projectionHashFormatLegacy:
+		return coveredMessageFingerprints(msgs, n)
+	case projectionHashFormatStripped:
+		return strippedCoveredMessageFingerprints(msgs, n)
+	default:
+		return nil
+	}
 }
 
 // projectionMismatchEvidence is the tl1651 diagnosis of one hash_mismatch
@@ -442,11 +558,11 @@ func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.M
 	n := st.Projection.CoveredCount
 	ev := projectionMismatchEvidence{
 		StoredPrefixHash:  st.Projection.CoveredPrefixHash,
-		CurrentPrefixHash: coveredPrefixHash(msgs, n),
+		CurrentPrefixHash: coveredPrefixHashForFormat(st.Projection.HashFormat, msgs, n),
 		CoveredCount:      n,
 		DiffIndex:         -1,
 	}
-	currentFP := coveredMessageFingerprints(msgs, n)
+	currentFP := coveredMessageFingerprintsForFormat(st.Projection.HashFormat, msgs, n)
 	ev.CurrentMsgLen = len(currentFP)
 
 	// B1: load-repair attribution. If the pre-repair transcript still hashes to
@@ -454,9 +570,9 @@ func diagnoseProjectionMismatch(st CompactionState, msgs, preRepair []provider.M
 	// normalization, and the first diverging pipeline slot names the repaired
 	// message.
 	if len(preRepair) > 0 && n > 0 && n <= len(preRepair) &&
-		coveredPrefixHash(preRepair, n) == st.Projection.CoveredPrefixHash {
+		coveredPrefixHashForFormat(st.Projection.HashFormat, preRepair, n) == st.Projection.CoveredPrefixHash {
 		ev.Source = "load_repair"
-		preFP := coveredMessageFingerprints(preRepair, n)
+		preFP := coveredMessageFingerprintsForFormat(st.Projection.HashFormat, preRepair, n)
 		ev.StoredMsgLen = len(preFP)
 		ev.StoredMsgHash, ev.DiffIndex, ev.DiffRole, ev.DiffOrigin = firstFingerprintDivergence(preFP, currentFP, msgs)
 		return ev
@@ -931,7 +1047,11 @@ func projectionInvalidReason(st CompactionState, msgs []provider.Message) string
 		st.Projection.PinnedContextHash != pinnedContextCoverageHash(msgs, n) {
 		return projectionFailPinned
 	}
-	if coveredPrefixHash(msgs, n) == st.Projection.CoveredPrefixHash {
+	// tl1831b: verify under the recipe the sidecar was sealed with — a legacy
+	// (transient-included) sidecar never verifies against a stripped-recipe
+	// reading and vice versa, which is what keeps a recipe change from
+	// silently re-validating old bytes.
+	if coveredPrefixHashForFormat(st.Projection.HashFormat, msgs, n) == st.Projection.CoveredPrefixHash {
 		return projectionFailNone
 	}
 	if projectionMatchesAfterSystemRefresh(st, msgs, n) {
@@ -961,7 +1081,115 @@ func projectionMatchesAfterSystemRefresh(st CompactionState, msgs []provider.Mes
 	if systems == 0 || (systems < len(st.Projection.Messages) && st.Projection.Messages[systems].Role == provider.RoleSystem) {
 		return false
 	}
-	return coveredPrefixHash(candidate, len(candidate)) == st.Projection.CoveredPrefixHash
+	// tl1831b: compare under the sidecar's own recipe.
+	return coveredPrefixHashForFormat(st.Projection.HashFormat, candidate, len(candidate)) == st.Projection.CoveredPrefixHash
+}
+
+// tolerateTransientOnlyMismatch (tl1831b 第二道防线) resolves a first-layer
+// hash_mismatch by diffing the tl1651 per-message corpus slot by slot: a slot
+// whose divergence disappears once transient user-turn blocks are stripped on
+// BOTH sides is a transient-only re-render (clock anchor, context-state copy,
+// …), not a history rewrite, and is tolerated. When every diverging slot is
+// transient-only the sidecar is re-anchored ONCE to the stripped format —
+// stored hash, per-message corpus, and a matching last receipt — so the next
+// load verifies on the fast first-layer path and future transient re-renders
+// are structurally immune.
+//
+// The 20261127 08:58 装机重启 incident is the shape this lane exists for:
+// diff_pipeline_index=2139/2360 sat deep inside the covered prefix on a user
+// turn (canonical 2582 messages unchanged across the restart, so no append
+// could explain it) — the installer had changed the context-state rendering,
+// and the legacy recipe fingerprinted that change as a whole-prefix rewrite.
+//
+// Gates are deliberately fail-closed; every non-passing shape returns false
+// and the caller keeps the pre-tl1831b wholesale drop:
+//  1. Evidence gate — the sidecar must carry the tl1651 per-message corpus
+//     AND a projection body of the same pipeline length (slot i of the corpus
+//     must be attributable to projection message i).
+//  2. Structural gate — the current sanitized pipeline must have that same
+//     length. An insert/delete inside the covered prefix is a structural
+//     rewrite, never a transient re-render.
+//  3. Transient-only gate — EVERY diverging slot must fingerprint identically
+//     once transient blocks are stripped on both the stored projection message
+//     and the current transcript message. A user prose edit, an assistant/tool
+//     byte change, or a tool-call signature change survives the strip and
+//     fails closed.
+//
+// Non-transient tampering is therefore rejected at BOTH layers: the stripped
+// first layer (new-format sidecars) still hashes prose/assistant/tool bytes,
+// and this second layer compares stripped-vs-stripped per slot before any
+// tolerance is granted.
+func tolerateTransientOnlyMismatch(st *CompactionState, msgs []provider.Message) bool {
+	if st == nil {
+		return false
+	}
+	n := st.Projection.CoveredCount
+	if n <= 0 || n > len(msgs) {
+		return false
+	}
+	corpus := st.Projection.CoveredMessageHashes
+	body := st.Projection.Messages
+	// Evidence + structural gates: one pipeline length shared by corpus, body,
+	// and the current transcript's sanitized view. (The pipeline length may
+	// differ from CoveredCount when sanitization drops orphans — the 08:58
+	// incident ran 2360 slots on covered_count 2371 — so the gate is on the
+	// three-way equality of the PIPELINE, not on n.)
+	currentFP := coveredMessageFingerprintsForFormat(st.Projection.HashFormat, msgs, n)
+	if len(corpus) == 0 || len(currentFP) != len(corpus) || len(body) != len(corpus) {
+		return false
+	}
+	// Stripped-recipe views of both sides, slot-aligned by the structural gate.
+	storedStripped := provider.SanitizeToolPairing(transientStrippedView(modelInputMessages(body)))
+	currentStripped := provider.SanitizeToolPairing(transientStrippedView(modelInputMessages(msgs[:n])))
+	if len(storedStripped) != len(corpus) || len(currentStripped) != len(corpus) {
+		return false
+	}
+	diverging := 0
+	for i := 0; i < len(corpus); i++ {
+		if corpus[i] == currentFP[i] {
+			continue
+		}
+		diverging++
+		// Transient-only gate: the slot must fingerprint identically once
+		// transient blocks are stripped on both sides. Everything the strip
+		// keeps — user prose, assistant/tool bytes, signatures — still fails.
+		strippedStored := providerVisibleFingerprint(storedStripped[i : i+1])
+		strippedCurrent := providerVisibleFingerprint(currentStripped[i : i+1])
+		if strippedStored == "" || strippedCurrent == "" || strippedStored != strippedCurrent {
+			return false
+		}
+	}
+	if diverging == 0 {
+		// Whole-prefix mismatch with an all-equal corpus is a fingerprint
+		// discrepancy, not a transient re-render — fail closed.
+		return false
+	}
+	// Re-anchor once to the stripped format. The projection body is untouched:
+	// the tolerated slots differ only in host-injected decoration the body
+	// legitimately froze at fold time.
+	stored := st.Projection.CoveredPrefixHash
+	previousFormat := st.Projection.HashFormat
+	currentHash := strippedCoveredPrefixHash(msgs, n)
+	if currentHash == "" {
+		return false
+	}
+	st.Projection.HashFormat = projectionHashFormatStripped
+	st.Projection.CoveredPrefixHash = currentHash
+	st.Projection.CoveredMessageHashes = strippedCoveredMessageFingerprints(msgs, n)
+	if st.LastReceipt != nil && st.LastReceipt.CoveredPrefixHash == stored {
+		receipt := *st.LastReceipt
+		receipt.CoveredPrefixHash = currentHash
+		st.LastReceipt = &receipt
+	}
+	slog.Info("agent: transient-only covered-prefix mismatch tolerated",
+		"writer", SessionWriterID(),
+		"covered_count", n,
+		"diverging_slots", diverging,
+		"pipeline_len", len(corpus),
+		"previous_format", previousFormat,
+		"stored_prefix_hash", shortHash8(stored),
+		"reanchored_prefix_hash", shortHash8(currentHash))
+	return true
 }
 
 // modelVisibleFromProjection splices the projection with any messages appended

@@ -498,6 +498,14 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 			contentValid = true
 			needsNormalization = true
 		}
+		// tl1831b 第二道防线: a mismatch whose per-message diff is transient-only
+		// (host-injected blocks re-rendered, e.g. an installer's context-state
+		// copy change) re-anchors the sidecar to the stripped format instead of
+		// dropping a healthy fold. Non-transient divergence stays fail-closed.
+		if !contentValid && tolerateTransientOnlyMismatch(&st, msgs) {
+			contentValid = true
+			needsNormalization = true
+		}
 		if contentValid {
 			normalized, keyOK = key, true
 		}
@@ -563,6 +571,17 @@ func (a *Agent) LoadProjectionSidecar(sessionPath string) {
 	// serves the wire and the normalized sidecar is republished below via
 	// persistCompactionStateLocked.
 	if failReason != projectionFailNone && migrateLoadRepairedPrefixHash(&st, msgs, preRepair) {
+		needsNormalization = true
+		failReason = projectionInvalidReason(st, msgs)
+	}
+	// tl1831b 第二道防线: a first-layer hash_mismatch whose per-message diff
+	// proves transient-only divergence (host-injected blocks re-rendered — the
+	// 20261127 08:58 装机重启 shape: diff slot 2139/2360 on a user turn, no
+	// canonical growth across the restart) tolerates and re-anchors the
+	// sidecar to the stripped format once, so the fold serves and future
+	// transient re-renders verify on the fast path. Any non-transient slot
+	// divergence keeps failReason and falls through to the drop path unchanged.
+	if failReason == projectionFailHashMismatch && tolerateTransientOnlyMismatch(&st, msgs) {
 		needsNormalization = true
 		failReason = projectionInvalidReason(st, msgs)
 	}
