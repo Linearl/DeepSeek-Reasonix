@@ -1260,11 +1260,17 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 	// 后台投影重建 goroutine），本行读数可把 folded 塌陷归到【甲】砍区（fold
 	// 只剩 head..active 零头）或【乙】safe-prefix/载体墙推进（零头只剩旧摘
 	// 要），pressure 与 manual 同视图对照读数同源。
+	planActiveTurn := a.activeTurnStart(msgs)
 	slog.Info("agent: fold plan", "trigger", trigger, "session", a.sessionLogRef(),
 		"head", head, "start", start, "view_messages", len(msgs), "on_projection", onProjection,
-		"active_turn", a.activeTurnStart(msgs), "split_active", splitActive,
+		"active_turn", planActiveTurn, "split_active", splitActive,
 		"kept_messages", len(preliminaryKept), "fold_messages", len(preliminaryFold))
+	// tl1837：计划半边落侧车——desktop.log 轮转后 fold 计划读数（案B「计划
+	// 1384」）不再丢失。
+	a.recordCompactMetrics(foldPlanMetricsRecord(trigger, head, start, len(msgs), onProjection,
+		planActiveTurn, splitActive, len(preliminaryKept), len(preliminaryFold)))
 	if len(preliminaryFold) == 0 || (!req.force && !a.foldEconomics(preliminaryFold)) {
+		a.recordCompactMetrics(foldDeclinedMetricsRecord(trigger, "fold_economics"))
 		return CompactionNoop, nil
 	}
 	fixedPrefixTokens := a.estimatedVisibleRequestTokens(msgs[:head])
@@ -1295,6 +1301,7 @@ func (a *Agent) compactToProjectionLocked(ctx context.Context, trigger, instruct
 					"min_yield_tokens", max(a.roundFoldYieldFloor(), int(float64(sourceTokens)*minRoundFoldYieldRatio)),
 					"residual_tokens", sourceTokens-yieldTokens, "max_residual_ratio", maxRoundResidualRatio,
 					"park_est", sourceTokens, "retry_growth_tokens", a.parkRetryGrowthTokens())
+				a.recordCompactMetrics(foldDeclinedMetricsRecord(trigger, "fold_yield_too_low"))
 				return CompactionNoop, nil
 			}
 		}

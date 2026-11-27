@@ -77,6 +77,10 @@ var sessionBackupAllowlist = map[string]struct{}{
 	strings.TrimPrefix(store.SessionSpliceLedgerSuffix, "."):          {}, // splices.json
 	strings.TrimPrefix(store.SessionRewriteAttributionLogSuffix, "."): {}, // rewritelog.jsonl
 	strings.TrimPrefix(store.SessionConflictPreserveLogSuffix, "."):   {}, // conflict-preserved.jsonl
+	// tl1837（tl1841 同机制第四例）：压缩/折叠读数侧车补登记——store 删除清单
+	// 同 commit 已进，转正链「先归档后换位」依赖本白名单；差集门禁
+	// TestSessionBackupAllowlistGateCoversStaticInventory 钉两表不再漂移。
+	strings.TrimPrefix(store.SessionCompactMetricsLogSuffix, "."): {}, // compactmetrics.jsonl
 	"context.json":    {},
 	"turns.jsonl":     {},
 	"goal-state.json": {},

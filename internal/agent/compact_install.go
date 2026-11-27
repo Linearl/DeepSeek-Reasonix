@@ -57,6 +57,8 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		tele.Error = err.Error()
 		a.emitCompactionTelemetry(tele)
 		a.emitCompactionFailed(in.trigger, err)
+		// tl1837：已花费摘要请求的失败也落侧车（日志轮转不丢失败现场）。
+		a.recordCompactMetrics(foldFailedMetricsRecord(in.trigger, err.Error()))
 		return CompactionNoop, err
 	}
 	// tl1695: read the interval BEFORE the success stamp overwrites it — the
@@ -106,6 +108,11 @@ func (a *Agent) installFoldProjection(in foldProjectionInstall) (CompactionOutco
 		"trigger", in.trigger, "stage", "buckets_post",
 		"session", a.sessionLogRef(), "messages", len(spliced), "total_tokens", projTokens,
 	}, pb.fields()...)...)
+	// tl1837：执行半边（done 读数 + 压前/压后两份 buckets 分项）一次成行落
+	// 侧车——案B 的「计划 1384 实际 329」与 672.8K 分项现场从 desktop.log
+	// 轮转魔咒下解放，事后可复核、可跨期对照。
+	a.recordCompactMetrics(foldDoneMetricsRecord(in.trigger, tele, in.sourceTokens,
+		len(in.fold), projTokens, compactionIntervalMin, sb, pb))
 	// Task 317 (cache 保全 面 b): the automatic fold attributes its miss the
 	// same way the explicit tool does (shared helper, both entry points).
 	a.logCompactionMissAttribution(in.trigger, tele, in.sourceTokens)

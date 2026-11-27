@@ -103,6 +103,9 @@ var suffixTable = []sidecarShape{
 	{store.SessionConflictLogSuffix, store.SessionConflictLogSuffix, "conflict-log", classData, formStem, false},
 	{store.SessionRepairLogSuffix, store.SessionRepairLogSuffix, "repair-log", classData, formStem, false},
 	{store.SessionRewriteAttributionLogSuffix, store.SessionRewriteAttributionLogSuffix, "rewrite-log", classData, formStem, false},
+	// tl1837：压缩/折叠关键读数（.compactmetrics.jsonl）——会话拥有的指标
+	// 审计侧车，主转录不在即孤儿（与 repairlog/rewritelog 同处置面）。
+	{store.SessionCompactMetricsLogSuffix, store.SessionCompactMetricsLogSuffix, "compact-metrics-log", classData, formStem, false},
 	{".pinned-context.json", ".pinned-context.json", "pinned-context", classData, formStem, false},
 	{".goal-state.json", ".goal-state.json", "goal-state", classData, formStem, false},
 	{".recovery.json", ".recovery.json", "recovery-state", classData, formStem, false},

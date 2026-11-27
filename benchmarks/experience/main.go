@@ -665,7 +665,7 @@ func providerStratificationRows(turns []turnSample) []metricResult {
 			"tl1685 ①（P1 首响归因 tl1684 口径的前置：provider 等待主导长尾 88.7%，分层先持续可测）",
 			vals, 0, verdictObserve, "")
 		r.Verdict = verdictObserve
-		r.Source = "sessions/*.turns.jsonl + <session>.jsonl.meta 的 model 字段（canonical provider/model 前缀）"
+		r.Source = "sessions/ 下各会话 turns ledger 与 meta 侧车的 model 字段（canonical provider/model 前缀；tl1837 注：后缀字面量改述以过 spellings 单一来源门禁，语义不变）"
 		r.Note = fmt.Sprintf("会话级归属：按会话当前 meta.model 归窗口内全部 turn（会话内换模型的历史 turn 不重分层）；"+
 			"checkpoint 留存样本随所属 ledger 归同一 provider；meta 缺失归 %s", providerUnknown)
 		rows = append(rows, r)

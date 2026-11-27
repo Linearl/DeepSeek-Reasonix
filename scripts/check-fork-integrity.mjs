@@ -1632,6 +1632,17 @@ export const CHECKS = [
   { feature: "tl1841 差集门禁守卫（清单×白名单新增即红）", file: "internal/agent/session_backup_allowlist_gate_tl1841_test.go", patterns: ["TestSessionBackupAllowlistGateCoversStaticInventory", "TestSessionBackupAllowlistGateRedOnInjectedSidecar"] },
   { feature: "tl1841 cancel 截断通知投影层（G3 对齐 rewind）", file: "internal/control/controller.go", patterns: ["c.executor.InvalidateProjectionIfStale()"] },
 
+  // ── tl1837 压缩/折叠关键读数持久化（compactmetrics sidecar 三链登记+写点）──
+  // desktop.log 轮转即丢的读数（buckets 分项/fold 计划 vs 实际/压缩比）落
+  // <stem>.compactmetrics.jsonl。三链同 commit：store 清单一行生效删除/换位/
+  // 迁移，备份白名单管转正先归档，sidecarsweep 形态表管孤儿扫描；写点锚
+  // 防 merged/diff 时静默丢行。差集属性本体由包级守卫测试与
+  // TestShapeTableCoversStoreConstructors 钉。
+  { feature: "tl1837 compactmetrics 入会话工件清单（删除/换位/迁移三链随行）", file: "internal/store/session.go", patterns: ["SessionCompactMetricsLog(sessionPath)", "SessionCompactMetricsLogSuffix"] },
+  { feature: "tl1837 归档白名单补登 compactmetrics（转正先归档后换位）", file: "internal/agent/session_selfheal.go", patterns: ["strings.TrimPrefix(store.SessionCompactMetricsLogSuffix, \".\")"] },
+  { feature: "tl1837 sidecarsweep 形态表接 compactmetrics（孤儿扫描面）", file: "internal/sidecarsweep/classify.go", patterns: ["compact-metrics-log"] },
+  { feature: "tl1837 指标写点（fold done+buckets 落侧车；计划/拒绝/失败同族）", file: "internal/agent/compact_install.go", patterns: ["foldDoneMetricsRecord(in.trigger, tele, in.sourceTokens,", "recordCompactMetrics"] },
+
 ];
 
 // Run the checklist against `root` (defaults to the full CHECKS manifest).
