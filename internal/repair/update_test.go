@@ -478,7 +478,8 @@ func TestRollbackPendingUpdateFailsClosedWhenStateLockIsUnavailable(t *testing.T
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -491,7 +492,7 @@ func TestRollbackPendingUpdateFailsClosedWhenStateLockIsUnavailable(t *testing.T
 	}
 	t.Cleanup(func() { acquirePendingUpdateLock = originalAcquire })
 
-	if _, err := RollbackPendingUpdate(); err == nil || !strings.Contains(err.Error(), "lock pending transaction") {
+	if _, err := RollbackPendingUpdateExact(tx); err == nil || !strings.Contains(err.Error(), "lock pending transaction") {
 		t.Fatalf("rollback error = %v, want strict lock failure", err)
 	}
 	got, err := os.ReadFile(target)
@@ -1192,7 +1193,8 @@ func TestFileUpdateRollbackCompensatesOnPartialFailure(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target, added, guard); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target, added, guard)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for path, content := range map[string]string{target: "new-desktop", guard: "new-guard", added: "new-helper"} {
@@ -1210,7 +1212,7 @@ func TestFileUpdateRollbackCompensatesOnPartialFailure(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackPublishStage = originalPublish })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil {
 		t.Fatal("rollback with injected failure should error")
 	}
@@ -1238,7 +1240,7 @@ func TestFileUpdateRollbackCompensatesOnPartialFailure(t *testing.T) {
 	}
 
 	rollbackPublishStage = originalPublish
-	retry, err := RollbackPendingUpdate()
+	retry, err := RollbackPendingUpdateExact(tx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1273,7 +1275,8 @@ func TestFileUpdateRollbackRejectsStageChangedDuringPublish(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -1289,7 +1292,7 @@ func TestFileUpdateRollbackRejectsStageChangedDuringPublish(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackPublishStage = originalPublish })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || result.RolledBack || result.MixedInstall {
 		t.Fatalf("rollback = %+v, %v; want compensated hash rejection", result, err)
 	}
@@ -1315,7 +1318,8 @@ func TestFileUpdateRollbackPreservesAsideReplacedBeforeCleanup(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -1331,7 +1335,7 @@ func TestFileUpdateRollbackPreservesAsideReplacedBeforeCleanup(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackPublishStage = originalPublish })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !result.RolledBack {
 		t.Fatalf("rollback = %+v, %v", result, err)
 	}
@@ -1360,7 +1364,8 @@ func TestFileUpdateRollbackCompensationPreservesRecreatedTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target, guard); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target, guard)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for path, content := range map[string]string{target: "new-desktop", guard: "new-guard"} {
@@ -1381,7 +1386,7 @@ func TestFileUpdateRollbackCompensationPreservesRecreatedTarget(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackPublishStage = originalPublish })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || !result.MixedInstall || result.RolledBack {
 		t.Fatalf("rollback = %+v, %v", result, err)
 	}
@@ -1430,7 +1435,7 @@ func TestFileUpdateRollbackRetryPreservesRetainedNewBinary(t *testing.T) {
 	if err := os.Rename(target, targetAside); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := copyFileWithHash(tx.Files[0].BackupPath, target, 0o700); err != nil {
+	if _, err := copyFileWithHashCreate(tx.Files[0].BackupPath, target, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1443,7 +1448,7 @@ func TestFileUpdateRollbackRetryPreservesRetainedNewBinary(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackPublishStage = originalPublish })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || !result.MixedInstall || result.RolledBack {
 		t.Fatalf("compensated crash retry = %+v, %v", result, err)
 	}
@@ -1461,7 +1466,7 @@ func TestFileUpdateRollbackRetryPreservesRetainedNewBinary(t *testing.T) {
 	}
 
 	rollbackPublishStage = originalPublish
-	retry, err := RollbackPendingUpdate()
+	retry, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !retry.RolledBack {
 		t.Fatalf("retry after compensation = %+v, %v", retry, err)
 	}
@@ -1490,7 +1495,8 @@ func TestFileUpdateRollbackRechecksWholeReleaseUnitBeforeCommit(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target, guard); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target, guard)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for path, body := range map[string]string{target: "new-desktop", guard: "new-guard"} {
@@ -1512,7 +1518,7 @@ func TestFileUpdateRollbackRechecksWholeReleaseUnitBeforeCommit(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackSwapRename = originalSwap })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || !strings.Contains(err.Error(), "verify restored release unit") {
 		t.Fatalf("rollback error = %v, want final release-unit verification", err)
 	}
@@ -1550,7 +1556,8 @@ func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -1560,7 +1567,7 @@ func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	originalRemove := removePendingUpdateFile
 	removePendingUpdateFile = func(string) error { return errors.New("injected remove failure") }
 	t.Cleanup(func() { removePendingUpdateFile = originalRemove })
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || !result.RolledBack || !strings.Contains(err.Error(), "clear pending transaction") {
 		t.Fatalf("rollback cleanup failure = %+v, %v", result, err)
 	}
@@ -1572,7 +1579,7 @@ func TestRollbackReportsPendingCleanupFailureAndRemainsRetryable(t *testing.T) {
 	}
 
 	removePendingUpdateFile = originalRemove
-	retry, err := RollbackPendingUpdate()
+	retry, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !retry.RolledBack {
 		t.Fatalf("retry after cleanup failure = %+v, %v", retry, err)
 	}
@@ -1601,7 +1608,8 @@ func TestFileUpdateRollbackStageFailureLeavesInstallUntouched(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target, guard); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target, guard)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for path, content := range map[string]string{target: "new-desktop", guard: "new-guard"} {
@@ -1619,7 +1627,7 @@ func TestFileUpdateRollbackStageFailureLeavesInstallUntouched(t *testing.T) {
 	}
 	t.Cleanup(func() { rollbackStageCopy = originalCopy })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil {
 		t.Fatal("rollback with injected stage failure should error")
 	}
@@ -1689,7 +1697,8 @@ func TestFileUpdateRollbackBypassesAndPreservesCrashedStage(t *testing.T) {
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -1700,7 +1709,7 @@ func TestFileUpdateRollbackBypassesAndPreservesCrashedStage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !result.RolledBack || result.MixedInstall {
 		t.Fatalf("rollback with crashed stage = %+v, %v", result, err)
 	}
@@ -1871,7 +1880,8 @@ func TestFileUpdateRollbackRechecksReleaseUnitAfterPendingDisplacement(t *testin
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("new"), 0o700); err != nil {
@@ -1886,7 +1896,7 @@ func TestFileUpdateRollbackRechecksReleaseUnitAfterPendingDisplacement(t *testin
 	}
 	t.Cleanup(func() { updateCleanupAfterRename = originalHook })
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err == nil || !result.RolledBack {
 		t.Fatalf("rollback commit with late release drift = %+v, %v", result, err)
 	}
@@ -1912,7 +1922,8 @@ func TestRollbackPendingUpdateDirectRejectsDriftWhileWaitingForTargetLock(t *tes
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("initial-new"), 0o700); err != nil {
@@ -1941,7 +1952,7 @@ func TestRollbackPendingUpdateDirectRejectsDriftWhileWaitingForTargetLock(t *tes
 	}
 	done := make(chan rollbackResult, 1)
 	go func() {
-		result, err := RollbackPendingUpdate()
+		result, err := RollbackPendingUpdateExact(tx)
 		done <- rollbackResult{result: result, err: err}
 	}()
 	<-reachedTargetLock
@@ -2002,14 +2013,15 @@ func TestFileUpdateRollbackPreservesLiveNodeWithoutInstalledOwnership(t *testing
 	if err := os.WriteFile(target, []byte("old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := PrepareFileUpdate("v1", "v2", target); err != nil {
+	tx, err := PrepareFileUpdate("v1", "v2", target)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(target, []byte("unbound-live"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !result.RolledBack {
 		t.Fatalf("rollback = %+v, %v", result, err)
 	}
@@ -2327,7 +2339,7 @@ func TestFileUpdateRollbackCleansInstalledNodeBoundToTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(prepared)
 	if err != nil || !result.RolledBack {
 		t.Fatalf("rollback = %+v, %v", result, err)
 	}
@@ -2370,7 +2382,8 @@ func TestAppBundleRollbackCleansReplacementBoundToStagingTree(t *testing.T) {
 		t.Fatal(err)
 	}
 	backup := app + ".reasonix-update-backup"
-	if _, err := PrepareAppBundleUpdateHandoff("v1", "v2", app, backup, stagedApp, staging, os.Getpid()); err != nil {
+	tx, err := PrepareAppBundleUpdateHandoff("v1", "v2", app, backup, stagedApp, staging, os.Getpid())
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Rename(app, backup); err != nil {
@@ -2383,7 +2396,7 @@ func TestAppBundleRollbackCleansReplacementBoundToStagingTree(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := RollbackPendingUpdate()
+	result, err := RollbackPendingUpdateExact(tx)
 	if err != nil || !result.RolledBack {
 		t.Fatalf("rollback = %+v, %v", result, err)
 	}

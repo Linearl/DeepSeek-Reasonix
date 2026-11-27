@@ -173,7 +173,7 @@ func TestReadPendingFileUpdateRejectsDuplicateReleaseTarget(t *testing.T) {
 
 func TestClaimPendingFileUpdateRejectsReplacementWhileLocking(t *testing.T) {
 	tx, launcher, paths := prepareTestFileUpdateClaim(t)
-	holder, err := LockRepairMutations(paths...)
+	holder, err := lockRepairMutations(paths...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestClaimPendingFileUpdateHoldsCompleteReleaseUnit(t *testing.T) {
 
 	waiter := make(chan error, 1)
 	go func() {
-		unlock, err := LockRepairMutationsTimeout(time.Second, paths...)
+		unlock, err := lockRepairMutationsTimeout(time.Second, paths...)
 		if err == nil {
 			unlock()
 		}
