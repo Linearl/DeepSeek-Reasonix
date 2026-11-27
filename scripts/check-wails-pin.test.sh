@@ -22,6 +22,15 @@ make_fixture() {
   printf 'run: go install "%s@$(cat "$GITHUB_WORKSPACE/.wails-version")"\n' "$wails_module" > "$fixture/.github/workflows/ci.yml"
   cp "$fixture/.github/workflows/ci.yml" "$fixture/.github/workflows/release-desktop.yml"
   cp "$fixture/.github/workflows/ci.yml" "$fixture/.github/workflows/transcript-native-smoke.yml"
+  # tl612 added release-fork.yml to the check's workflow_pins but missed this
+  # fixture, leaving the suite red ever since; every pinned workflow must exist
+  # here or the valid fixture cannot pass.
+  cp "$fixture/.github/workflows/ci.yml" "$fixture/.github/workflows/release-fork.yml"
+  # tl1828b: these two workflows also install from the shared pin; carrying
+  # them in every fixture guards the awk whitelist — missing whitelist lines
+  # would false-red even the valid fixture with "unsupported sources".
+  cp "$fixture/.github/workflows/ci.yml" "$fixture/.github/workflows/app-memory.yml"
+  cp "$fixture/.github/workflows/ci.yml" "$fixture/.github/workflows/pr-build-gate.yml"
   printf 'go install "%s@$wails_pin"\nwails version\n' "$wails_module" > "$fixture/prod_test"
   printf 'Run `make wails-install`.\n' > "$fixture/desktop/README.md"
   printf 'WAILS_VERSION := $(shell tr -d '\''[:space:]'\'' < .wails-version)\nwails-install:\n\tgo install "%s@$(WAILS_VERSION)"\n' "$wails_module" > "$fixture/Makefile"
