@@ -512,152 +512,26 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   sessionTaskPanels: "recommended",
 };
 
-/** 表A distribution, pinned by tests on BOTH sides (Go: render.go labFeatureTiers,
- * frontend: task562 test) — 推荐 15 / 可选 20 / 未稳定 13 / 已退役 1.
- * (任务 621 修正：原钉 46 项未收 toolOptimizations（603）与 tabModeTint（504，
- * Go 侧一直有档），漏收使实验室页出现无徽章特性。任务 517：B1/B2/B3（可选×3）
- * 合并为 safetyCostControl（可选×1），可选 20→18、总数 48→46。任务 677：
- * collabGroupView（群聊入口开关，409 交付漏挂铁律 2 开关，未稳定）入表，
- * 未稳定 12→13、总数 46→47。任务 705：sessionCollabAutoFold（超长跨会话
- * 消息自动折叠，默认关）入表，可选 18→19、总数 47→48。任务 707：compactModel
- * （压缩模型指定，默认关，可选档）入表，可选 19→20、总数 48→49。
- * trajectoryView（轨迹视图，默认关）入表，可选 20→21、总数 49→50。
- * 任务 727：heartbeatRotation（心跳会话轮换，桥接 JSON 键）入表，可选
- * 21→22、总数 50→51。任务 742：tabManagement（标签页管理合并卡，纯前端
- * 容器 id）与 heartbeatBackground（心跳任务后台化，默认关）入表，可选
- * 22→24、总数 51→53。任务 782：界面组三张合并卡容器 id 入表（searchHistory
- * 推荐 + inputSelection / viewLayout 可选），推荐 15→16、可选 24→26、
- * 总数 53→56。任务 783：可观测性组「用量监测」卡容器 + GLM Plan 用量子项
- * 入表（推荐×2），推荐 16→18、总数 56→58；同任务编辑读回（toolOptimizations）
- * 随 22.5 交付转正，未稳定 13→12、推荐 18→19、总数不变 58。任务 785：
- * S1 常驻底座开关随底座退役出表，未稳定 12→11、总数 58→57。任务 790：acpListen（ACP 常驻监听，默认关）入表未稳定档，11→12、总数 57→58。
- * 任务 826：sidebarHoverLeft / sidebarHoverRight（左右边栏 hover 展开，默认
- * 关）按可选档入表（26→28、58→60；562 计数 pin 与 789 统一登记窗口一并
- * 收口——本常量当前被 task562 钉在 26/58，随登记窗口同步跳变）。
- * 任务 815（统一登记窗口收口）：editEvidenceRelaxed（编辑证据门宽松，789
- * 交付、815 补设置页入口，Go 侧同步转正入表）档位不变（未稳定）；本常量
- * 自收口前口径 19/26/12/1=58 一次跳到 19/29/14/1=63（sidebarHover×2 +
- * editEvidenceRelaxed + homePointer 等收口前已在表而 pin 未跟的项一并计入；
- * Go 侧 56 条目，详见 task562 测试头注）。）
- * 任务 686：workflowPanel（工作流可视化面板，未稳定档）入表——未稳定
- * 14→15、总数 63→64（Go 侧同步 56→57）。任务 943：multiEditInjection
- * （multi_edit 直注，工具优化族拆分独立卡）按可选档入表——可选 29→30、
- * 总数 64→65（Go 侧同步 57→58）。任务 940：approvalSelect（composer 权限
- * 选择器形态二选一，默认关）按可选档入表——可选 30→31、总数 65→66
- * （Go 侧同步 58→59；与 943 先后入表各 +1）。任务 944：renderArtifact
- * （对话内产物卡片）按可选档入表——可选 31→32、总数 66→67（Go 侧同步
- * 59→60）。 任务 961：smartAutomation（智能自动化合并卡，纯前端容器 id）
- * 按可选档入表——可选 32→33；interactionPresentation（交互与呈现合并卡，
- * 纯前端容器 id）按推荐档入表——推荐 19→20；总数 67→69（Go 渲染表无条目，
- * 同 tabManagement 豁免）。任务 979：capabilityGroups（能力组披露+
- * session_hub 聚合件，953/954/955 共用一键）按可选档入表——可选 33→34、
- * 总数 69→70（Go 侧同步 60→61）。任务 1005：autopilot / sessionCollab /
- * fullAccess / runtimeReuse 四项升「稳定」（新增第四档）——前端此前口径
- * 20 推荐/34 可选/15 未稳定/1 退役：推荐 -3（三 automation 项）+1（992
- * 漏同步的 orphanHandling 升推荐）、可选 -1（992 漏同步的 runtimeReuse 本
- * 仓仍挂可选）+1（992 漏同步的 editEvidenceRelaxed 升可选）、未稳定 -2
- * （orphanHandling / editEvidenceRelaxed 原挂未稳定）→ 4 稳定/18 推荐/
- * 34 可选/13 未稳定/1 退役，总数不变 70（Go 侧 61 条目：runtimeReuse 992
- * 已升推荐，故 14 推荐/4 稳定/29 可选/14 未稳定）。 * 任务 959：① tableWrap（对话表格按栏宽自动换行，默认关）+ ②
- * sendTargetSelect（composer 发送目标形态二选一，默认关）按可选档入表
- * ——可选 34→36、总数 70→72（Go 侧同步 61→63）。任务 1024：draftRewrite
- * （composer 草稿优化）在其上叠加——可选 36→37、总数 72→73（Go 61→64）。
- * 任务 1072：renderArtifact（对话内产物卡片）整功能移除出表——可选 37→36、
- * 总数 73→72（Go 侧同步 64→63）。
- * 任务 1069：stalledIntentNudge（模型提前结束判定器续轮提醒，默认关）按可选
- * 档入表——可选 36→37、总数 72→73（Go 侧同步 63→64）。
- * 任务 1070：standardContinuation（Standard 流续跑总闸）按可选档入表——
- * 可选 37→38、总数 73→74（Go 侧同步 64→65）。
- * tl 1097：logManagement（日志管理，纯前端容器 id，无配置键）按可选档入表
- * ——可选 38→39、总数 74→75（Go 渲染表无条目，同 tabManagement 豁免）。
- * tl 1125：tabManagement（标签页管理合并卡，纯前端容器 id）+ viewLayout
- * （视图布局合并卡，同为纯前端容器 id）两特性档位「可选 → 推荐」（用户
- * 2026-10-24 指令：推荐 = 核心特性，不开启体验有缺口）——推荐 18→20、
- * 可选 39→37、总数不变 75（两 id 均为纯前端容器，Go 渲染表无条目，registry
- * 计数不变仍 66，同 tabManagement 豁免）。
- * tl 1132：startupSplash（启动遮罩，可选，Go 渲染表同步 +1 → 67）+
- * startupLoading（「启动与加载」纯前端容器 id，同 tabManagement 豁免）——
- * 可选 37→39、总数 75→77。
- * tl 1165：smoothScrollFollow（流式滚动平滑跟随，DSH ScrollFollow 同款四条
- * 防线，默认关）按可选档入表——可选 39→40、总数 77→78（Go 渲染表同步
- * 67→68）。
- * tl-1218：multi_edit 三条增强（multiEditErrorDetail / multiEditEvidenceNarrow /
- * multiEditSkipFailed，toolOptimizations 聚合页成员行）按可选档入表——
- * 可选 +3（Go 渲染表同步 69→72）。⚠️ 本段计数经 2026-10-28 合并线并集解
- * 回调：基线 8552b0abf 上 zcode 落 77+3=80（unstable 12），滚合后主线已有
- * jsonlZstd 补登（58c19737d，optional 非 unstable）⇒ 并集态 81 项/可选 44/
- * 未稳定 12（zcode 预警的「81/13」中 13 系误算，已按实值修正）。
- * tl1193b：pinnedIndex（pinned 常驻层索引化，实验室新「记忆与上下文」组首卡）
- * 按未稳定档入表——未稳定 12→13、总数 81→82（Go 渲染表同步 72→73）。
- * tl1309 卡②：runtimeObservability（「运行可观测」合并卡，纯前端容器 id）按
- * 推荐档入表——推荐 21→22、总数 82→83（Go 渲染表无条目，同 tabManagement 豁免）。
- * tl1309 卡③：resourceGovernance（「资源治理」合并卡容器，稳定）+ gcPercent
- * （可选）+ idleReleaseMinutes（推荐）三 id 入表——稳定 4→5、推荐 22→23、
- * 可选 44→45、总数 83→86（三 id Go 渲染表均无条目，同 tabManagement 豁免）。
- * tl1309 卡④：sessionTaskPanels（「会话与任务面板」合并卡，纯前端容器 id）
- * 按推荐档入表——推荐 23→24、总数 86→87（Go 渲染表无条目，同 tabManagement 豁免）。
- * tl1338：sessionStorage（会话存储档位面）未稳定→稳定（用户 2026-11-01 拍板：
- * fork 已锁 v3，卡内余项皆迁移工具）——稳定 5→6、未稳定 12→11、总数不变 87
- * （Go 渲染表同步 LabTierStable，条目数不变 73）。
- * tl1453：dream（可选档）随 dream/distill 实验退役（宪法 Q1）——可选 45→44、
- * 总数 87→86（Go 渲染表同步 73→72）。
- * tl1487（用户 20261107 八组清单）本件步进：①modelCapabilityFilter（retired
- * 独苗）出表——退役 1→0、总数 86→85；②coldCacheCompact（冷缓存压缩，可选）
- * 入表——可选 +1、总数 85→86；③collabHub 未稳定→稳定、outputStyle 可选→
- * 推荐——稳定 6→7、推荐 24→25、未稳定 11→10、可选不变 44。后续八组各步进
- * 见各自注释；每步 LAB_TIER_COUNTS 与活注册表同跳（562/1005 计数钉同步）。
- * 二组步进：tabModeTint 未稳定→可选、workflowPanel 未稳定→稳定、
- * workflowTemplates（推荐）入表、completionSummary/autoLoadOlder/tableWrap/
- * approvalSelect/sidebarHover×2/smoothScrollFollow/draftRewrite 可选→推荐
- * ——稳定 7→8、推荐 25→34、可选 44→37、未稳定 10→8、总数 86→87。
- * 三组步进：subagentPanel/subagentDetail/draftPersistence/selectionActions
- * 可选→推荐，inputSelection 容器档=成员最高档随之升推荐——推荐 38→39、
- * 可选 33→32，总数不变 87。
- * 五/六/八组步进：cdpDebugPort 未稳定→稳定、jsonlZstd 可选→推荐、
- * pinnedIndex 未稳定→可选——稳定 9、推荐 40、可选 32、未稳定 6，总数不变 87。
- * 七组步进：gcPercent + 工具优化六键（宽松/直注/能力组/错误详情/连坐/跳过）
- * 可选→推荐，pathRules（未稳定）随 tl134 移除出表——推荐 47、可选 25、
- * 未稳定 5、总数 87→86。
- * tl1544：editResend（运行中编辑历史消息回溯重发）按可选档入表——可选
- * 25→26、总数 86→87（Go 渲染表同步 72→73）。
- * tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de，autopilot 代拍供追认）：
- * localServer/subagentPolicy 未稳定→可选、splitView/heartbeatBackground/
- * feedback 可选→推荐——推荐 47→50、可选 26→25、未稳定 5→3，总数不变 87。
- * tl1733：memoryIndexSlim（记忆注入瘦身，提效组，可选档）入表——可选
- * 25→26、总数 87→88（Go 渲染表同步 75→76，recallTool/zeroSummaryCompact
- * 两条 Go-only 预存红同批收口进豁免名单）。
- * tl1746：tasklistPanel（任务面板，可观测性组，未稳定档）入表——未稳定
- * 3→4、总数 88→89（Go 渲染表同步 76→77，tasklist_db_path 为家族子键不
- * 另计）。
- * tl1718：composerToolsFold（composer 工具组默认折叠，界面组视图布局卡成员，
- * 推荐档）入表——推荐 50→51、总数 89→90（Go 渲染表同步 70→71）。
- * tl1772：decisionPatternsLayered（决策模式注入分层伴生开关，自动化组
- * smartAutomation 卡 decisionPatterns 行下方，可选档）入表——可选 26→27、
- * 总数 90→91（Go 渲染表同步 71→72）。memoryIndexSlim 同件移组
- * （提效组独立卡 → 安全/成本控制卡成员行），档位与键不动、注册表计数不变。
- * tl1787 件⑤/A：rangesCompact + modelRangesCompact（tl1397/tl1419 ranges 主动
- * 局部压缩两开关，未稳定档）入表——未稳定 4→6、总数 91→93（两侧共享，
- * Go-only 豁免同步收回两条；并集解基数含 tl1772 的 optional+1）。
- * tl1787 续作：prepairAutosplice（pre-repair 分叉后台元信息拼接，未稳定档）
- * 入表——未稳定 6→7、总数 93→94（两侧共享；并集解 20261124 撞 tl1772
- * 实测定稿）。
- * tl1817：mimoTts（朗读 MiMo TTS 传输层，「交互与呈现」卡成员行，可选档）
- * 入表——可选 27→28、总数 94→95（Go 渲染表同步 73→74，两侧共享）。
- * tl1816：fallbackModel（备用模型开关行，可选档）入表——可选 28→29、总数
- * 95→96（前端独有，Go 渲染表无条目，feOnly 豁免同步）。pinnedIndex 同件
- * 移组（记忆与上下文组独立卡 → 安全/成本控制卡成员行），档位与键不动、
- * 注册表计数不变。
- * 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
- * 不升）：sessionCollabAutoFold（跨会话消息自动折叠，sessionCollab 稳定卡
- * 成员行）可选→推荐——推荐 51→52、可选 29→28，总数不变 96（Go 渲染表同步
- * LabTierRecommended）。 */
-export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = {
-  stable: 9,
-  recommended: 52,
-  optional: 28,
-  unstable: 7,
-  retired: 0,
-};
+/** 表A distribution — tl1844 起由活注册表 EXPERIMENT_FEATURE_TIERS 归并导出
+ * （tl1829 themePackIDRe 同源化先例；自洽钉=task704-switch⑦ tl1309 同款，守在
+ * 562①/1005①）：升档/登记窗口只改注册表条目一处，计数自动跟随——常量与注册
+ * 表不再双源人肉同步（案C 第 10 处漏跟的常量面根因，tl1831d2 报告候选 B）。
+ * 数值一致性由 562①/1005①/704-switch⑦「LAB_TIER_COUNTS ≡ 活注册表实分布」
+ * 自洽断言把守；原逐件计数史注（562→案C 50 余步）由 git 历史与 task562/
+ * task1005 测试头注承载，不再随升档手写追加（史注漏写零红灯，d2 报告序4）。
+ */
+function deriveLabTierCounts(): Readonly<Record<LabTier, number>> {
+  const counts = LAB_TIER_ORDER.reduce((acc, tier) => {
+    acc[tier] = 0;
+    return acc;
+  }, {} as Record<LabTier, number>);
+  for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) {
+    counts[EXPERIMENT_FEATURE_TIERS[id]] += 1;
+  }
+  return counts;
+}
+
+export const LAB_TIER_COUNTS: Readonly<Record<LabTier, number>> = deriveLabTierCounts();
 
 // 任务 722/724：合并卡的成员表（card id → 表A member ids）移交实验室布局
 // 数据（src/lab/labLayoutDefault.ts，yaml 化的内置默认）——徽章档位、分组

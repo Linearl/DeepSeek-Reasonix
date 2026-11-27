@@ -9,6 +9,9 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+// tl1844：LAB_TIER_COUNTS 改活注册表归并导出（无常量字面可 grep），计数钉的
+// 常量文本比对半边换代为常量导入比对（见下方棘轮钉注）。
+import { LAB_TIER_COUNTS } from "../lib/experimentTiers";
 
 let passed = 0;
 function ok(cond: boolean, label: string) {
@@ -124,10 +127,12 @@ ok(tiers.includes('| "compactModel"') && tiers.includes('compactModel: "optional
 ok(goRender.includes('{"compactModel", LabTierOptional, []string{"experimental_compact_model", "compact_model"}}'), "Go labFeatureTiers: compactModel = optional with both render keys");
 // 计数棘轮随每次入表成员递增(727→704→727→…→tl1309 卡③ d53ad7b29 资源治理
 // 六成员并卡后 optional 已至 44);钉改「>22 且与注册表实际计数一致」——棘轮
-// 只涨不跌的保证仍在,具体数值由注册表单源自证。
+// 只涨不跌的保证仍在,具体数值由注册表单源自证。tl1844 换代：常量文本比对
+// （tiers.includes("optional: N,")）随 LAB_TIER_COUNTS 改活注册表归并导出失效
+// → 常量导入比对，语义不变（注册表 optional 实数 ≡ LAB_TIER_COUNTS.optional）。
 {
   const optionalCount = (tiers.match(/: "optional",/g) ?? []).length;
-  ok(optionalCount > 22 && tiers.includes(`optional: ${optionalCount},`),
+  ok(optionalCount > 22 && LAB_TIER_COUNTS.optional === optionalCount,
     "LAB_TIER_COUNTS optional keeps ratcheting (only grows) and matches the registry");
 }
 // 任务 722 点5：compactModel 成员随卡迁登记（safetyCostControl 成员表）。

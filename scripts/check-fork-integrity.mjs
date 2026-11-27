@@ -1482,12 +1482,22 @@ export const CHECKS = [
   // ── 任务562 实验室三档徽章（推荐/可选/未稳定/已退役；621 修正计数 46→48）──
   { feature: "任务562 Go 档位注册表（渲染表同源，含已退役项）", file: "internal/config/render.go", patterns: ["var labFeatureTiers = []labFeatureTier{", "labNonFeatureKeys", "labSpecialKeys"] },
   // 任务562 门禁测试随件退役（1072 裁决，51580cebe：render_artifact 退役时整删 render_lab_tiers_test.go）；档位门禁语义由前端 task562-experiment-tiers.test.ts 计数钉（562 验收测试条）+ render.go labFeatureTiers 注册表锚继续把守。
-  { feature: "任务562 前端档位镜像（单一展示事实源；tl1787 续作后 stable 9/recommended 51/optional 27/unstable 7/retired 0 总 94，锚同步）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "stable: 9", "unstable: 7", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
+  // tl1844 锚形状化（tl1818 纪律：修锚不修逻辑+归因注明）：LAB_TIER_COUNTS 改
+  // 活注册表归并导出后常量字面行不复存在，快照子串 patterns（stable: 9/unstable: 7）
+  // 换结构存在性（deriveLabTierCounts 归并函数）；数值一致性归 task562①/1005①/
+  // task704-switch⑦「活分布 ≡ LAB_TIER_COUNTS」自洽钉把守（tl1831d2 报告候选
+  // C），本锚退为「机制存在性」防线。案C 第 10 处漏跟（848/849 红）即本锚快照
+  // 形态+feature 文案带数值所致，文案一并去数值（数值进锚=下次升档必红的定时器）。
+  { feature: "任务562 前端档位镜像（单一展示事实源；tl1844 起 LAB_TIER_COUNTS 由活注册表归并导出，计数锚形状化——数值一致性归 562 自洽钉，本锚只钉机制存在性）", file: "desktop/frontend/src/lib/experimentTiers.ts", patterns: ["LAB_TIER_COUNTS", "deriveLabTierCounts", "LAB_WALL_PICKS", "EXPERIMENT_FEATURE_TIERS"] },
   { feature: "任务562 徽章组件（纯展示；621 加档位 tooltip）", file: "desktop/frontend/src/components/TierBadge.tsx", patterns: ["LAB_TIER_LABEL_KEYS", "LAB_TIER_DESC_KEYS", "title={t(LAB_TIER_DESC_KEYS[tier])}", "lab-tier-badge--"] },
   { feature: "任务562 设置页 rail+成员开关接线（774 徽章聚合 + 1134 rail 迁 ExperimentalLabSection；tl1487 一组③撤 modelCapabilityFilter retired 只读行，第三锚随之退役）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["labEntryBadgeTier(labLayoutResolved.layout, entry.id)", "labLabel(\"autopilot\""] },
   { feature: "任务562 图墙精选区（16 项同源徽章，563 再扩卡片）", file: "desktop/frontend/src/components/LabPicksWall.tsx", patterns: ["LAB_WALL_PICKS.map", "<TierBadge", "satisfies Readonly<Record<LabWallPickId, string>>"] },
   { feature: "任务562 图墙挂载于引导弹窗", file: "desktop/frontend/src/components/ForkFeaturesIntroDialog.tsx", patterns: ["<LabPicksWall t={t} />"] },
-  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；案C tl1569 拍板后计数 9/52/28/7/0=96（sessionCollabAutoFold optional→recommended，tl1817 mimoTts+tl1816 fallbackModel），锚同步）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["counts.stable === 9 && counts.recommended === 52 && counts.optional === 28 && counts.unstable === 7 && counts.retired === 0", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
+  // tl1844 锚形状化（tl1818 纪律修锚不修逻辑+归因）：原快照锚钉完整计数断言串
+  // （=== 9/52/28/7/0），案C 升档 51/29→52/28 漏跟即红（848/849，d2 实锤）。
+  // 计数一致性已由 task562①「活分布 ≡ LAB_TIER_COUNTS」自洽钉把守（tl1844
+  // 换代），本锚 patterns 换自洽断言结构串，feature 文案去具体数值。
+  { feature: "任务562 验收测试（计数/图墙/Go同源比对/locale；621 豁免式比对；tl1844 锚形状化：计数快照串→「活分布 ≡ LAB_TIER_COUNTS」自洽断言结构串，案C 第 10 处漏跟后按 tl1818 纪律修锚不修逻辑）", file: "desktop/frontend/src/__tests__/task562-experiment-tiers.test.ts", patterns: ["LAB_TIER_COUNTS.stable === counts.stable", "config-only exemption", "display/json-bridge/container exemptions", "agree on every shared tier"] },
   // 任务621：徽章只挂主控开关行 +「（实验）」后缀清零（2026-10-08 用户口径）。
   { feature: "任务621 徽章只挂主控开关行（1134 迁 ExperimentalLabSection；tl1487 coldCacheCompact 转 labLabel 主控行，裸 label 兄弟行减一）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["label={t(\"settings.researchBudget\")}", "label={t(\"settings.perfMonitor\")}", "label={t(\"settings.collabGuidanceMerge\")}", "labLabel(\"tabModeTint\"", "labLabel(\"coldCacheCompact\""] },
   { feature: "任务621 验收测试（单徽章/主控行钉/后缀清零/tooltip/三语）", file: "desktop/frontend/src/__tests__/task621-lab-tier-badges.test.ts", patterns: ["no feature carries more than one pane badge", "sibling/dial rows render bare labels", "carries no experimental text marker", "title={t(LAB_TIER_DESC_KEYS[tier])}"] },

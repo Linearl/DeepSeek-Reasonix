@@ -81,8 +81,18 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
   // 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
   // 不升）：sessionCollabAutoFold 可选→推荐——推荐 51→52、可选 29→28，
   // 总数不变 96。
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 52 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/52 推荐/28 可选/7 未稳定/0 退役 (tl1772 入可选档 + tl1787 ranges×2+prepairAutosplice 入未稳定档 + tl1817 mimoTts 入可选档 + tl1816 fallbackModel 入可选档 + 案C autoFold 升档)");
+  // tl1844 换代（d2 报告候选 A，task704-switch⑦ tl1309 自洽钉同款）：原快照钉
+  // 9/52/28/7/0 每次升档/登记窗口必人肉跟（案C 前此钉读常量字面，注册表单点
+  // 突变时常量未跟即假绿——tl1844 突变实测）→ 改「LAB_TIER_COUNTS ≡ 活注册
+  // 表实分布」自洽断言，升档/登记窗口不再需要跟本文件，快照史由 git 承载。
+  {
+    const live: Record<string, number> = { stable: 0, recommended: 0, optional: 0, unstable: 0, retired: 0 };
+    for (const id of Object.keys(EXPERIMENT_FEATURE_TIERS) as TierFeatureId[]) live[EXPERIMENT_FEATURE_TIERS[id]] += 1;
+    ok(LAB_TIER_COUNTS.stable === live.stable && LAB_TIER_COUNTS.recommended === live.recommended &&
+       LAB_TIER_COUNTS.optional === live.optional && LAB_TIER_COUNTS.unstable === live.unstable &&
+       LAB_TIER_COUNTS.retired === live.retired,
+      `LAB_TIER_COUNTS matches the live register distribution (${JSON.stringify(live)})`);
+  }
   // 稳定档永不 nag（「建议开启」只归推荐档——稳定项默认开，无需劝开）。
   ok(four.every((id) => !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], false) && !suggestEnable(EXPERIMENT_FEATURE_TIERS[id], true)),
     "stable never suggests (off and on both constructed)");

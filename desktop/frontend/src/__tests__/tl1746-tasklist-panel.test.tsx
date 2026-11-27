@@ -18,6 +18,9 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
 import { applyLabFlags, labFlagEnabled } from "../lib/labFlags";
+// tl1844：LAB_TIER_COUNTS 改活注册表归并导出（无常量字面可 grep），计数钉
+// 换代为常量导入比对（见下方 unstable 钉注）。
+import { LAB_TIER_COUNTS } from "../lib/experimentTiers";
 import { zh } from "../locales/zh";
 import { zhTW } from "../locales/zh-TW";
 import { en } from "../locales/en";
@@ -359,8 +362,13 @@ console.log("\ntl1746 tasklist panel: overview/list behavior + lab gate + wiring
   ok(paneRegistry.includes('"tasklistPanel"'), "LAB_PANE_IDS whitelists tasklistPanel");
   const tiers = read("src/lib/experimentTiers.ts");
   ok(tiers.includes('tasklistPanel: "unstable"'), "experimentTiers registers tasklistPanel as unstable");
-  ok(tiers.includes("unstable: 7,"), "LAB_TIER_COUNTS pins unstable=7 (tl1746 3→4 后经 tl1787 ranges×2+prepairAutosplice 步进至 7，tl1758 轮补同步)");
-  ok(tiers.includes("總數 88→89") || tiers.includes("总数 88→89") || tiers.includes("总数 91→94"), "counts note documents the ratchet chain");
+  // tl1844 换代：原两钉=常量字面 unstable=7 + 史注文本——tl1844 起
+  // LAB_TIER_COUNTS 由活注册表归并导出（无常量字面可 grep）、史注由 git 与
+  // task562/task1005 测试头注承载 → 改「常量 ≡ 注册表 unstable 实数」自洽
+  // 断言。本件语义（tasklistPanel 在册 unstable，上行 id 钉）不变，计数步进
+  // 与史注追加不再需要跟本文件。
+  const liveUnstable = (tiers.match(/: "unstable",/g) ?? []).length;
+  ok(LAB_TIER_COUNTS.unstable === liveUnstable, `LAB_TIER_COUNTS.unstable matches the live register (${liveUnstable})`);
 
   // Go 侧同档登记（对账另一半）：render.go tasklistPanel 条目 unstable + 家族子键。
   const goRender = read("../../internal/config/render.go");

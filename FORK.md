@@ -290,6 +290,18 @@ UI 入口** —— 所以对大部分 fork 特性，**日志是唯一的可观�
    `v1.38.3-20260924-1255` 照样出包 → 装机不含任何新交付、196 修复缺席致切 tab 慢。核查报告：
    `global-workspace/tasks/20260923并行开发-批次6/fork开发-批六未合缺口核查-20260924.md`
 
+## 实验室 tier 升档 SOP（tl1844 清单化；tl1831d2 报告候选 D）
+
+权威源 `internal/config/render.go` `labFeatureTiers` ⇄ 前端镜像 `experimentTiers.ts` `EXPERIMENT_FEATURE_TIERS`。**tl1844 起**计数常量（`LAB_TIER_COUNTS`）由注册表归并导出、fork-integrity tier 锚形状化（只钉机制存在性，数值一致性归自洽钉）——单键升档（案C 型）的**必改面只剩 5 处**，其余联动自动跟随或红点指位：
+
+1. `internal/config/render.go`：该条目 `LabTierXxx` 翻档（权威源）。
+2. `desktop/frontend/src/lib/experimentTiers.ts`：注册表条目值 + 条目注（拍板归因写条目注，不写史注——史注已移 git）。
+3. `desktop/frontend/src/lab/lab-layout.yaml`：成员 `tier:`。
+4. `desktop/frontend/src/lab/labLayoutDefault.ts`：成员 `tier:`（yaml 镜像，task722 逐项相等钉把守）。
+5. `desktop/frontend/src/__tests__/task705-*.test.ts`（及各特性 own 测试的档位值钉，如 task707:123）：该特性档位**值**断言——值变才跟，红即精确指本行。
+
+**自动跟随（零改动）**：`LAB_TIER_COUNTS`（导出）、task562 计数自洽钉、task1005 自洽钉、task707/tl1746 比对钉、fork-integrity :1485/:1490 tier 锚（形状化）。**伴随登记/退役（非纯升档）才需**：562③ 豁免清单（id 增删）、Go 条目棘轮下界与成员棘轮下界（有意增删随件调）。**验证**：`node scripts/check-fork-integrity.mjs` + `npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/task562-experiment-tiers.test.ts`（另 1005/705/707/704-switch 定向）须全绿；漏改 2–4 任意一处 → task562 布局漂移/双侧一致断言红并逐 id 指名（tl1844 突变实测）。
+
 ## 发布前检查清单（fork desktop）
 
 1. **代码**：`git status` 干净 → `go build ./...` → `cd desktop && go build ./...` → `cd desktop/frontend && npx tsc --noEmit` → `node scripts/check-fork-integrity.mjs`（须全绿）

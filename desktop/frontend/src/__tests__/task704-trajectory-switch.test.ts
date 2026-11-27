@@ -189,11 +189,13 @@ for (const [name, src] of [["zh", zh], ["en", en], ["zh-TW", zhTw]] as const) {
 //    漏跟即红，不再需要两处手工步进）。
 const tierTest = fs.readFileSync(path.join(frontendRoot, "src/__tests__/task562-experiment-tiers.test.ts"), "utf8");
 {
-  const { EXPERIMENT_FEATURE_TIERS } = await import("../lib/experimentTiers");
-  const liveTotal = Object.keys(EXPERIMENT_FEATURE_TIERS).length;
-  const m = tierTest.match(/Object\.keys\(EXPERIMENT_FEATURE_TIERS\)\.length === (\d+)/);
-  ok(Boolean(m) && Number(m![1]) === liveTotal,
-    `task562 pins the live register total (${liveTotal}, got ${m?.[1] ?? "no pin"})`);
+  // tl1844 换代（tl1309 收口注 :187-189 的后续）：原断言盯 562 侧总数快照字面
+  // （=== N 与活注册表实数比对，漏跟即红）——tl1844 起 562 总数钉改「总数 ≡
+  // 五档合计」自洽断言（快照字面已不存在，本断言原样必红「no pin」）→ 换机制
+  // 存在性：562 仍保有 live 推导的总数自洽断言即绿，数值由其自身活取对账。
+  const m = tierTest.match(/registerTotal === countedTotal/);
+  ok(Boolean(m),
+    `task562 keeps the derived register-total self-check (registerTotal === countedTotal, got ${m ? "pin" : "no pin"})`);
 }
 
 console.log(`\n${passed} checks passed${process.exitCode ? " (with failures)" : ""}`);

@@ -174,15 +174,26 @@ console.log("\ntask 562 lab three-tier badges");
   // 案C（tl1265 级单键升档，2026-11-27 用户拍板 A1 同意、A2 highSpeedModel
   // 不升）：sessionCollabAutoFold 可选→推荐——推荐 51→52、可选 29→28，
   // 总数不变 96。
-  ok(counts.stable === 9 && counts.recommended === 52 && counts.optional === 28 && counts.unstable === 7 && counts.retired === 0,
-    `register counts are 9 稳定/52/28/7/0 (got ${JSON.stringify(counts)})`);
+  // tl1844 换代（d2 报告候选 A，task704-switch⑦ tl1309 自洽钉同款）：原快照钉
+  // 9/52/28/7/0 每次升档/登记窗口必人肉跟（案C 第 10 处漏跟实锤 848/849）→
+  // 改「活注册表实分布 ≡ LAB_TIER_COUNTS」自洽断言：两侧均活取，计数值步进
+  // 不再需要跟本文件；快照数值史由 git 承载，xlsx 表A 外部对账语义由 ③ 双侧
+  // 一致断言把守（d2 报告候选 A 代价注）。
+  ok(LAB_TIER_COUNTS.stable === counts.stable && LAB_TIER_COUNTS.recommended === counts.recommended && LAB_TIER_COUNTS.optional === counts.optional && LAB_TIER_COUNTS.unstable === counts.unstable && LAB_TIER_COUNTS.retired === counts.retired,
+    `LAB_TIER_COUNTS matches the live register distribution (got live ${JSON.stringify(counts)} vs ${JSON.stringify(LAB_TIER_COUNTS)})`);
   // tl1746：tasklistPanel 入表 → 88→89。tl1718：composerToolsFold 入表 → 89→90。
   // tl1772：decisionPatternsLayered 入表 → 90→91。tl1787：三条入表 → 91→94。
   // tl1817：mimoTts（朗读 MiMo TTS 传输层，可选档）入表 → 94→95。
   // tl1816：fallbackModel（备用模型开关行，可选档）入表 → 95→96。
-  ok(Object.keys(EXPERIMENT_FEATURE_TIERS).length === 96, `register holds exactly 96 features (tl1772 + tl1787 + tl1817 mimoTts + tl1816 fallbackModel; got ${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
-  ok(LAB_TIER_COUNTS.stable === 9 && LAB_TIER_COUNTS.recommended === 52 && LAB_TIER_COUNTS.optional === 28 && LAB_TIER_COUNTS.unstable === 7 && LAB_TIER_COUNTS.retired === 0,
-    "LAB_TIER_COUNTS pins 9 稳定/52/28/7/0 (tl1787 并集解 + tl1817 mimoTts + tl1816 fallbackModel + 案C autoFold 升档)");
+  // tl1844 换代：原快照钉「恰 96 项」登记窗口每件必跟 → 自洽断言「注册表总数
+  // ≡ LAB_TIER_COUNTS 五档合计」——合计 < 总数即有档位值不在五档计数面内
+  // （新档未接入计数/导出遗漏），条目增删不再需要跟本钉（总数史由 git 承载）。
+  const registerTotal = Object.keys(EXPERIMENT_FEATURE_TIERS).length;
+  const countedTotal = LAB_TIER_ORDER.reduce((sum, tier) => sum + LAB_TIER_COUNTS[tier], 0);
+  ok(registerTotal === countedTotal, `register total (${registerTotal}) equals the five-tier LAB_TIER_COUNTS sum (${countedTotal})`);
+  // tl1844：原 LAB_TIER_COUNTS 快照钉（9/52/28/7/0）与上方自洽断言同不变量，
+  // 随换代合并退役（替代=上方「活分布 ≡ LAB_TIER_COUNTS」，同文件同覆盖）。
+  // 案C 前它读常量字面：注册表单点突变时常量未跟即假绿（tl1844 突变实测）。
   // 任务 722/724：默认布局的档位与注册表逐 id 一致（漂移=测试红，不静默）。
   ok(findLabLayoutDefaultRegisterDrift().length === 0,
     `default layout tiers agree with the register (drift: ${JSON.stringify(findLabLayoutDefaultRegisterDrift())})`);
@@ -274,7 +285,10 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1772：decisionPatternsLayered 两侧共享入表——71→72。tl1787 续作：
   // prepairAutosplice 两侧共享入表——72→73（并集解 20261124）。tl1817：
   // mimoTts 两侧共享入表——73→74。
-  ok(Object.keys(goTiers).length === 74, `Go registry parses to 74 entries (tl1741 retired seven, tl1746 added tasklistPanel, tl1718 added composerToolsFold, tl1772 added decisionPatternsLayered, tl1787 added prepairAutosplice, tl1817 added mimoTts; got ${Object.keys(goTiers).length})`);
+  // tl1844 换代：原快照钉「恰 74 条」跨语言登记窗口每件必跟 → 下界棘轮（811/
+  // task705「计数不倒退」先例）：跌破即 Go 注册表解析丢条目（③ goOnly/feOnly
+  // 精确清单同红双保险）；有意的退役批次在退役 commit 内随件下调本下界。
+  ok(Object.keys(goTiers).length >= 74, `Go registry parses to >= 74 entries (tl1844 ratchet, exact 74 @ 案C; got ${Object.keys(goTiers).length})`);
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -360,7 +374,10 @@ console.log("\ntask 562 lab three-tier badges");
   // 65→68（并集解 20261124）。tl1817：interactionPresentation 卡补 mimoTts
   // 成员行——68→69。
   // // 65→68（并集解 20261124）。tl1816：pinnedIndex 独立卡移组 safetyCostControl
-  ok(members.length === 70, `merged cards carry 70 member features (tl1772 row + re-home + tl1787 + tl1817 mimoTts + tl1816 fallbackModel/pinnedIndex; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // tl1844 换代：原快照钉「恰 70 成员」布局登记窗口每件必跟 → 下界棘轮（同
+  // ③ Go 条目钉口径）：跌破即有卡成员行被删（有意退役批次随件下调）；成员
+  // ⊆ 注册表由下方 covered 自洽断言把守。
+  ok(members.length >= 70, `merged cards carry >= 70 member features (tl1844 ratchet, exact 70 @ 案C; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -390,7 +407,10 @@ console.log("\ntask 562 lab three-tier badges");
   // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。tl1817：
   // mimoTts 入表计入 → 94→95。
   // // prepairAutosplice 入表计入 → 91→94（并集解 20261124）。tl1816：
-  ok(covered.size === 96, "rail entries cover all 96 features (tl1772 + tl1787 + tl1817 + tl1816 fallbackModel added)");
+  // tl1844 换代：原快照钉「覆盖 96」→ 自洽断言「覆盖集 ≡ 注册表全集」——
+  // 语义=每个注册 id 都有 rail 入口或卡成员位（成员混入未注册 id 即红，
+  // members ⊆ registry），总数步进不再需要跟本钉。
+  ok(covered.size === Object.keys(EXPERIMENT_FEATURE_TIERS).length, `rail entries cover the whole register (${covered.size}/${Object.keys(EXPERIMENT_FEATURE_TIERS).length})`);
   // 任务 774 徽章聚合（设计稿 §4.3）：rail 行/卡头只渲染一枚最高档 =
   // max(卡 tier, members tiers)（推荐 > 可选 > 未稳定 > 已退役）。断言结构
   // 成对：railTiersForDefault 钉「聚合输入」（卡上实际存在的档位清单，含
