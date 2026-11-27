@@ -1298,9 +1298,11 @@ export interface AppBindings extends ModelSettingsBindings, SessionCatalogBindin
   // tl1658: 返回裁决视图（trashed / viaStaging / permanentOnly）——超长路径
   // 收不进桶且短路径中转也不可行时，裁决交前端出「永久删除不可恢复」明示
   // 弹窗，确认后才走 DeletePreRepairBackupPermanent。
-  DeletePreRepairBackup(dir: string): Promise<PreRepairDeleteView>;
-  DeletePreRepairBackupPermanent(dir: string): Promise<void>;
-  DeletePreRepairBackups(dirs: string[]): Promise<PreRepairBatchCleanupView>;
+  // tl1834 件4: force=true 旁路健康闸——前端对失败清单明示确认（强制删除
+  // 弹窗）后才传入；gone/trash-failed 等物理失败 force 也照实拒绝。
+  DeletePreRepairBackup(dir: string, force: boolean): Promise<PreRepairDeleteView>;
+  DeletePreRepairBackupPermanent(dir: string, force: boolean): Promise<void>;
+  DeletePreRepairBackups(dirs: string[], force: boolean): Promise<PreRepairBatchCleanupView>;
   // tl1787 件3/B: 把改写前备份里主线缺失的独有历史接回活宿主主线（1.34
   // graft 合并体系同一执行核：只增不改，纯本地零 token）；宿主已归档/孤儿
   // 备份拒绝并给人话原因。
@@ -4912,14 +4914,14 @@ function makeMockApp(): AppBindings {
     async ListPreRepairBackups(): Promise<PreRepairBackupView[]> {
       return [];
     },
-    async DeletePreRepairBackup(_dir: string): Promise<PreRepairDeleteView> {
+    async DeletePreRepairBackup(_dir: string, _force: boolean): Promise<PreRepairDeleteView> {
       // mock: cleanup is a no-op in browser-dev mode
       return { trashed: true };
     },
-    async DeletePreRepairBackupPermanent(_dir: string): Promise<void> {
+    async DeletePreRepairBackupPermanent(_dir: string, _force: boolean): Promise<void> {
       // mock: cleanup is a no-op in browser-dev mode
     },
-    async DeletePreRepairBackups(_dirs: string[]): Promise<PreRepairBatchCleanupView> {
+    async DeletePreRepairBackups(_dirs: string[], _force: boolean): Promise<PreRepairBatchCleanupView> {
       return { trashed: 0, trashedBytes: 0, staged: 0, failed: 0, failures: [] };
     },
     async MergePreRepairBackup(_dir: string): Promise<PreRepairMergeView> {

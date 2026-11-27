@@ -5432,6 +5432,16 @@ export const zh: Record<DictKey, string> = {
   "settings.recoveryCopiesPreRepairRepairNoop": "该会话无需修复即可清理其改写前备份",
   "settings.recoveryCopiesPreRepairBadge": "改写前备份",
   "settings.recoveryCopiesPreRepairCleanProgress": "正在清理… {done}/{total}",
+  // tl1834 件4: 强制删除——删除失败（健康闸拒绝）后的明示出口；语义边界与
+  // Go pre_repair_cleanup.go 闸注释同源（force 只旁路健康保护闸，物理失败
+  // 照实拒绝）。
+  "settings.recoveryCopiesPreRepairForceTitle": "强制删除改写前备份？",
+  "settings.recoveryCopiesPreRepairForceBatchLead": "本轮已删 {ok} 项，{failed} 项删除失败（清单如下）。要对失败项强制删除吗？",
+  "settings.recoveryCopiesPreRepairForceWarn": "强制删除会绕过「原对话不健康」保护闸：这份备份可能已是该对话仅存的回头路，请确认不再需要它。",
+  "settings.recoveryCopiesPreRepairForceRecycleNote": "强制删除仍走系统回收站（可还原）；回收站也收不进的项（如超长路径）会如实报失败，不会静默跳过。",
+  "settings.recoveryCopiesPreRepairForceConfirm": "强制删除",
+  "settings.recoveryCopiesPreRepairForceDone": "已强制删除 {n} 项",
+  "settings.recoveryCopiesPreRepairForceRefused": "强制删除仍有 {n} 项失败（明细见面板错误区）",
   "settings.recoveryCopiesPreRepairStagedNote": "其中经短路径中转的备份，从回收站还原时会回到中转目录",
   "settings.recoveryCopiesPreRepairPermanentTitle": "永久删除这份改写前备份？",
   "settings.recoveryCopiesPreRepairPermanentWarn": "该备份包含超出 Windows 路径长度上限的内容，无法放进回收站，短路径中转也不可行——只能永久删除，不可恢复。",

@@ -66,7 +66,7 @@ func TestPreRepairBatchCleanupEmitsProgressPerItem(t *testing.T) {
 	t.Cleanup(func() { runtimeEventsEmitFallback = previousEmit })
 
 	app := &App{ctx: context.Background()}
-	run, err := app.DeletePreRepairBackups([]string{b1, b2})
+	run, err := app.DeletePreRepairBackups([]string{b1, b2}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestPreRepairBatchCleanupProgressWithoutCtxIsSilent(t *testing.T) {
 	t.Cleanup(func() { runtimeEventsEmitFallback = previousEmit })
 
 	app := &App{} // ctx 未设（nil）
-	if _, err := app.DeletePreRepairBackups([]string{backup}); err != nil {
+	if _, err := app.DeletePreRepairBackups([]string{backup}, false); err != nil {
 		t.Fatalf("batch without ctx: %v", err)
 	}
 	if fired {

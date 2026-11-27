@@ -1047,6 +1047,10 @@ export function RecoveryCopiesSection() {
   // 其它行的删除钮/勾选框立即可用（并发点删安全：Go 侧 sessionRemovalMu 串
   // 行化，闸对每条权威复验，后删的拿到诚实结果）。错误路径同样在 finally
   // 复位——失败不卡状态（验收「状态复位钉」）。
+  // tl1834 件4（用户 20261127 令）：健康闸拒绝 → 强制删除出口。删除失败弹窗
+  // 列明后果，用户明示确认后对失败项带 force=true 重调（后端只旁路健康保护
+  // 闸：回收站语义/路径闸/物理失败如实拒绝全部原样）；拒绝强制的落回原错误
+  // 报告面。强制的语义边界与 Go 闸注释同源。
   const preRepairCanCleanup =
     typeof app.DeletePreRepairBackup === "function" && typeof app.DeletePreRepairBackups === "function";
   // tl1787 件3/B：合并入口的能力探测（旧 harness 的 Partial stub 无此方法时
@@ -1055,6 +1059,12 @@ export function RecoveryCopiesSection() {
   // tl1674b 阶段二：手动拼接入口的能力探测（同一 typeof 守卫纪律）。
   const preRepairCanSplice =
     typeof app.MergePreRepairSplice === "function" && typeof app.PreviewPreRepairSplice === "function";
+
+  // tl1834 件4: 健康闸拒绝的识别——后端错误消息是稳定英文原文（Go 闸的拒绝
+  // 文案），前端按原文匹配；其余失败（gone/trash-failed/超长路径裁决）不走
+  // 强制出口——force 对物理失败无事可做，不给虚假「下一步」。
+  const isOwnerUnhealthyError = (err: unknown): boolean =>
+    (err instanceof Error ? err.message : String(err)).includes("owner session is not healthy");
 
   const deletePreRepair = async (view: PreRepairBackupView) => {
     if (!preRepairCanCleanup || preRepairDeleting.has(view.dir)) return;
@@ -1091,7 +1101,32 @@ export function RecoveryCopiesSection() {
       // 都没删，出第二段「永久删除不可恢复」明示弹窗，确认后才走永久桥；
       // 其余=错误原样上抛。旧 harness 的 void stub（undefined）按 trashed
       // 处理（既有判例零回退）。
-      const verdict: PreRepairDeleteView | undefined = await app.DeletePreRepairBackup(view.dir);
+      // tl1834 件4: 健康闸拒绝不直接落错误——出强制删除弹窗（列明失败与
+      // 后果），用户明示后带 force 重调；拒绝强制的 rethrow 落回原错误面。
+      let verdict: PreRepairDeleteView | undefined;
+      try {
+        verdict = await app.DeletePreRepairBackup(view.dir, false);
+      } catch (firstErr) {
+        if (!isOwnerUnhealthyError(firstErr)) throw firstErr;
+        const okForce = await confirm({
+          title: t("settings.recoveryCopiesPreRepairForceTitle"),
+          message: (
+            <div>
+              <p>
+                {view.label} · {formatBytes(view.bytes)} · {formatWhen(view.modifiedAt)}
+              </p>
+              <p className="rc-muted">{firstErr instanceof Error ? firstErr.message : String(firstErr)}</p>
+              <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairForceWarn")}</p>
+              <p className="rc-muted">{t("settings.recoveryCopiesPreRepairForceRecycleNote")}</p>
+            </div>
+          ),
+          confirmLabel: t("settings.recoveryCopiesPreRepairForceConfirm"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (!okForce) throw firstErr;
+        verdict = await app.DeletePreRepairBackup(view.dir, true);
+      }
       if (verdict?.permanentOnly) {
         const okPermanent = await confirm({
           title: t("settings.recoveryCopiesPreRepairPermanentTitle"),
@@ -1109,7 +1144,7 @@ export function RecoveryCopiesSection() {
           tone: "danger",
         });
         if (!okPermanent) return;
-        await app.DeletePreRepairBackupPermanent(view.dir);
+        await app.DeletePreRepairBackupPermanent(view.dir, false);
         showToast(t("settings.recoveryCopiesPreRepairPermanentDone"), "info");
       } else {
         if (verdict?.viaStaging) {
@@ -1163,7 +1198,7 @@ export function RecoveryCopiesSection() {
     if (!ok) return;
     setPreRepairBusy(true);
     try {
-      const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir));
+      const run = await app.DeletePreRepairBackups(targets.map((v) => v.dir), false);
       // tl1658 完成回执三态（与实际行为一一对应；tl1647 聚合口径）：全成功/
       // 部分成功/全被拒各一条 toast——部分成功此前只报成功数、失败只落面板，
       // toast 层看不出「有失败」。经中转的项（staged>0）附还原位置披露。
@@ -1208,6 +1243,64 @@ export function RecoveryCopiesSection() {
       }
       if (refusedItems.length > 0) {
         setRefusals((current) => [...current, ...refusedItems]);
+      }
+      // tl1834 件4: 健康闸拒绝（owner-unhealthy）→ 强制删除出口——弹窗列明
+      // 本轮删了哪些（{ok}）与没删成哪些（清单），用户明示后对失败项带 force
+      // 重调（后端只旁路健康保护闸）。强制轮三态如实报告：成功走 toast；
+      // 仍失败的逐条落面板错误区+诚实 toast（不静默吞）。拒绝强制的情形，
+      // 上面的 refusals 警示区就是报告面（既有语义不变）。gone/trash-failed/
+      // permanent-only 不进强制清单——force 对物理失败无事可做。
+      const unhealthy = (run.failures ?? []).filter((failure) => failure.reason === "owner-unhealthy");
+      if (unhealthy.length > 0) {
+        const okForce = await confirm({
+          title: t("settings.recoveryCopiesPreRepairForceTitle"),
+          message: (
+            <div>
+              <p>
+                {t("settings.recoveryCopiesPreRepairForceBatchLead")
+                  .replace("{ok}", String(run.trashed))
+                  .replace("{failed}", String(unhealthy.length))}
+              </p>
+              <ul className="rc-errors">
+                {unhealthy.map((failure) => (
+                  <li key={failure.dir}>
+                    {failure.label}
+                    {failure.detail ? ` — ${failure.detail}` : ""}
+                  </li>
+                ))}
+              </ul>
+              <p className="rc-preview__warn">{t("settings.recoveryCopiesPreRepairForceWarn")}</p>
+              <p className="rc-muted">{t("settings.recoveryCopiesPreRepairForceRecycleNote")}</p>
+            </div>
+          ),
+          confirmLabel: t("settings.recoveryCopiesPreRepairForceConfirm"),
+          cancelLabel: t("common.cancel"),
+          tone: "danger",
+        });
+        if (okForce) {
+          const forced = await app.DeletePreRepairBackups(
+            unhealthy.map((failure) => failure.dir),
+            true,
+          );
+          const stagedNoteForced =
+            forced.staged > 0 ? ` · ${t("settings.recoveryCopiesPreRepairStagedNote")}` : "";
+          if (forced.trashed > 0) {
+            showToast(
+              `${t("settings.recoveryCopiesPreRepairForceDone").replace("{n}", String(forced.trashed))} · ${formatBytes(forced.trashedBytes)}${stagedNoteForced}`,
+              "info",
+            );
+          }
+          if (forced.failed > 0) {
+            for (const failure of forced.failures ?? []) {
+              const line = `${failure.label}: ${failure.detail || failure.reason}`;
+              setErrors((current) => [...current, line]);
+            }
+            showToast(
+              t("settings.recoveryCopiesPreRepairForceRefused").replace("{n}", String(forced.failed)),
+              "error",
+            );
+          }
+        }
       }
       await load();
     } finally {

@@ -129,7 +129,7 @@ func TestPreRepairDeleteTrashesLiveOwnerBackup(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err != nil {
 		t.Fatalf("delete: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestPreRepairDeleteAllowsSoleCopyByUserVerdict(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err != nil {
 		t.Fatalf("the sole surviving copy must be deletable by user verdict (tl1646): %v", err)
 	}
@@ -195,7 +195,7 @@ func TestPreRepairDeleteRefusesUnhealthyOwner(t *testing.T) {
 	t.Cleanup(func() { preRepairHealthInspect = previous })
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err == nil {
 		t.Fatal("delete must refuse when the owner session is unhealthy")
 	}
@@ -222,7 +222,7 @@ func TestPreRepairDeleteAllowsArchivedRemains(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if _, err := app.DeletePreRepairBackup(backup); err != nil {
+	if _, err := app.DeletePreRepairBackup(backup, false); err != nil {
 		t.Fatalf("delete of archived remains must pass the gate: %v", err)
 	}
 	if len(spy.calls) != 1 || spy.calls[0] != backup {
@@ -250,7 +250,7 @@ func TestPreRepairDeleteAllowsBackupInsideTrashBucket(t *testing.T) {
 	t.Cleanup(func() { preRepairHealthInspect = previous })
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err != nil {
 		t.Fatalf("a backup inside the trash bucket (archived owner) must be deletable: %v", err)
 	}
@@ -275,7 +275,7 @@ func TestPreRepairBatchCleanupIncludesInBucketBackup(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{b1, inBucket})
+	run, err := app.DeletePreRepairBackups([]string{b1, inBucket}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -298,7 +298,7 @@ func TestPreRepairDeleteRefusesOutsideSessionDirs(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	if _, err := app.DeletePreRepairBackup(outside); err == nil {
+	if _, err := app.DeletePreRepairBackup(outside, false); err == nil {
 		t.Fatal("delete must refuse paths outside known session dirs")
 	}
 	if len(spy.calls) != 0 {
@@ -315,7 +315,7 @@ func TestPreRepairDeleteTrashFailureIsHonest(t *testing.T) {
 	withPreRepairTrashSpy(t, errors.New("bin refused"))
 
 	app := &App{}
-	verdict, err := app.DeletePreRepairBackup(backup)
+	verdict, err := app.DeletePreRepairBackup(backup, false)
 	if err == nil {
 		t.Fatal("a recycle-bin failure must surface")
 	}
@@ -341,7 +341,7 @@ func TestPreRepairBatchCleanupSweepsToZero(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{b1, b2, b3})
+	run, err := app.DeletePreRepairBackups([]string{b1, b2, b3}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestPreRepairBatchCleanupIncludesOrphans(t *testing.T) {
 	spy := withPreRepairTrashSpy(t, nil)
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{b1, sole})
+	run, err := app.DeletePreRepairBackups([]string{b1, sole}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestPreRepairBatchHealthReadCachedPerOwner(t *testing.T) {
 	t.Cleanup(func() { preRepairHealthInspect = previous })
 
 	app := &App{}
-	run, err := app.DeletePreRepairBackups([]string{b1, b2})
+	run, err := app.DeletePreRepairBackups([]string{b1, b2}, false)
 	if err != nil {
 		t.Fatalf("batch: %v", err)
 	}
