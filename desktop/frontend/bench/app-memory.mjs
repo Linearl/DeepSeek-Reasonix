@@ -8,7 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { startPreviewServer } from "./vite-preview-server.mjs";
 import { chooseAppLayout } from "./app-page-actions.mjs";
-import { attributeRetention, ABSENT_LIFECYCLE_PROBE, buildIdentity, evidenceIntegrity, retainedCohorts, screeningBlockers, summarizeHeap } from "./app-memory-evidence.mjs";
+import { attributeRetention, ABSENT_LIFECYCLE_PROBE, buildIdentity, evidenceIntegrity, retainedCohorts, screeningBlockers, settledMajority, summarizeHeap } from "./app-memory-evidence.mjs";
 import { completeShard, verifyIdentity, MEMORY_FIXTURES, MEMORY_PROTOCOL } from "./app-memory-shards.mjs";
 
 const frontendDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -32,6 +32,20 @@ const BASELINE_ATTEMPTS = integerEnv("REASONIX_APP_MEMORY_BASELINE_ATTEMPTS", 4)
 // Interval per reading = settleFrames(12) + double forced GC, identical to the
 // single-sample cadence, so c adds readings without changing the GC rhythm.
 const SETTLED_ATTEMPTS = integerEnv("REASONIX_APP_MEMORY_SETTLED_ATTEMPTS", 3);
+// tl1823b baseline reproducibility (117-D report §6.3-6.5, user decision 20261126
+// option 1): the DOM counter is a deterministic function of the PRECEDING fixture
+// pair only while the retention pool is short-history; after a long mixed run the
+// same geometry->full walk reads one floor lower (27,515/1,453 hot vs 24,973/1,203
+// converged) because the detached transcript retention pool has converged and the
+// two re-walk steps before settling cannot heat it back. The gate criteria
+// (settled majority + in-band + real drift stays red) are untouched: instead the
+// baseline anchor now shares the settled anchor's load history by running one
+// mixed-shaped soak tour BEFORE the baseline readings, so the baseline is the
+// warm/converged floor and is directly comparable to the settled majority.
+// The soak tour produces NO protocol samples and NO heap snapshot: the sample
+// sequence and the 5-snapshot protocol stay byte-identical. Set 0 to skip.
+const preSoakEnv = Number(process.env.REASONIX_APP_MEMORY_PRE_SOAK_CYCLES);
+const PRE_SOAK_CYCLES = Number.isInteger(preSoakEnv) && preSoakEnv >= 0 ? preSoakEnv : MIXED_CYCLES;
 // Both anchors name their resting context so the classifier can refuse a
 // cross-phase comparison (layer a: same-context in-band only).
 const RESTING_CONTEXT = "geometry->full";
@@ -135,6 +149,16 @@ async function heapSnapshot(cdp, name) {
   return { file: path.basename(file), summary };
 }
 
+// One navigation round trip: source fixture -> full. The phase shape (which
+// source, safety cadence) is shared by the measured phases and the pre-soak
+// tour so the soak heats exactly the traffic pattern the tail will see.
+async function roundTrip(page, phase, round) {
+  const safety = phase === "safety" || phase === "mixed" && round % 3 === 0;
+  if (safety) await enterSafety(page);
+  else await selectFixture(page, phase === "full" || phase === "mixed" && round % 3 === 1 ? fixtures.geometry : fixtures.windowed);
+  await selectFixture(page, fixtures.full);
+}
+
 async function runProcess(index) {
   const browser = await chromium.launch({
     headless: true,
@@ -178,6 +202,22 @@ async function runProcess(index) {
     await selectFixture(page, fixtures.geometry);
     await selectFixture(page, fixtures.full);
     await enterSafety(page);
+    // Pre-soak tour before the baseline (tl1823b, see PRE_SOAK_CYCLES above):
+    // mixed-shaped rounds with light stdout checkpoints so the retention-pool
+    // convergence stays observable. The existing geometry->full walk below is
+    // the soak's closing re-walk, identical to the one before the settled
+    // readings, which is what makes the two anchors same-context AND
+    // same-history. Checkpoint readings are stdout-only (never pushed into
+    // samples), so protocolSamples and the shard snapshot protocol are unaware.
+    if (PRE_SOAK_CYCLES > 0) {
+      for (let round = 1; round <= PRE_SOAK_CYCLES; round++) {
+        await roundTrip(page, "mixed", round);
+        if (round % 64 === 0 || round === PRE_SOAK_CYCLES) {
+          const probe = await forceGc(cdp, page);
+          process.stdout.write(`[app-memory] process=${index} phase=pre-soak roundTrips=${round} nodes=${probe.dom.nodes} listeners=${probe.dom.jsEventListeners}\n`);
+        }
+      }
+    }
     await selectFixture(page, fixtures.geometry);
     await selectFixture(page, fixtures.full);
     // Baseline and checkpoints share a post-navigation resting state. Layout
@@ -197,8 +237,10 @@ async function runProcess(index) {
       const previous = baselineReadings.at(-2);
       const stable = previous && previous.nodes === reading.dom.nodes && previous.jsEventListeners === reading.dom.jsEventListeners;
       if (stable || attempt === BASELINE_ATTEMPTS) {
-        samples.push({ phase: "baseline", roundTrips: 0, context: RESTING_CONTEXT, baselineStable: Boolean(stable), baselineReadings, ...reading });
-        process.stdout.write(`[app-memory] process=${index} phase=baseline stable=${Boolean(stable)} readings=${JSON.stringify(baselineReadings)}\n`);
+        // roundTrips stays the protocol's baseline anchor value (0 = anchor);
+        // preSoakCycles records the soak history the anchor actually carries.
+        samples.push({ phase: "baseline", roundTrips: 0, context: RESTING_CONTEXT, baselineStable: Boolean(stable), baselineReadings, preSoakCycles: PRE_SOAK_CYCLES, ...reading });
+        process.stdout.write(`[app-memory] process=${index} phase=baseline stable=${Boolean(stable)} preSoakCycles=${PRE_SOAK_CYCLES} readings=${JSON.stringify(baselineReadings)}\n`);
         break;
       }
     }
@@ -206,10 +248,7 @@ async function runProcess(index) {
     for (const phase of ["full", "windowed", "safety", "mixed"]) {
       const count = phase === "mixed" ? MIXED_CYCLES : CYCLES;
       for (let round = 1; round <= count; round++) {
-        const safety = phase === "safety" || phase === "mixed" && round % 3 === 0;
-        if (safety) await enterSafety(page);
-        else await selectFixture(page, phase === "full" || phase === "mixed" && round % 3 === 1 ? fixtures.geometry : fixtures.windowed);
-        await selectFixture(page, fixtures.full);
+        await roundTrip(page, phase, round);
         if (round % 32 === 0 || round === count) {
           const sample = { phase, roundTrips: round, ...await forceGc(cdp, page) };
           samples.push(sample);
@@ -247,10 +286,29 @@ async function runProcess(index) {
       if (!settled || attempt === SETTLED_ATTEMPTS) settled = reading;
       process.stdout.write(`[app-memory] process=${index} phase=settled attempt=${attempt}/${SETTLED_ATTEMPTS} nodes=${reading.dom.nodes} listeners=${reading.dom.jsEventListeners} subscriptions=${reading.lifecycle.activeSubscriptions}\n`);
     }
-    const settledSample = { phase: "settled", roundTrips: MIXED_CYCLES, context: RESTING_CONTEXT, settledReadings, ...settled };
+    // Retention-pool observation (tl1823b, 117-D report §6.3): the DOM delta
+    // between baseline and the settled majority is dominated by detached
+    // transcript subtrees that rotate per fixture pair (identical <li> counts,
+    // fresh ids) — bounded, reversible retention, cleaner at the tail, NOT
+    // cumulative leakage. Recorded as an observation on the sample and stdout;
+    // attributeRetention never reads it, so real displacement still gates red
+    // by the unchanged majority-vs-baseline rule.
+    const majorityReading = settledMajority(settledReadings);
+    const baselineAnchor = samples[0];
+    const retentionPool = majorityReading && baselineAnchor ? {
+      baselineNodes: baselineAnchor.dom.nodes,
+      settledNodes: majorityReading.nodes,
+      deltaNodes: majorityReading.nodes - baselineAnchor.dom.nodes,
+      baselineListeners: baselineAnchor.dom.jsEventListeners,
+      settledListeners: majorityReading.jsEventListeners,
+      deltaListeners: majorityReading.jsEventListeners - baselineAnchor.dom.jsEventListeners,
+      note: "detached transcript retention rotates per fixture pair; observation only, excluded from gate input",
+    } : null;
+    const settledSample = { phase: "settled", roundTrips: MIXED_CYCLES, context: RESTING_CONTEXT, settledReadings, retentionPool, ...settled };
     samples.push(settledSample);
     writeFileSync(path.join(artifacts, `${index}-samples.json`), JSON.stringify(samples, null, 2));
     process.stdout.write(`[app-memory] process=${index} phase=settled context=${RESTING_CONTEXT} readings=${JSON.stringify(settledReadings)} tokens=${settled.lifecycle.liveRenderTokens}\n`);
+    if (retentionPool) process.stdout.write(`[app-memory] process=${index} observation retention-pool baseline=${retentionPool.baselineNodes}/${retentionPool.baselineListeners} settled=${retentionPool.settledNodes}/${retentionPool.settledListeners} delta=${retentionPool.deltaNodes}/${retentionPool.deltaListeners} (observation only, excluded from gate input)\n`);
     return {
       process: index,
       browser: browser.version(),
@@ -275,7 +333,7 @@ async function runProcess(index) {
 
 await ensureBuild();
 const preview = await startPreviewServer(frontendDir, PORT);
-const report = { identity: buildIdentity(frontendDir), fixtures, protocol: MEMORY_PROTOCOL, startedAt: new Date().toISOString(), cycles: CYCLES, mixedCycles: MIXED_CYCLES,
+const report = { identity: buildIdentity(frontendDir), fixtures, protocol: MEMORY_PROTOCOL, startedAt: new Date().toISOString(), cycles: CYCLES, mixedCycles: MIXED_CYCLES, preSoakCycles: PRE_SOAK_CYCLES,
   ...(SHARD === null ? {} : { shard: { id: SHARD, total: 3, executionId: prepared.executionId } }), processes: [] };
 try {
   for (let index = 1; index <= PROCESSES; index += 1) {
