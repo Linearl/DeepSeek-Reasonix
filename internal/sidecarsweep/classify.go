@@ -93,7 +93,6 @@ var suffixTable = []sidecarShape{
 	// —— guardian 专属（先于泛化形态命中）——
 	{".guardian.cursor.json", ".guardian.cursor.json", "guardian-cursor", classData, formGuardian, false},
 	// —— 拼在 stem 后的形态（含 guardian 级联：<id>.guardian.<kind> 同表命中）——
-	{store.SessionEventLogRotatingSuffix, store.SessionEventLogRotatingSuffix, "event-log-rotating", classData, formStem, false},
 	{store.SessionEventLogDamagedSuffix, store.SessionEventLogDamagedSuffix, "event-log-damaged", classData, formStem, false},
 	{store.SessionEventLogZstSuffix, store.SessionEventLogZstSuffix, "event-log-zst", classData, formStem, false},
 	{store.SessionEventLogSuffix, store.SessionEventLogSuffix, "event-log", classData, formStem, false},

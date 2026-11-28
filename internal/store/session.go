@@ -23,10 +23,9 @@ import "strings"
 // constants instead of re-spelling the suffix (source-asserted by
 // TestSessionPathSpellingsSingleSource in this package).
 const (
-	SessionTranscriptSuffix       = ".jsonl"
-	SessionEventLogSuffix         = ".events.jsonl"
-	SessionEventLogDamagedSuffix  = SessionEventLogSuffix + ".damaged"
-	SessionEventLogRotatingSuffix = SessionEventLogSuffix + ".rotating"
+	SessionTranscriptSuffix      = ".jsonl"
+	SessionEventLogSuffix        = ".events.jsonl"
+	SessionEventLogDamagedSuffix = SessionEventLogSuffix + ".damaged"
 	// SessionEventLogZstSuffix 是事件日志的整文件 zstd 归档形态（tl 1172 L2，
 	// 照 codex rollout 的 .jsonl.zst 同款机制）：<id>.events.jsonl.zst。它不改变
 	// append-only 语义：归档只发生在空闲维护窗口（lease/文件锁保护），任何读取
@@ -314,19 +313,9 @@ func SessionEventLogDamaged(sessionPath string) string {
 	return sessionStem(sessionPath) + SessionEventLogDamagedSuffix
 }
 
-// SessionEventLogRotating marks a schema-2 log whose rotation is between
-// reading the old file and publishing the new one; unlocked appenders wait
-// for it to clear before trusting that their bytes reached the current log.
-func SessionEventLogRotating(sessionPath string) string {
-	if sessionPath == "" {
-		return ""
-	}
-	return sessionStem(sessionPath) + SessionEventLogRotatingSuffix
-}
-
 // IsSessionEventLogName reports whether name — a base filename or a full path —
-// is a session's primary event log (<id>.events.jsonl). The .damaged/.rotating
-// siblings end in other tails and are classified with their own constants.
+// is a session's primary event log (<id>.events.jsonl). The .damaged sibling
+// ends in another tail and is classified with its own constant.
 // Scan-side classification belongs here so the family shape lives in one place
 // (X6 pattern J, task 475).
 func IsSessionEventLogName(name string) bool {
@@ -558,7 +547,6 @@ func SessionSidecarFiles(sessionPath string) []string {
 		SessionEventLog(sessionPath),
 		SessionEventLogZst(sessionPath),
 		SessionEventLogDamaged(sessionPath),
-		SessionEventLogRotating(sessionPath),
 		// tl-1174：归档态主转录也是会话拥有的字节——删除会话漏掉它等于
 		// 泄露「已删除」的对话（与 SessionEventLogZst 同理）。
 		SessionTranscriptZst(sessionPath),

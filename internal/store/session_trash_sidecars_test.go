@@ -110,8 +110,9 @@ func TestSessionStaticTrashSidecarsGuardianFamilyMatchesRealDataFace(t *testing.
 		}
 	}
 
-	// 幽灵键黑名单：11 个从未有 guardian 写入方的形态 + tl1841 曾补登、
-	// tl1850 重核无写入方一并收窄的三审计键，任何一个回流清单即红。
+	// 幽灵键黑名单：10 个从未有 guardian 写入方的形态（tl1853 随主会话
+	// rotating 死键收窄一并出表）+ tl1841 曾补登、tl1850 重核无写入方
+	// 一并收窄的三审计键，任何一个回流清单即红。
 	ghosts := []string{
 		"guardian.goal-state.json",
 		"guardian.recovery.json",
@@ -122,7 +123,6 @@ func TestSessionStaticTrashSidecarsGuardianFamilyMatchesRealDataFace(t *testing.
 		"guardian.conflicts.jsonl",
 		"guardian.events.jsonl.zst",
 		"guardian.events.jsonl.damaged",
-		"guardian.events.jsonl.rotating",
 		"guardian.jsonl.zst",
 		"guardian.conflict-preserved.jsonl",
 		"guardian.splices.json",

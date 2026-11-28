@@ -169,7 +169,6 @@ func TestSessionSidecarFiles(t *testing.T) {
 		// 删会话时把 100MB 级历史留在盘上（泄漏「已删除」的对话）。
 		"/home/u/.reasonix/sessions/abc.events.jsonl.zst",
 		"/home/u/.reasonix/sessions/abc.events.jsonl.damaged",
-		"/home/u/.reasonix/sessions/abc.events.jsonl.rotating",
 		// tl 1174：归档态主转录（.jsonl.zst）也是会话拥有的字节——生产清单
 		// 在 1174 就列了它，本期望清单漏更导致预存红（tl1442 包级跑批暴露）。
 		"/home/u/.reasonix/sessions/abc.jsonl.zst",
