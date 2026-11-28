@@ -132,20 +132,6 @@ func TestSessionStaticTrashSidecarsGuardianFamilyMatchesRealDataFace(t *testing.
 		"guardian.conflict-preserved.jsonl",
 		"guardian.splices.json",
 	}
-	ghosts := []string{
-		"guardian.goal-state.json",
-		"guardian.recovery.json",
-		"guardian.context.json",
-		"guardian.pinned-context.json",
-		"guardian.turns.jsonl",
-		"guardian.turns.jsonl.damaged",
-		"guardian.conflicts.jsonl",
-		"guardian.events.jsonl.zst",
-		"guardian.events.jsonl.damaged",
-		"guardian.jsonl.zst",
-		"guardian.conflict-preserved.jsonl",
-		"guardian.splices.json",
-	}
 	seen := map[string]bool{}
 	for _, artifact := range inventory {
 		seen[filepath.Base(artifact)] = true
