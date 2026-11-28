@@ -2,13 +2,22 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/wailsapp/wails/v2/pkg/options/linux"
+
+	"reasonix/internal/sandbox"
 )
+
+// shellProbeCalls counts how many times the TestMain fallback probe hook was
+// consulted. Informational only (the fallback probe spawns no subprocess); a
+// count > 0 printed at teardown means some informational surface
+// (ResolveShellForView) rebuilt the inventory — never an execution-path probe.
+var shellProbeCalls int
 
 func TestParseDesktopLaunchArgsStripsLegacySafeMode(t *testing.T) {
 	got := parseDesktopLaunchArgs([]string{"launch", "--detach", "--safe-mode", "--other"})
@@ -130,9 +139,58 @@ func TestMain(m *testing.M) {
 	// Tests that assert on runtime events install their own capture through
 	// the per-instance runtimeEvents.emit hook, which takes precedence.
 	runtimeEventsEmitFallback = func(context.Context, string, ...any) {}
+	// 任务 1862（M1 治本，挂死排查报告 20261128）：整包钉死 shell 解析，
+	// 消除全包所有 probeBash 子进程探测。根因：每个走 boot 链
+	// （buildTabController / boot.build）的测试都可能触发同步 shell 全量探测
+	// （probeBash 逐候选起真实 bash.exe 子进程，单次 1.8-7s），而测试环境下
+	// 探测缓存被结构性击穿——每个测试 fresh REASONIX_HOME 清空持久 probe 缓存、
+	// 进程级 inventory 30s TTL 过期即全量重探——3925 测试 × 1.87s ≈ 122 分钟，
+	// 30m 门禁超时的 victim 无差别（挂住用例每轮不同、单跑全绿）。
+	// 机制：tl1735 现成的 PinResolveShellForTest 在 ResolveShell 入口短路
+	// （internal/sandbox/shell_testhook.go），internal/boot golden 基线同款先例。
+	// 语义核查（tl1862 前置终查）：desktop 691 个 *_test.go 无一依赖真实探测
+	// 语义；唯二直接调用 sandbox.ResolveShell 的是 app_todo_mcp_5_test.go
+	// （:357 / :493），两处注释明言「the contract under test is tab routing,
+	// not host shell discovery」——钉 Shell{Kind: bash} 与其意图一致且更快。
+	restoreShellPin := sandbox.PinResolveShellForTest(sandbox.Shell{Kind: sandbox.ShellBash, Path: "bash"})
+	// 兜底：ResolveShellForView（settings/reasoning 显示面）不走 pin
+	// （shell.go 的 ResolveShellForView 直接读 inventory）。把 probeBash 本体
+	// 换成恒真假探针——即使个别信息面路径仍重建 inventory，也零 bash 子进程。
+	// 计数仅作观测，不做断言（信息面探测不属病态）。
+	restoreShellProbe := sandbox.PinShellProbeForTest(func(string) bool {
+		shellProbeCalls++
+		return true
+	})
 	code := m.Run()
+	restoreShellProbe()
+	restoreShellPin()
+	if shellProbeCalls > 0 {
+		fmt.Fprintf(os.Stderr, "desktop-test-shell-probe-fallback: %d inventory rebuild(s) served by the stub probe (no bash subprocess spawned)\n", shellProbeCalls)
+	}
 	os.RemoveAll(dir)
 	os.Exit(code)
+}
+
+// TestTestMainShellPinIsActive asserts the TestMain shell pin is in effect
+// (任务 1862 验收②): ResolveShell must return the pinned value exactly, and
+// must do so without ever consulting probeBash — the probe hook is temporarily
+// replaced by a sentinel that flags any consultation. This is the in-process
+// evidence that "probeBash subprocesses == 0" during the whole suite: the pin
+// short-circuits at the ResolveShell entry, before any inventory/probe work.
+// Kept non-Parallel: it runs exclusively in the sequential test phase, so no
+// Parallel test can observe the sentinel probe.
+func TestTestMainShellPinIsActive(t *testing.T) {
+	restore := sandbox.PinShellProbeForTest(func(string) bool {
+		t.Error("probeBash was consulted: the TestMain shell pin must short-circuit every ResolveShell call")
+		return true
+	})
+	t.Cleanup(restore)
+
+	got := sandbox.ResolveShell("", "", nil)
+	want := sandbox.Shell{Kind: sandbox.ShellBash, Path: "bash"}
+	if got != want {
+		t.Fatalf("ResolveShell(\"\", \"\", nil) = %+v, want pinned %+v — TestMain pin not in effect", got, want)
+	}
 }
 
 func TestDesktopTestTelemetryEndpointsAreFailClosed(t *testing.T) {
