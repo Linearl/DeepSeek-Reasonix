@@ -2,8 +2,13 @@
 // 任务461-P7 三级终止: the stop button's view-state machine (pure helper).
 // Levels mirror the backend RuntimeStatus; the L1 click arms locally; the
 // grace renders the countdown from the backend's authoritative deadline.
-// tl1420 档位显形: the button itself carries the tier — label spec + CSS tier
-// class derive purely from the phase; the L3/settled 「已终止」 hold is timed.
+// tl1420 档位显形: the button itself carries the tier — CSS tier class
+// derives purely from the phase; the L3/settled 「已终止」 hold is timed.
+// tl1847 去文字 (tl1420-r2, user 2026-11-27): the button renders NO text —
+// tiers separate by color/animation alone; the full tier label feeds the
+// aria-label, the hint copy feeds the hover title. The label/compact spec
+// helpers stay (unused-on-button) to pin the i18n keys — unused keys are NOT
+// deleted (防回滚).
 
 import assert from "node:assert/strict";
 import {
@@ -11,6 +16,7 @@ import {
   stopButtonTier,
   stopButtonLabelSpec,
   stopButtonCompactLabelSpec,
+  stopButtonTitleSpec,
   STOP_COMPACT_LABEL_MAX_CHARS,
   STOP_SETTLE_LINGER_MS,
 } from "../lib/stopButton";
@@ -72,13 +78,23 @@ ok(stopButtonTier("grace") === "grace", "L2 grace → grace tier (深红+倒计�
 ok(stopButtonTier("force") === "force" && stopButtonTier("settled") === "settled", "L3 force/settled → force/settled tier");
 ok(stopButtonTier("idle") === null, "idle keeps the resting look (no tier class)");
 
-// tl1420: label spec — the on-button text IS the main tier feedback (三文案).
-ok(stopButtonLabelSpec("normal", null).key === "composer.stopStopping", "L1 reads 停止中… on the button");
-ok(stopButtonLabelSpec("armed", null).key === "composer.stopStopping", "armed still reads 停止中… (escalation hint stays in the tooltip)");
+// tl1420: label spec — tl1847: no longer on the button; it feeds the
+// aria-label so screen readers keep the full tier text (三文案 preserved).
+ok(stopButtonLabelSpec("normal", null).key === "composer.stopStopping", "L1 aria reads 停止中…");
+ok(stopButtonLabelSpec("armed", null).key === "composer.stopStopping", "armed aria still reads 停止中… (escalation hint stays in the tooltip)");
 const graceSpec = stopButtonLabelSpec("grace", 14);
-ok(graceSpec.key === "composer.stopForceCountdown" && graceSpec.n === 14, "L2 reads 强制停止 · Ns with the countdown var");
-ok(stopButtonLabelSpec("force", null).key === "composer.stopTerminated", "L3 force reads 已终止");
-ok(stopButtonLabelSpec("settled", null).key === "composer.stopTerminated", "settled keeps reading 已终止 during the hold");
+ok(graceSpec.key === "composer.stopForceCountdown" && graceSpec.n === 14, "L2 aria reads 强制停止 · Ns with the countdown var");
+ok(stopButtonLabelSpec("force", null).key === "composer.stopTerminated", "L3 force aria reads 已终止");
+ok(stopButtonLabelSpec("settled", null).key === "composer.stopTerminated", "settled aria keeps reading 已终止 during the hold");
+
+// tl1847 去文字: hover title spec — the on-button text moved here (tier-
+// matched hint copy; the component overrides it with 状态未知 under unknown).
+ok(stopButtonTitleSpec("idle").key === "composer.stopNormal", "tl1847 idle title reads the first-press semantics");
+ok(stopButtonTitleSpec("normal").key === "composer.stopNormal", "tl1847 L1 title reads the first-press note");
+ok(stopButtonTitleSpec("armed").key === "composer.stopNormal", "tl1847 armed title reads the first-press note (pulse carries the escalation)");
+ok(stopButtonTitleSpec("grace").key === "composer.stopForceHint", "tl1847 L2 title reads the 15s-grace hint (点击两次…)");
+ok(stopButtonTitleSpec("force").key === "composer.stopImmediate", "tl1847 L3 force title reads the immediate hint (点击三次…)");
+ok(stopButtonTitleSpec("settled").key === "composer.stopImmediate", "tl1847 settled title keeps the immediate hint during the hold");
 
 // tl1420 L3 定格: settled hold after an engaged stop settles the turn…
 const settled = stopButtonView({
@@ -113,10 +129,10 @@ const runningNotSettled = stopButtonView({
 });
 ok(runningNotSettled.phase === "normal", "a running turn never shows settled");
 
-// tl1582 按钮紧凑化: phase → compact tag pairing. The full tier copy moved to
-// the hover card; the button shows at most a 3-CJK-char tag (grace keeps the
-// countdown digits — the one time-critical datum). idle has no tag (the
-// button unmounts; the icon-only shape never existed as a label).
+// tl1582 按钮紧凑化 → tl1847: the compact tags no longer render anywhere (the
+// button is text-free). The spec helpers stay to pin the composer.stopCompact*
+// i18n keys — tl1847 ④ keeps unused keys (防回滚), so a rollback is a one-line
+// revert. idle has no tag (the button unmounts).
 ok(stopButtonCompactLabelSpec("idle", null) === null, "tl1582 idle has no compact tag");
 ok(stopButtonCompactLabelSpec("normal", null)?.key === "composer.stopCompactStopping", "tl1582 L1 normal → 停止中 tag");
 ok(stopButtonCompactLabelSpec("armed", null)?.key === "composer.stopCompactStopping", "tl1582 armed → same 停止中 tag (pulse carries the escalation)");

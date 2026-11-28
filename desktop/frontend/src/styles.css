@@ -9558,10 +9558,10 @@ body > .mermaid-diagram--fullscreen {
 }
 .composer__btn--stop {
   margin-right: 6px;
-  /* tl1582 overflow guard: the compact tag keeps the label short by contract,
-     but the button must also physically cap — 72px covers icon(12)+gap(5)+
-     the 6-half-width-unit tag budget (~33px)+padding(18)+border(2). A future
-     longer label ellipsizes inside instead of painting past the border. */
+  /* tl1582→tl1847: the button is text-free now (three tiers separate by
+     color/animation alone), so nothing should paint wide again — the 72px
+     physical cap stays as a regression guard against any future label
+     reappearing and overflowing the squeezeable tooltip-trigger. */
   max-width: 72px;
   border: 1px solid color-mix(in srgb, var(--err) 42%, transparent);
   background: color-mix(in srgb, var(--err) 14%, var(--bg-elev-2));
@@ -9577,43 +9577,20 @@ body > .mermaid-diagram--fullscreen {
   outline: none;
   box-shadow: var(--focus-ring);
 }
-/* 任务461-P7: the L2 grace renders the force countdown inside the stop
-   button ("14s 后强制结束") — same token palette, dark mode keeps contrast. */
-.composer__btn--stop .composer__stop-countdown {
-  font-size: var(--text-2xs, 11px);
-  font-weight: 650;
-  line-height: 1;
-  white-space: nowrap;
-  /* tl1582: ellipsize inside the max-width cap — belt to the compact-tag
-     suspenders; overflow can paint past the border, ellipsis cannot. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 2px;
-}
-/* tl1420 三级终止档位显形: the button itself carries the tier (main signal;
-   tooltip stays auxiliary). Three engaged tiers, three label tones, three
-   color steps — all token-driven (--warn amber / --err red) so the seven
-   theme families (light+dark) pick their own contrast-correct values.
-   --stop-tier-color/-pct feed the theme-pack guard rule further below, which
-   re-applies the tier hue with pane blending under themed backgrounds. */
+/* tl1420 三级终止档位显形 → tl1847 去文字: the button itself carries the tier
+   as COLOR ONLY (main signal; the copy moved to the hover title + card).
+   Three engaged tiers, three color steps — all token-driven (--warn amber /
+   --err red) so the seven theme families (light+dark) pick their own
+   contrast-correct values. --stop-tier-color/-pct feed the theme-pack guard
+   rule further below, which re-applies the tier hue with pane blending under
+   themed backgrounds. */
 .composer__btn--stop-stopping,
 .composer__btn--stop-grace,
 .composer__btn--stop-force,
 .composer__btn--stop-settled {
   width: auto;
   min-width: 32px;
-  gap: 5px;
   padding: 0 9px;
-}
-.composer__btn--stop .composer__stop-label {
-  font-size: var(--text-2xs, 11px);
-  font-weight: 650;
-  line-height: 1;
-  white-space: nowrap;
-  /* tl1582: same in-button guard as the countdown span above. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  padding: 0 2px;
 }
 .composer__btn--stop-stopping {
   --stop-tier-color: var(--warn);
