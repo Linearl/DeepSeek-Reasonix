@@ -4885,11 +4885,11 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	buildCtx, registration := beginSharedHostMCPRegistration(buildCtx, sharedHost)
 	defer registration.rollback()
 	// Task 405 Q1: feed the 363A runtime-reuse pool into the startup/rebuild
-	// chain. Same gate (experimental_runtime_reuse, enforced inside
-	// acquireRuntimeAssembly) and same key identity as the rebind chain; the
-	// second+ same-key build skips prompt/skills/commands/hooks discovery.
-	// ReuseAssembly is nil when the gate is off or the pool is cold —
-	// BuildWithAssembly then behaves exactly like boot.Build.
+	// chain. Same key identity as the rebind chain; the second+ same-key
+	// build skips prompt/skills/commands/hooks discovery. tl1741x：开关门已
+	// 随 tl1741 撤 experimental_runtime_reuse 退役（池无条件启用）——
+	// ReuseAssembly 仅在池冷时为 nil，BuildWithAssembly 届时与 boot.Build
+	// 同形。
 	// Task 363A key identity: deref the effort pointer the same way the
 	// rebind chain does (empty string when unset).
 	effortKey := ""

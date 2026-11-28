@@ -2208,8 +2208,9 @@ type AgentConfig struct {
 	// off (the cautious reading of "the panel decides what is allowed"): a
 	// gate off means the capability is withheld — tool-level gates keep the
 	// tool unregistered, parameter-level gates return an actionable error
-	// that names the panel switch. The master switch
-	// ExperimentalSessionCollab stays the precondition for all of them.
+	// that names the panel switch. tl1741x：master switch
+	// ExperimentalSessionCollab 随撤开关退役——跨会话协作常开，下列 allow
+	// 门不再有总闸前置，各自独立生效。
 	SessionCollabAllowDelete       bool `toml:"session_collab_allow_delete"`
 	SessionCollabAllowRequireReply bool `toml:"session_collab_allow_require_reply"`
 	SessionCollabAllowReadTail     bool `toml:"session_collab_allow_read_tail"`
@@ -2239,8 +2240,8 @@ type AgentConfig struct {
 	// when a turn closes with settled-but-unanswered require_reply mail, the
 	// host injects ONE visible reminder round. Off (the default) keeps turns
 	// byte-for-byte unchanged. Boot-time snapshot: flipping it applies from the
-	// next session start, and the collaboration master switch
-	// (ExperimentalSessionCollab) stays the precondition — parent wins.
+	// next session start. tl1741x：协作 master switch 已随撤开关退役（协作
+	// 常开），本键不再有 parent 前置。
 	SessionCollabReplyNudge bool `toml:"session_collab_reply_nudge"`
 	// SessionCollabBackground keeps background-woken collaboration sessions
 	// OUT of the tab bar (task 264, user final ruling): on, a stand-up builds

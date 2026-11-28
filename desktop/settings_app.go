@@ -514,8 +514,8 @@ type SettingsView struct {
 	ExperimentalModelRangesCompact bool `json:"experimentalModelRangesCompact"`
 	ModelRangesFoldWindowMinutes   int  `json:"modelRangesFoldWindowMinutes"`
 	ModelRangesFoldWindowMax       int  `json:"modelRangesFoldWindowMax"`
-	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
-	// Loopback-only random port, boot snapshot — restart to apply.
+	// tl1741x：Task 342 CDP endpoint switch 注释随撤开关退役摘除——endpoint
+	// 无条件武装（desktop/cdp_debug_port.go 承载安全姿态），本视图无字段。
 	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
 	// [agent] output_style value the selector reads back.
 	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
@@ -902,8 +902,8 @@ type DesktopStartupSettingsView struct {
 	// (task 651): badge (default) | off | background. The frontend re-applies
 	// it on settings save, no restart needed.
 	TabPermissionIndicator string `json:"tabPermissionIndicator"`
-	// Task 342: WebView2 CDP debug endpoint switch (default false; 铁律 2).
-	// Loopback-only random port, boot snapshot — restart to apply.
+	// tl1741x：Task 342 CDP endpoint switch 注释随撤开关退役摘除——endpoint
+	// 无条件武装（desktop/cdp_debug_port.go 承载安全姿态），本视图无字段。
 	// Task 385a: lab 「回答风格」 gate (default false; 铁律 2) plus the persisted
 	// [agent] output_style value the selector reads back.
 	ExperimentalOutputStyleUI bool   `json:"experimentalOutputStyleUI"`
@@ -2218,28 +2218,28 @@ func (a *App) Settings() SettingsView {
 		ExperimentalComposerDraft:       cfg.Agent.ExperimentalComposerDraft,
 		ExperimentalSelectionActions:    cfg.Agent.ExperimentalSelectionActions,
 		// tl1817: MiMo TTS transport gate readback (click-time live read).
-		ExperimentalMimoTts:             cfg.Desktop.ExperimentalMimoTts,
-		ExperimentalLocalServer:         cfg.Desktop.ExperimentalLocalServer,
-		ExperimentalLifecycleNoiseGate:  cfg.Desktop.ExperimentalLifecycleNoiseGate,
-		ExperimentalHomePointer:         cfg.Desktop.ExperimentalHomePointer,
-		ExperimentalJsonlZstd:           cfg.Desktop.ExperimentalJsonlZstd,
-		MaxCachedTabs:                   cfg.Desktop.MaxCachedTabs,
-		DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg),
-		HistoryBodyBudgetMb:             cfg.Desktop.HistoryBodyBudgetMb,
-		MarkdownBudgetMb:                cfg.Desktop.MarkdownBudgetMb,
-		ExperimentalCacheTuning:         cfg.Desktop.ExperimentalCacheTuning,
-		VisionModel:                     cfg.Agent.VisionModel,
-		WebSearchModel:                  cfg.Agent.WebSearchModel,
-		WebSearchModels:                 []string{},
-		SubagentModel:                   cfg.Agent.SubagentModel,
-		SubagentEffort:                  cfg.Agent.SubagentEffort,
-		SubagentEffortLevels:            subEffortLevels,
-		SubagentEffortAliasFold:         subEffortFold,
-		SubagentEffortApplies:           subEffortApplies,
-		AutoPlan:                        "off", // deprecated JSON compatibility for older frontends
-		Providers:                       []ProviderView{},
-		OfficialProviders:               []ProviderView{},
-		ProviderPresets:                 []ProviderPresetView{},
+		ExperimentalMimoTts:            cfg.Desktop.ExperimentalMimoTts,
+		ExperimentalLocalServer:        cfg.Desktop.ExperimentalLocalServer,
+		ExperimentalLifecycleNoiseGate: cfg.Desktop.ExperimentalLifecycleNoiseGate,
+		ExperimentalHomePointer:        cfg.Desktop.ExperimentalHomePointer,
+		ExperimentalJsonlZstd:          cfg.Desktop.ExperimentalJsonlZstd,
+		MaxCachedTabs:                  cfg.Desktop.MaxCachedTabs,
+		DagGraphCacheCapacity:          config.DagGraphCacheCapacity(cfg),
+		HistoryBodyBudgetMb:            cfg.Desktop.HistoryBodyBudgetMb,
+		MarkdownBudgetMb:               cfg.Desktop.MarkdownBudgetMb,
+		ExperimentalCacheTuning:        cfg.Desktop.ExperimentalCacheTuning,
+		VisionModel:                    cfg.Agent.VisionModel,
+		WebSearchModel:                 cfg.Agent.WebSearchModel,
+		WebSearchModels:                []string{},
+		SubagentModel:                  cfg.Agent.SubagentModel,
+		SubagentEffort:                 cfg.Agent.SubagentEffort,
+		SubagentEffortLevels:           subEffortLevels,
+		SubagentEffortAliasFold:        subEffortFold,
+		SubagentEffortApplies:          subEffortApplies,
+		AutoPlan:                       "off", // deprecated JSON compatibility for older frontends
+		Providers:                      []ProviderView{},
+		OfficialProviders:              []ProviderView{},
+		ProviderPresets:                []ProviderPresetView{},
 		Permissions: PermissionsView{
 			Mode:  orDefault(cfg.Permissions.Mode, "ask"),
 			Allow: nonNil(cfg.Permissions.Allow),

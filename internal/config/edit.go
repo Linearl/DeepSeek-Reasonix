@@ -1046,8 +1046,9 @@ func (c *Config) SetExperimentalSplitView(enabled bool) error {
 // gate: the sidebar reads the flag from the settings snapshot, so a flip is
 // visible without a restart.
 //
-// 任务 856 起此键为 legacy 迁移源：设置面板与入口只读写 SetExperimentalCollabHub，
-// 本 setter 仅为旧绑定保留（decode 继承把存量值搬进新键）。
+// 任务 856 起此键为 legacy 迁移源（tl1741x 注：承接新键
+// SetExperimentalCollabHub 的 setter 已随 tl1741 撤开关退役——两键现均无
+// 面板调用方，本 setter 仅为旧绑定保留，decode 继承把存量值搬进新键）。
 func (c *Config) SetExperimentalCollabGroupView(enabled bool) error {
 	c.Desktop.ExperimentalCollabGroupView = enabled
 	return nil

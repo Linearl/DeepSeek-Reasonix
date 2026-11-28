@@ -342,8 +342,9 @@ func (a *App) SetExperimentalSplitView(enabled bool) error {
 // SetExperimentalCollabGroupView toggles the sidebar group-chat entry (task 677):
 // with it off the sidebar utility row keeps the pre-409 four-icon layout.
 //
-// 任务 856 起为 legacy setter：面板只调用 SetExperimentalCollabHub，本方法仅为
-// 旧 wailsjs 绑定保留（decode 继承负责存量值迁移）。
+// 任务 856 起为 legacy setter（tl1741x 注：SetExperimentalCollabHub 已随
+// tl1741 撤开关退役，面板现无调用方）——本方法仅为旧 wailsjs 绑定保留
+// （decode 继承负责存量值迁移）。
 func (a *App) SetExperimentalCollabGroupView(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalCollabGroupView(enabled) })
 }
