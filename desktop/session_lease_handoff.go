@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"reasonix/internal/agent"
@@ -371,56 +370,105 @@ func (a *App) ResolveTakeoverDecision(marker string, accept bool) bool {
 	return SubmitTakeoverDecision(strings.TrimSpace(marker), accept)
 }
 
-// remoteDeviceReadOnly mirrors serve's device lease into this process (task
-// 36 Phase 2): while a remote device holds write authority the desktop runs
-// in a NON-PERSISTED read-only state — it must never touch the persisted
-// tab.ReadOnly field (pitfall 1: that would survive restarts) nor call
-// setTabReadOnly (pitfall 2: it detaches terminals). The flag only drives
-// UI state; enforcement itself is serve's device-level submit rejection.
-var remoteDeviceReadOnly atomic.Bool
+// remoteHeldSessions mirrors serve's SESSION-scope device lease into this
+// process (tl1854 R5/S5, narrowing task 36's device-level flag): each entry
+// is a canonical session path a remote device currently holds write
+// authority for. Runtime-only state — never persisted; enforcement itself is
+// serve's session-scoped submit rejection, this map only drives UI state.
+// The old global remoteDeviceReadOnly flag (and its RemoteDeviceReadOnly
+// accessor) died here: it had no consumer left and its all-app read-only
+// effect contradicts the session-level semantics (a takeover must leave the
+// desktop's other sessions untouched).
+var (
+	remoteHeldSessionsMu sync.Mutex
+	remoteHeldSessions   = map[string]bool{}
+)
 
-// RemoteDeviceReadOnly reports the live runtime-only read-only flag for the
-// frontend (never persisted; resets to false on restart by construction).
-func RemoteDeviceReadOnly() bool { return remoteDeviceReadOnly.Load() }
+// RemoteDeviceHoldsSession reports whether a remote device currently holds
+// the named session's write authority (runtime-only UI state).
+func RemoteDeviceHoldsSession(session string) bool {
+	session = strings.TrimSpace(session)
+	if session == "" {
+		return false
+	}
+	remoteHeldSessionsMu.Lock()
+	defer remoteHeldSessionsMu.Unlock()
+	return remoteHeldSessions[agent.CanonicalSessionPath(session)]
+}
 
-// registerRemoteWriteAuthorityHook observes serve's device lease (same
-// process). held=true flips the flag and releases every tab's session lease
-// so no local writer races the device; held=false restores write authority
-// and the next local message reacquires leases normally.
+// registerRemoteWriteAuthorityHook observes serve's session-scope device
+// lease (same process). held=true marks the session held and releases ONLY
+// the tabs on that session so no local writer races the device; held=false
+// clears the session (or, for a legacy device-wide release with an empty
+// session, the whole set) and the next local message reacquires leases
+// normally.
 func (a *App) registerRemoteWriteAuthorityHook() {
-	serve.SetRemoteWriteAuthorityHook(func(deviceID string, held bool) {
-		remoteDeviceReadOnly.Store(held)
-		slog.Info("desktop: remote write authority", "device", deviceID, "held", held)
-		if held {
-			a.releaseAllTabSessionLeases()
+	serve.SetRemoteWriteAuthorityHook(a.handleRemoteWriteAuthority)
+}
+
+// handleRemoteWriteAuthority is the hook body (its own method so tests can
+// drive the exact production wiring without re-registering the seam).
+func (a *App) handleRemoteWriteAuthority(deviceID string, held bool, session string) {
+	remoteHeldSessionsMu.Lock()
+	if held {
+		if session != "" {
+			remoteHeldSessions[agent.CanonicalSessionPath(session)] = true
 		}
-		runtimeEventsEmitFallback(a.ctx, "app:remote-write-authority", map[string]any{
-			"device": deviceID,
-			"held":   held,
-		})
+	} else if session == "" {
+		// Legacy device-wide release: clear everything the device could
+		// have held (conservative; matches the pre-tl1854 global flag).
+		remoteHeldSessions = map[string]bool{}
+	} else {
+		delete(remoteHeldSessions, agent.CanonicalSessionPath(session))
+	}
+	remoteHeldSessionsMu.Unlock()
+	slog.Info("desktop: remote write authority", "device", deviceID, "held", held, "session", session)
+	if held {
+		if session == "" {
+			// No known session: with the global effect gone there is
+			// nothing safe to release app-wide — a takeover that matters
+			// always names its session (S5 non-goal: never resurrect the
+			// all-tabs release).
+			slog.Warn("desktop: remote write authority held without a session; no tab leases released", "device", deviceID)
+		} else {
+			a.releaseTabSessionLeasesForSession(session)
+		}
+	}
+	runtimeEventsEmitFallback(a.ctx, "app:remote-write-authority", map[string]any{
+		"device":  deviceID,
+		"held":    held,
+		"session": session,
 	})
 }
 
-// releaseAllTabSessionLeases walks every tab and drops its session lease.
-// Leases reacquire on the next local message; nothing persisted changes.
+// releaseTabSessionLeasesForSession walks ONLY the tabs currently on the
+// taken-over session (scope identical to yieldTabsToGatewayTakeover) and
+// drops their session lease — tl1854 R5/S5 narrows releaseAllTabSessionLeases
+// (which released every tab across all projects and cancelled any running
+// turn app-wide). Leases on unaffected tabs stay; nothing persisted changes.
 // Task 539 fuse (W3 same-disease path): this hook fires after the serve
 // acquired — the turn is normally long gone — but if a tab still has live
 // runtime work (residual T3 window, future callers), cancel it explicitly
 // and tell the user instead of releasing under a running turn (its queued
 // saves would Stale-reject as lost writes).
-func (a *App) releaseAllTabSessionLeases() {
+func (a *App) releaseTabSessionLeasesForSession(session string) {
+	key := sessionRuntimeKey(session)
+	if key == "" {
+		return
+	}
 	a.mu.Lock()
-	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
+	tabs := make([]*WorkspaceTab, 0, 2)
 	for _, tab := range a.tabs {
-		tabs = append(tabs, tab)
+		if tab != nil && sessionRuntimeKey(tab.currentSessionPath()) == key {
+			tabs = append(tabs, tab)
+		}
 	}
 	a.mu.Unlock()
 	for _, tab := range tabs {
 		if tab.hasActiveRuntimeWork() && tab.Ctrl != nil {
-			path := tab.currentSessionPath()
-			slog.Info("desktop: remote device holds write authority, cancelling active turn before lease release", "tab", tab.ID, "path", path)
+			slog.Info("desktop: remote device holds write authority, cancelling active turn before lease release", "tab", tab.ID, "session", session)
 			tab.Ctrl.Cancel()
-			notifyTakeoverYield("forced", path, "远程设备已持有写权，本地回合被中断")
+			notifyTakeoverYield("forced", session, "远程设备已接管该会话，本地回合被中断")
 		}
 		tab.releaseSessionLeaseQuietly()
 	}
