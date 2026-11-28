@@ -1,7 +1,7 @@
-# 包122 release notes — v1.38.3-20261128-1500
+# 包122 release notes — v1.38.3-20261128-1716
 
 > 基线：包121（v1.38.3-20261128-1248，构建点 `0237fad233`）
-> 构建点：`afdfe9507b`（main-v2-stable；九支滚合+依赖升级+对齐+修复）
+> 构建点：`afdfe9507b`（main-v2-stable；九支滚合+依赖升级+对齐+修复；r1 一次过 rc=0——M4 纪律下无并行干扰）
 > 执行线：zcode 开发线（九件全量：tl1857 CodeQL/tl-rotating 死码/tl1858 进度条/tl1855r2 返修/tl1850r2 重滚/tl1800b2 重滚+origin 三 squash 依赖升级+tl1851r2 红收口+对齐 commit）
 > <!-- claims: feat-tl1857,feat-tl-rotating,feat-tl1858,feat-tl1855r2,feat-tl1850r2,feat-tl1800b2 -->
 
