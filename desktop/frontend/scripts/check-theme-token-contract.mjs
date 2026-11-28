@@ -67,6 +67,31 @@ const requiredRootTokens = new Map([
   // Onboarding error row (component-scoped, tl1814 naming spec).
   ["--onboarding-error-text", "#ff8b7a"],
   ["--onboarding-error-tint", "rgb(255, 70, 70)"],
+  // tl1800 batch 3 (tl1814 plan B3 registry): editor highlight, scoped
+  // backdrops/canvas, neutral washes, context-panel palette, heartbeat
+  // greens, history salmon and the fixed light surface.
+  ["--code-hl", "#ffc107"],
+  ["--backdrop-deep", "rgb(20, 22, 28)"],
+  ["--wash-neutral", "rgb(127, 127, 127)"],
+  ["--wash-ink", "rgb(64, 64, 64)"],
+  ["--canvas-dark", "#111319"],
+  ["--ctx-prompt", "#13a7a5"],
+  ["--ctx-completion", "#2f6df6"],
+  ["--ctx-reasoning", "#f97316"],
+  ["--ctx-hit", "#16a34a"],
+  ["--ctx-amber", "#f59e0b"],
+  ["--ctx-slate", "#64748b"],
+  ["--ctx-violet", "#7c3aed"],
+  ["--ctx-rose", "#e11d48"],
+  ["--ctx-prompt-muted", "#6b8f8f"],
+  ["--ctx-completion-muted", "#7a8fb8"],
+  ["--ctx-reasoning-muted", "#b48a58"],
+  ["--ctx-other-muted", "#c7c7c7"],
+  ["--ok-strong", "#4caf50"],
+  ["--ok-strong-hover", "#43a047"],
+  ["--danger-confirm", "#ff8b6d"],
+  ["--danger-confirm-hover", "#ff9f86"],
+  ["--surface-fixed-light", "#f5f6f9"],
 ]);
 
 const themeStyles = ["graphite", "aurora", "slate", "carbon", "nocturne", "amber"];

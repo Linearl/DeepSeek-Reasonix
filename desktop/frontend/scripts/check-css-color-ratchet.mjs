@@ -50,8 +50,13 @@ const sourceRoot = path.join(frontendRoot, "src");
 //        shadow -> --scrim-color/--shadow-color, prompt-shelf white haze ->
 //        --highlight-color; --status-* / --im-* / --onboarding-error-*
 //        new constants per the tl1814 naming registry).
+//   122: tl1800 batch 3 (tl1814 plan B3, 45 same-value conversions across
+//        22 new constants: --ctx-* palette 17, editor highlight --code-hl 4,
+//        heartbeat greens --ok-strong(-hover) 4, neutral washes --wash-* 7,
+//        history salmon --danger-confirm(-hover) 6, --backdrop-deep 3,
+//        --canvas-dark 2, --surface-fixed-light 2).
 // Lower this number in the same commit that removes uses. Never raise it.
-const BASELINE = 167;
+const BASELINE = 122;
 
 function listCSSFiles(directory) {
   const files = [];
