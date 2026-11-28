@@ -15,8 +15,8 @@ import { fileURLToPath } from "node:url";
 
 import { CHECKS } from "./check-fork-integrity.mjs";
 import {
-  ageBuckets, extractRefs, judgeForkChecks, judgeTscEntries, mapChecksToLines,
-  parseBlamePorcelain, pickSample, refsSummary,
+  ageBuckets, countLines, extractRefs, judgeForkChecks, judgeReachabilityEntries, judgeTscEntries,
+  mapChecksToLines, parseBlamePorcelain, pickSample, refsSummary,
 } from "./gate-metadata-audit.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -130,7 +130,7 @@ test("① pickSample：fork 按钉龄最旧优先、未知殿后；tsc 候选优
 test("② CLI 真实仓机械层跑通：exit 0、两源在场、只列不删声明在场", () => {
   const run = spawnSync(process.execPath, [scriptPath, "--sample=3"], { cwd: repoRoot, encoding: "utf8", timeout: 120000 });
   assert.equal(run.status, 0, `exit ${run.status}; stderr: ${run.stderr?.slice(0, 800)}`);
-  assert.ok(run.stdout.includes("[tsc] 163 文件 / 226 对"), `tsc 段缺失: ${run.stdout.slice(0, 400)}`);
+  assert.ok(run.stdout.includes("[tsc] 380 文件 / 572 对"), `tsc 段缺失: ${run.stdout.slice(0, 400)}`);
   assert.ok(run.stdout.includes("[fork-integrity]"), "fork-integrity 段缺失");
   assert.ok(run.stdout.includes("只列不删"), "退役候拍板声明缺失");
   assert.ok(run.stdout.includes("[抽样]"), "抽样段缺失");
@@ -145,11 +145,43 @@ test("② CLI --json 落盘结构可解析且两源 summary 在场", () => {
     const report = JSON.parse(readFileSync(out, "utf8"));
     assert.equal(report.tool, "gate-metadata-audit");
     assert.equal(report.sources.length, 1);
-    assert.equal(report.sources[0].pairs, 226);
+    assert.equal(report.sources[0].pairs, 572);
     assert.ok(report.sources[0].summary);
   } finally {
     rmSync(dirname(out), { recursive: true, force: true });
   }
+});
+
+test("① judgeReachabilityEntries：五态判级 + countLines 同 Python 语义", () => {
+  assert.equal(countLines(""), 0);
+  assert.equal(countLines("a\nb"), 2);
+  assert.equal(countLines("a\nb\n"), 2);
+  const tmpRepo = mkdtempSync(join(tmpdir(), "gate-audit-reach-"));
+  try {
+    const src = join(tmpRepo, "desktop", "frontend", "src");
+    mkdirSync(src, { recursive: true });
+    // dangling：登记后被删——刻意不写 gone.ts 文件
+    writeFileSync(join(src, "live.ts"), "export {};\n", "utf8"); // wired：重新接线可达
+    writeFileSync(join(src, "grew.ts"), "a\nb\nc\n", "utf8");    // grew：3 > 2（门禁红面）
+    writeFileSync(join(src, "shrank.ts"), "a\n", "utf8");        // shrank：1 < 2（C-3 进度面）
+    writeFileSync(join(src, "frozen.ts"), "x\ny\n", "utf8");     // frozen：2 == 2
+    const reachable = new Set([join(src, "live.ts")]);
+    const records = judgeReachabilityEntries(
+      { "gone.ts": 5, "live.ts": 1, "grew.ts": 2, "shrank.ts": 2, "frozen.ts": 2 },
+      tmpRepo, reachable,
+    );
+    assert.deepEqual(records.map((r) => r.verdict), ["dangling-file", "wired", "grew", "shrank", "frozen"]);
+    assert.deepEqual(records.filter((r) => r.candidate).map((r) => r.file), ["gone.ts", "live.ts"]);
+  } finally {
+    rmSync(tmpRepo, { recursive: true, force: true });
+  }
+});
+
+test("② CLI --source=reachability：冻结基线盘点跑通且 104 条在场", () => {
+  const run = spawnSync(process.execPath, [scriptPath, "--source=reachability"], { cwd: repoRoot, encoding: "utf8", timeout: 120000 });
+  assert.equal(run.status, 0, `exit ${run.status}; stderr: ${run.stderr?.slice(0, 800)}`);
+  assert.ok(run.stdout.includes("[reachability] 104 文件"), `reachability 段缺失: ${run.stdout.slice(0, 400)}`);
+  assert.ok(run.stdout.includes("冻结中 104"), "冻结面计数缺失");
 });
 
 test("③ 防复发：盘点端未接线 CI/Makefile/package.json（政策 §6，接线候拍板）", () => {
