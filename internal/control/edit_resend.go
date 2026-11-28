@@ -233,11 +233,14 @@ func (c *Controller) discardParkedTurnsForEditResend() {
 			"ids", turnRowIDs, "err", err)
 		return
 	}
-	discarded, err := st.DiscardPendingItemsOwnedResult(turnRowIDs, "")
+	discarded, err := st.DiscardPendingItemsOwnedMetasResult(turnRowIDs, "")
 	if err != nil {
 		slog.Warn("control: edit-resend parked replay row discard failed", "err", err)
 		return
 	}
+	// tl1747: parked-row write-offs count in the cancel-source distribution
+	// too (their own source, distinct from the frontend's "desktop").
+	logInboxCancelDecision("edit_resend", discarded)
 	slog.Info("control: edit-resend dropped parked bodies and wrote off replay rows",
 		"bodies", len(entries), "discarded", len(discarded))
 }

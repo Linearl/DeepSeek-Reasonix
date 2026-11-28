@@ -54,6 +54,11 @@ const (
 	collabRetryBackoffMax  = 5 * time.Minute
 )
 
+// collabRetryCapUncapped marks the pump-level retry chain having no attempt
+// ceiling (tl1747 observation field): the backoff caps at collabRetryBackoffMax
+// but the chain never gives up, so the structured retry_cap reads 0 = uncapped.
+const collabRetryCapUncapped = 0
+
 // collabRetryDelay is the wait after the failures-th consecutive failed pass
 // (failures >= 1): 5s, 10s, 20s, ... capped at 5 minutes. Pure so the
 // schedule is pinned by a table test.
@@ -136,6 +141,36 @@ func (p *sessionCollabPump) resetContactRetry(contactID string) {
 	p.retryMu.Lock()
 	defer p.retryMu.Unlock()
 	delete(p.retry, contactID)
+}
+
+// contactRetryFailures reads a contact's current consecutive-failure count
+// (0 = no active chain). Observation-only (tl1747): it never mutates the
+// retry state — the structured decision records carry it as retry_attempt.
+func (p *sessionCollabPump) contactRetryFailures(contactID string) int {
+	p.retryMu.Lock()
+	defer p.retryMu.Unlock()
+	if st, ok := p.retry[contactID]; ok {
+		return st.failures
+	}
+	return 0
+}
+
+// logContactRetryFailed emits the contact-level failed_retrying record
+// (tl1747). The retry_attempt field reads the pump's consecutive-failure
+// count AFTER deferContactRetry advanced it (so the first failing pass
+// reads 1); retry_cap 0 = uncapped — the backoff alone is bounded, the
+// chain never gives up.
+func logContactRetryFailed(p *sessionCollabPump, contactID, topicID, reason string) {
+	logDeliveryDecision(slog.LevelWarn, "failed_retrying", reason, contactID, topicID,
+		"retry_attempt", p.contactRetryFailures(contactID), "retry_cap", collabRetryCapUncapped)
+}
+
+// logContactRetryRecovered emits the record that closes a failure chain —
+// the numerator of the retry success rate (tl1747). prev is the failed-pass
+// count the chain had accumulated before this successful pass.
+func logContactRetryRecovered(contactID, topicID string, prev int) {
+	logDeliveryDecision(slog.LevelInfo, "delivered", "contact_retry_recovered", contactID, topicID,
+		"retry_attempt", prev, "retry_cap", collabRetryCapUncapped)
 }
 
 func newSessionCollabPump(app *App) *sessionCollabPump {
@@ -899,7 +934,15 @@ func (p *sessionCollabPump) drain(respectBackoff bool) SessionCollabDrainResult 
 			// that into 568 refused lines in half an hour. Back the contact
 			// off (doubling, capped); a settled delivery resets it.
 			p.deferContactRetry(target.contactID, now)
+			// tl1747: the contact-level retry moment gets its structured record.
+			logContactRetryFailed(p, target.contactID, target.topicID, "contact_pass_failed")
 		} else {
+			// tl1747: a success that closes an active failure chain is the
+			// numerator of the retry success rate — one record per recovered
+			// chain, carrying the failed-pass count it recovered from.
+			if prev := p.contactRetryFailures(target.contactID); prev > 0 {
+				logContactRetryRecovered(target.contactID, target.topicID, prev)
+			}
 			p.resetContactRetry(target.contactID)
 		}
 		result.Delivered += delivered
@@ -970,6 +1013,10 @@ func (p *sessionCollabPump) drain(respectBackoff bool) SessionCollabDrainResult 
 			// provider env-var NAME from config validation errors, never the
 			// key value; RedactError also strips any provider-echoed key text.
 			p.deferContactRetry(contact, now)
+			// tl1747: the stand-up failure also arms the contact's backoff, so
+			// it counts as a retrying failure too (decision_reason distinguishes
+			// it from a failed delivery pass).
+			logContactRetryFailed(p, contact, "", "session_open_failed")
 			p.app.recordWakeOutcome(wakeLedgerEntry{
 				SessionPath: id.SessionPath,
 				ContactID:   contact,
@@ -1182,19 +1229,20 @@ func (a *App) inboxDispatchExhausted(info control.InboxDispatchExhausted) {
 	}
 	// tl1340 ③: the queued_followup → exhausted moment gets its structured
 	// decision record (why this message will not move, and for whom).
-	// Gate-off passes emit nothing new.
-	if collabAdmissionGateEnabled() {
-		lastErr := ""
-		if info.Err != nil {
-			lastErr = info.Err.Error()
-		}
-		logDeliveryDecision(slog.LevelWarn, "degraded", "open_retry_exhausted", info.CollabMailTo, "",
-			"msg_id", info.CollabMsgID,
-			"source", info.Source,
-			"item_id", info.ItemID,
-			"attempts", info.Attempts,
-			"err", lastErr)
+	// tl1747: exhaustion is one of the three counted reliability outcomes, so
+	// the record no longer rides the admission gate switch; retry_cap names
+	// the controller's bounded budget (5/15/45s = 3 retries).
+	lastErr := ""
+	if info.Err != nil {
+		lastErr = info.Err.Error()
 	}
+	logDeliveryDecision(slog.LevelWarn, "degraded", "open_retry_exhausted", info.CollabMailTo, "",
+		"msg_id", info.CollabMsgID,
+		"source", info.Source,
+		"item_id", info.ItemID,
+		"attempts", info.Attempts,
+		"retry_cap", control.InboxRuntimeRetryAttempts,
+		"err", lastErr)
 }
 
 // notice routes one settle notice by the action tier of the outcome it
@@ -1355,9 +1403,11 @@ func runCollabDelivery(mail *sessioncollab.MailStore, contactID string, d collab
 				// so (failed_retrying) and a later success overwrites it.
 				d.recordReceipt(msg, sessioncollab.ReceiptFailedRetrying, derr.Error())
 			}
-			if d.observ {
-				logDeliveryDecision(slog.LevelWarn, "failed_retrying", "enqueue_error", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From, "err", derr.Error())
-			}
+			// tl1747: this record is one of the three counted reliability
+			// outcomes, so it no longer rides the admission gate switch —
+			// gate-off passes emit it too (observation only; the retry
+			// semantics around it are untouched).
+			logDeliveryDecision(slog.LevelWarn, "failed_retrying", "enqueue_error", contactID, d.topicLabel, "msg_id", msg.ID, "from", msg.From, "err", derr.Error())
 			note(derr)
 			continue
 		}

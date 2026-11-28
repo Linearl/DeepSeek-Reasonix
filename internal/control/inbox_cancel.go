@@ -1,6 +1,11 @@
 package control
 
-import "strings"
+import (
+	"log/slog"
+	"strings"
+
+	"reasonix/internal/sessioninbox"
+)
 
 // InboxCancelResult is the authoritative receipt for a cancel+withdraw
 // operation. Only IDs in DiscardedItemIDs are safe for a frontend to restore
@@ -8,6 +13,26 @@ import "strings"
 type InboxCancelResult struct {
 	DiscardedItemIDs []string
 	Warning          string
+}
+
+// logInboxCancelDecision emits one structured cancel record per discarded
+// item (tl1747). Field contract matches the desktop delivery-decision lines
+// (delivery_decision / decision_reason / session / topic) plus cancel_source
+// for the who-cancelled distribution; session carries the item's CollabMailTo
+// (empty for local queue entries). Observation only — the cancel semantics
+// are untouched.
+func logInboxCancelDecision(cancelSource string, discarded []sessioninbox.InboxItemMeta) {
+	for _, item := range discarded {
+		slog.Info("session-collab delivery decision",
+			"delivery_decision", "cancelled",
+			"decision_reason", "inbox_cancel",
+			"session", item.CollabMailTo,
+			"topic", "",
+			"msg_id", item.ID,
+			"cancel_source", cancelSource,
+			"source", item.Source,
+		)
+	}
 }
 
 // CancelWithInboxItems stops the active turn and discards only the durable
@@ -36,14 +61,17 @@ func (c *Controller) CancelWithInboxItemsResult(ids []string, source string) (In
 		c.Cancel()
 		return result, err
 	}
-	discarded, err := st.DiscardPendingItemsOwnedResult(ids, strings.TrimSpace(source))
+	discarded, err := st.DiscardPendingItemsOwnedMetasResult(ids, strings.TrimSpace(source))
 	if err != nil {
 		// Keep the inbox paused for inspection if an item already crossed the
 		// admission boundary. Cancellation still stops that in-flight turn.
 		c.Cancel()
 		return result, err
 	}
-	result.DiscardedItemIDs = discarded
+	result.DiscardedItemIDs = sessioninbox.InboxItemIDs(discarded)
+	// tl1747: one structured cancel record per discarded item (cancel_source
+	// names the cancelling frontend).
+	logInboxCancelDecision(strings.TrimSpace(source), discarded)
 	c.Cancel()
 	if !wasPaused {
 		if err := st.SetPaused(false); err != nil {

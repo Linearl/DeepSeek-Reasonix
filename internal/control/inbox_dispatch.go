@@ -487,6 +487,12 @@ func (c *Controller) setDispatchRetryFailure(id string, err error) {
 // time and one report per stuck item, never a hot loop.
 var inboxRuntimeRetryBackoff = [...]time.Duration{5 * time.Second, 15 * time.Second, 45 * time.Second}
 
+// InboxRuntimeRetryAttempts is the bounded retry budget of the runtime-
+// unpublished path (len of inboxRuntimeRetryBackoff). Exported so the host's
+// observability lines (tl1747 exhausted record) can name the cap without
+// hardcoding the schedule a second time.
+const InboxRuntimeRetryAttempts = len(inboxRuntimeRetryBackoff)
+
 // SetOnInboxDispatchExhausted registers the host-visible sink for the bounded
 // retry budget running out (任务579 验收④). Production wiring normally comes
 // through Options.OnInboxDispatchExhausted; this setter exists for hosts that
