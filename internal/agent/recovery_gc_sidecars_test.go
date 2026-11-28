@@ -354,9 +354,11 @@ func TestRecoveryTrashSidecarsCoversFullInventory(t *testing.T) {
 		want = append(want, base(p))
 	}
 	// guardian 家族（tl1850 收窄口径）：guardian 转录按会话层保存，自带
-	// 实际数据面侧车（meta/events/双 index）+ 游标——goal/recovery/context/
-	// pinned-context/turns/conflicts/zst/damaged/审计五件在 guardian 路径
-	// 从未有写入方（tl1849 实证），不再派生。
+	// 实际数据面侧车（meta/events/双 index/rewritelog）+ 游标——goal/
+	// recovery/context/pinned-context/turns/conflicts/zst/damaged/审计四件
+	// 在 guardian 路径从未有写入方（tl1849 实证），不再派生（rewritelog 是
+	// tl1850 误删、tl1850r2 恢复的第五个真实数据面成员：guardian_merge
+	// 入队源）。
 	for _, p := range store.SessionGuardianSidecarFiles(guardian) {
 		want = append(want, base(p))
 	}
