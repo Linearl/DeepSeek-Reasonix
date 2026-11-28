@@ -13270,7 +13270,13 @@ button.statusbar__mcp:focus-visible {
   box-shadow: var(--focus-ring);
 }
 .prompt-shelf--ask .prompt-shelf__header-button--takeover:disabled {
-  opacity: 0.6;
+  /* tl1846: 0.6 的合成把按钮底对卡片背景（--bg-elev）的边界对比压破 WCAG
+     非文本 3:1（spark light 实测 2.49，8 官方包 light 全线 2.43–2.99），disabled
+     恰是 autopilot 等待接管时人眼依赖的态。0.75 后官方 8 包 light+dark、通用
+     auto/forced light 与各风格档 dark 全部 ≥3（spark light 3.14/3.21）；风格档
+     light 中 graphite/carbon（accent 对 bg-elev 余量仅 3.11/3.74）数学上不可达，
+     钉测试按只升不降下限看守，见 theme-light-contrast-wcag.test.ts。 */
+  opacity: 0.75;
   cursor: default;
 }
 .prompt-shelf--ask .prompt-shelf__meta { font-size: var(--text-lg); }
