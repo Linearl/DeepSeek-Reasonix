@@ -447,7 +447,7 @@ export const CHECKS = [
   { feature: "任务356 手动挡修复按钮不置灰（分档 disabled+confirm+分档 hint）", file: "desktop/frontend/src/components/SessionEventsPanel.tsx", patterns: ["mode === \"manual\" ? busy : busy || entry.busy", "busyConfirm", "busyHintManual"] },
   { feature: "任务297 实验室存储成本卡（开关+两数值；1134 迁 ExperimentalLabSection）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["SetColdCacheCompactMinBytes(kb * 1024)", "SetColdCacheCompactIdleMinutes(h * 60)"] },
   { feature: "任务347 驻留并入缓存调优第四块+LRU 容量字段（1134 迁 ExperimentalLabSection）", file: "desktop/frontend/src/components/ExperimentalLabSection.tsx", patterns: ["SetDagGraphCacheCapacity(v)", "SetExperimentalActiveTabResident(on)"] },
-  { feature: "任务347 view 报告图缓存生效容量（196fix2 契约读回）", file: "desktop/settings_app.go", patterns: ["DagGraphCacheCapacity:           config.DagGraphCacheCapacity(cfg)"] },
+  { feature: "任务347 view 报告图缓存生效容量（196fix2 契约读回）", file: "desktop/settings_app.go", patterns: ["DagGraphCacheCapacity:          config.DagGraphCacheCapacity(cfg)"] },
   { feature: "任务345 修复会话列表 会话名兜底+状态+繁忙禁用", file: "desktop/frontend/src/components/SessionEventsPanel.tsx", patterns: ["entry.busy", "statusBusy", "title={entry.path}"] },
   { feature: "任务345 Go 侧 display title 链+Busy 字段", file: "desktop/session_events_app.go", patterns: ["sessionEventsDisplayTitle", "Busy bool `json:\"busy\"`"] },
   // 任务 800：346 的用量卡内纵向分组随明细退役**有意删除**（明细权威位=
