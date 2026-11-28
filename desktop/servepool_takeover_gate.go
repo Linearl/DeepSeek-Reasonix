@@ -10,11 +10,13 @@ package main
 // desktop hook registered. The gate below intercepts the takeover at the
 // gateway — inside the desktop process — and routes it through the same
 // prompt bridge the marker watcher uses, so every explicit remote takeover
-// prompts the desktop user, yields the tab lease on accept, and answers the
-// phone with an explicit verdict either way.
+// that a desktop yield can serve prompts the desktop user, yields the tab
+// lease on accept, and answers the phone with an explicit verdict either way.
+// tl1854 R2/R3: idle sessions (no desktop tab holds the lease) pass through
+// without a prompt — the serve answers them itself — and an unanswered prompt
+// now ALLOWS after a short independent veto window instead of refusing.
 
 import (
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,14 +28,20 @@ import (
 	"reasonix/internal/servepool"
 )
 
-// gatewayTakeoverPromptTimeout matches the marker watcher's prompt window and
-// the 539 T2 yield window: the user can read the notice at leisure because
-// accepting no longer interrupts the running turn. An unanswered prompt
-// resolves as a refusal.
-const gatewayTakeoverPromptTimeout = agent.SessionTakeoverYieldWindow
+// gatewayTakeoverVetoWindow is the desktop prompt's veto window (tl1854 R3):
+// the dialog is a NOTIFICATION with a veto — an unanswered prompt means nobody
+// is at the desktop, which is the normal remote-takeover scenario, so the
+// deadline now ALLOWS the takeover (walking the same non-interrupting yield
+// path as an explicit accept). It used to resolve as a refusal, which made
+// takeover unusable exactly when it matters (nobody at the desktop), and
+// shared the 539 T2 yield-window constant. The single source lives in
+// internal/agent (SessionTakeoverVetoWindow) so serve can expose it in the
+// 202 body (vetoWindowSeconds, handoff R4) instead of the ends each
+// hardcoding one.
+const gatewayTakeoverVetoWindow = agent.SessionTakeoverVetoWindow
 
-// gatewayTakeoverPromptTimeoutForTest lets tests shrink the blocking window.
-var gatewayTakeoverPromptTimeoutForTest = gatewayTakeoverPromptTimeout
+// gatewayTakeoverVetoWindowForTest lets tests shrink the veto window.
+var gatewayTakeoverVetoWindowForTest = gatewayTakeoverVetoWindow
 
 // installServePoolTakeoverGate wires the app-owned gate into the gateway.
 func (a *App) installServePoolTakeoverGate(gw *servepool.Gateway) {
@@ -72,13 +80,25 @@ func (a *App) servePoolTakeoverGate(req servepool.TakeoverGateRequest) (bool, in
 		slog.Info("desktop: gateway takeover passed through (no prompt sink)", "path", path, "from", req.From)
 		return true, 0, ""
 	}
+	// tl1854 R2: prompt only when a desktop tab actually HOLDS the session
+	// lease — that is the only case a desktop yield can serve. On an idle
+	// session (the phone /resume'd it, so the pooled serve holds the lease
+	// itself) there is no desktop holder: the prompt used to pop up anyway and
+	// neither answer could change the outcome (the forwarded request 202ed
+	// waiting for a yield that never came, handoff §3.6). Pass through like
+	// the no-sink case; the serve answers on its own authority (tl1854 R2
+	// makes a self-held takeover a direct 204).
+	if !a.desktopHoldsSessionLease(path) {
+		slog.Info("desktop: gateway takeover passed through (no desktop tab holds the session)", "path", path, "from", req.From)
+		return true, 0, ""
+	}
 	// The marker id is a bridge correlation key only — no marker file is
 	// written or removed on this path.
 	marker := "gateway-takeover-" + servepool.RandomToken()
 	slog.Info("desktop: gateway takeover request, prompting user", "path", path, "from", req.From)
 	reply := registerTakeoverPending(marker)
-	sink(takeoverDecisionReq{Marker: marker, Path: path, From: req.From, Reply: reply})
-	timeout := gatewayTakeoverPromptTimeoutForTest
+	sink(takeoverDecisionReq{Marker: marker, Path: path, From: req.From, Reply: reply, VetoWindowMs: int(gatewayTakeoverVetoWindow / time.Millisecond)})
+	timeout := gatewayTakeoverVetoWindowForTest
 	select {
 	case accept := <-reply:
 		unregisterTakeoverPending(marker)
@@ -90,9 +110,16 @@ func (a *App) servePoolTakeoverGate(req servepool.TakeoverGateRequest) (bool, in
 		a.yieldTabsToGatewayTakeover(path, false)
 		return true, 0, ""
 	case <-time.After(timeout):
+		// tl1854 R3: an unanswered prompt means nobody is at the desktop — the
+		// normal remote-takeover scenario — so the deadline ALLOWS instead of
+		// refusing. Same non-interrupting path as an explicit accept (force
+		// stays false: a running turn drains first, exactly like J3). The
+		// pending answer channel is already unregistered, so a late 拒绝 click
+		// on a stale dialog is dropped by SubmitTakeoverDecision.
 		unregisterTakeoverPending(marker)
-		slog.Info("desktop: gateway takeover prompt timed out, refusing", "path", path)
-		return false, http.StatusConflict, fmt.Sprintf("takeover request timed out (no desktop response within %s); the session stays under local control", gatewayTakeoverPromptTimeout)
+		slog.Info("desktop: gateway takeover veto window expired without a rejection, allowing", "path", path, "window", timeout.String())
+		a.yieldTabsToGatewayTakeover(path, false)
+		return true, 0, ""
 	}
 }
 
@@ -127,6 +154,35 @@ func (a *App) resolveGatewayTakeoverSessionPath(projectRoot, sessionName string)
 	return ""
 }
 
+// desktopHoldsSessionLease reports whether any workspace tab currently holds
+// the session's lease — the only takeover shape a desktop yield can serve
+// (tl1854 R2). Snapshot the tab list under the app mutex, then read each
+// tab's lease without holding a.mu (same lock order as
+// releaseAllTabSessionLeases: a.mu is never held across sessionLeaseMu).
+func (a *App) desktopHoldsSessionLease(path string) bool {
+	key := sessionRuntimeKey(path)
+	if key == "" {
+		return false
+	}
+	a.mu.Lock()
+	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
+	for _, tab := range a.tabs {
+		if tab != nil {
+			tabs = append(tabs, tab)
+		}
+	}
+	a.mu.Unlock()
+	for _, tab := range tabs {
+		tab.sessionLeaseMu.Lock()
+		lease := tab.sessionLease
+		tab.sessionLeaseMu.Unlock()
+		if lease != nil && sessionRuntimeKey(lease.Path()) == key {
+			return true
+		}
+	}
+	return false
+}
+
 // yieldTabsToGatewayTakeover performs the accept side for a gateway-gated
 // takeover: every tab holding the session enters the yielding state (539 —
 // the lease is KEPT until the tab's turn finishes, then released with a
@@ -146,6 +202,12 @@ func (a *App) yieldTabsToGatewayTakeover(path string, force bool) {
 		}
 	}
 	a.mu.Unlock()
+	if len(tabs) == 0 {
+		// tl1854 R2: the accept path used to be fully silent when nothing held
+		// the session, which hid the idle-takeover misroute during triage.
+		slog.Info("desktop: no desktop tab holds the session, nothing to yield", "path", path)
+		return
+	}
 	for _, tab := range tabs {
 		if force && tab.hasActiveRuntimeWork() && tab.Ctrl != nil {
 			slog.Info("desktop: forced takeover, cancelling active turn", "path", path, "tab", tab.ID)

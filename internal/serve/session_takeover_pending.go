@@ -169,7 +169,7 @@ func (s *Server) pollTakeoverYield(abs, marker, from string) {
 				slog.Warn("serve: takeover rebind failed after yield", "path", abs, "err", err)
 				return
 			}
-			notifyRemoteWriteAuthority(from, true)
+			notifyRemoteWriteAuthority(from, true, agent.CanonicalSessionPath(abs))
 			return
 		}
 		if _, err := os.ReadFile(marker); err != nil {

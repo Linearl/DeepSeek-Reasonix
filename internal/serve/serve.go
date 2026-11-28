@@ -838,29 +838,57 @@ func (s *Server) logoWordmark(w http.ResponseWriter, _ *http.Request) {
 // An optional "format":"json_object" asks the model for structured JSON output
 // on this turn (text.format on the wire).
 // remoteWriteAuthorityHook is the desktop-side observer (same process): a
-// remote device taking or losing the lease flips the desktop's non-persisted
-// runtime read-only state and its tab-lease releases (task 36 Phase 2).
-var remoteWriteAuthorityHook func(deviceID string, held bool)
+// remote device taking or losing a session's lease flips the desktop's
+// non-persisted runtime read-only state and releases the holding tabs' leases
+// (task 36 Phase 2). tl1854 R5/S5 narrowed both effects to ONE session: the
+// session param is the canonical transcript path the event is about ("" only
+// for a legacy device-wide release, which clears the desktop's whole set).
+var remoteWriteAuthorityHook func(deviceID string, held bool, session string)
 
 // SetRemoteWriteAuthorityHook registers the desktop observer; nil clears it.
-func SetRemoteWriteAuthorityHook(fn func(deviceID string, held bool)) {
+func SetRemoteWriteAuthorityHook(fn func(deviceID string, held bool, session string)) {
 	remoteWriteAuthorityHook = fn
 }
 
-func notifyRemoteWriteAuthority(deviceID string, held bool) {
+func notifyRemoteWriteAuthority(deviceID string, held bool, session string) {
 	if remoteWriteAuthorityHook != nil {
-		remoteWriteAuthorityHook(deviceID, held)
+		remoteWriteAuthorityHook(deviceID, held, session)
 	}
 }
 
-// remoteDeviceHoldsWrite reports whether any device lease is live — the
-// device-level mutual exclusion (task 36): while a remote device holds the
-// lease, local submits are refused so there is exactly one writer.
+// foregroundSessionName returns the bare transcript name of the session
+// submits would target ("" when this serve has no bound session).
+func (s *Server) foregroundSessionName() string {
+	cur := s.ctl()
+	if cur == nil {
+		return ""
+	}
+	path := strings.TrimSpace(cur.SessionPath())
+	if path == "" {
+		return ""
+	}
+	return strings.TrimSuffix(filepath.Base(path), ".jsonl")
+}
+
+// remoteDeviceHoldsWrite reports whether a live heartbeat still covers the
+// CURRENT foreground session — the session-scope mutual exclusion (tl1854
+// R5/S1, narrowing task 36's device scope: a remote device now holds exactly
+// one conversation, so a device beating for another session must not lock
+// this instance's foreground writes). An empty foreground name (degenerate
+// setups, some tests) falls back to the old device-level rule — any live
+// heartbeat blocks — the conservative side of the narrowing.
 func (s *Server) remoteDeviceHoldsWrite() (string, bool) {
+	name := s.foregroundSessionName()
 	s.heartbeatMu.Lock()
 	defer s.heartbeatMu.Unlock()
 	for id, entry := range s.heartbeats {
-		if time.Since(entry.lastBeat) <= heartbeatExpiry {
+		if time.Since(entry.lastBeat) > heartbeatExpiry {
+			continue
+		}
+		if name == "" {
+			return id, true
+		}
+		if ts, held := entry.sessions[name]; held && time.Since(ts) <= heartbeatExpiry {
 			return id, true
 		}
 	}
@@ -868,24 +896,35 @@ func (s *Server) remoteDeviceHoldsWrite() (string, bool) {
 }
 
 // deviceIdentityExempt reports whether the submit request carries the device
-// identity of a live heartbeat holder (tl1532): the holder's own submits must
-// not be refused by the holder's own heartbeat. The identity rides in
-// deviceIDHeader and is read before any body parsing, so this guard still
-// refuses before parsing anything; a missing or empty header (legacy
-// clients) is never exempt. The comparison is constant-time — this is a
-// security gate, not a lookup — and iterates every live device rather than
-// stopping at the first match (the holder named in the 409 is an arbitrary
-// live entry once more than one device is beating).
+// identity of the live heartbeat holder (tl1532): the holder's own submits
+// must not be refused by the holder's own heartbeat. tl1854 R5/S1 keeps the
+// exemption aligned with the session-scope guard — only devices whose live
+// record covers the foreground session qualify (no qualifying entry exists
+// when the guard didn't fire, so this stays consistent by construction). The
+// identity rides in deviceIDHeader and is read before any body parsing, so
+// this guard still refuses before parsing anything; a missing or empty
+// header (legacy clients) is never exempt. The comparison is constant-time —
+// this is a security gate, not a lookup — and iterates every live device
+// rather than stopping at the first match.
 func (s *Server) deviceIdentityExempt(r *http.Request) bool {
 	caller := strings.TrimSpace(r.Header.Get(deviceIDHeader))
 	if caller == "" {
 		return false
 	}
+	name := s.foregroundSessionName()
 	s.heartbeatMu.Lock()
 	defer s.heartbeatMu.Unlock()
 	exempt := false
 	for id, entry := range s.heartbeats {
-		if time.Since(entry.lastBeat) <= heartbeatExpiry && subtle.ConstantTimeCompare([]byte(caller), []byte(id)) == 1 {
+		if time.Since(entry.lastBeat) > heartbeatExpiry {
+			continue
+		}
+		if name != "" {
+			if ts, held := entry.sessions[name]; !held || time.Since(ts) > heartbeatExpiry {
+				continue
+			}
+		}
+		if subtle.ConstantTimeCompare([]byte(caller), []byte(id)) == 1 {
 			exempt = true
 		}
 	}
@@ -913,7 +952,7 @@ func (s *Server) submit(w http.ResponseWriter, r *http.Request) {
 	// identity, and every client that sends no header (pre-tl1532 clients),
 	// keeps the task 36 Phase 2 exclusion below verbatim.
 	if deviceID, held := s.remoteDeviceHoldsWrite(); held && !s.deviceIdentityExempt(r) {
-		http.Error(w, "write authority held by remote device "+deviceID+"; the desktop is read-only until the device releases (task 36 device-level exclusion)", http.StatusConflict)
+		http.Error(w, "write authority for this session is held by remote device "+deviceID+"; submits stay refused until the device releases it (tl1854 session-level exclusion)", http.StatusConflict)
 		return
 	}
 	var body struct {
@@ -1581,7 +1620,16 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 			held := s.sessionMirrored(path) || leaseHeldByForeignRuntime(path)
 			if !held {
 				if view, ok := s.ownedRuntimeStatusView(path); ok {
-					writeJSON(w, view)
+					// tl1854 R1: the takeover-poll fields must ride EVERY
+					// ?session= view. This early return is the main remote
+					// takeover path — the phone /resumes the target before
+					// taking it over, so the target IS this serve's own bound
+					// session and ownedRuntimeStatusView hits — and skipping
+					// s.decorateTakeoverStatus here left a 202 poller reading a
+					// field-less view until its window expired (handoff
+					// GC-远程接管设计缺口 §3.2). The other two branches decorate
+					// inside statusViewForPath; behavior there is unchanged.
+					writeJSON(w, s.decorateTakeoverStatus(path, view))
 					return
 				}
 			}
@@ -1835,8 +1883,11 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Name     string `json:"name"`
 		DeviceID string `json:"device_id"`
-		// Release drops the device's whole lease immediately (task 36:
-		// GC onStop); name may be empty in that case.
+		// Release drops the device's lease immediately (task 36: GC onStop).
+		// tl1854 R5/S2: with a session name it releases exactly THAT session
+		// (leaving the session scope, or 交还给电脑 for one conversation);
+		// without a name it keeps the legacy whole-device release so old
+		// clients behave exactly as before.
 		Release bool `json:"release"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
@@ -1845,7 +1896,12 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 	}
 	deviceID := strings.TrimSpace(body.DeviceID)
 	if body.Release {
-		s.releaseDeviceLease(deviceID)
+		name := strings.TrimSpace(body.Name)
+		if name == "" {
+			s.releaseDeviceLease(deviceID)
+		} else {
+			s.releaseDeviceSession(deviceID, name)
+		}
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
@@ -1870,16 +1926,20 @@ func (s *Server) heartbeat(w http.ResponseWriter, r *http.Request) {
 }
 
 // deviceLiveness is one remote device's lease: when it last beat plus the
-// sessions it touched (task 36 keeps a set so the protocol can narrow from
-// device-scope to session-scope without another migration).
+// sessions it touched with per-session freshness (task 36 kept a set for
+// exactly this migration; tl1854 R5/S3 makes the timestamps authoritative —
+// a device that only beats for session B lets its hold on session A expire
+// while the device record itself stays alive).
 type deviceLiveness struct {
 	lastBeat time.Time
 	sessions map[string]time.Time
 }
 
-// releaseDeviceLease drops a device's lease on explicit request (GC onStop)
-// or expiry: free this runtime's lease when the device held the current
-// session, then flip the desktop write-authority hook off (task 36 Phase 2).
+// releaseDeviceLease drops a device's whole lease on explicit request (GC
+// onStop / legacy release-device): free this runtime's lease when the device
+// held the current session, then flip the desktop write-authority hook off
+// (task 36 Phase 2). tl1854 R5: only the no-name heartbeat release and
+// POST /release-device land here; the per-session path is releaseDeviceSession.
 func (s *Server) releaseDeviceLease(deviceID string) {
 	s.heartbeatMu.Lock()
 	entry := s.heartbeats[deviceID]
@@ -1891,16 +1951,40 @@ func (s *Server) releaseDeviceLease(deviceID string) {
 	s.freeLeaseIfDeviceHeld(entry, deviceID, "explicit release")
 }
 
+// releaseDeviceSession removes ONE session from a device's record (tl1854
+// R5/S2): the phone left the conversation page or hit 交还给电脑 for this
+// conversation. The device record survives while it still holds other
+// sessions; the record dies with its last session.
+func (s *Server) releaseDeviceSession(deviceID, name string) {
+	s.heartbeatMu.Lock()
+	entry := s.heartbeats[deviceID]
+	if entry != nil {
+		delete(entry.sessions, name)
+		if len(entry.sessions) == 0 {
+			delete(s.heartbeats, deviceID)
+		}
+	}
+	s.heartbeatMu.Unlock()
+	if entry != nil {
+		s.freeLeaseIfSessionHeld(deviceID, name, "explicit session release")
+	}
+}
+
 // freeLeaseIfDeviceHeld releases this runtime's lease when the (already
 // removed) device entry covered the current session, and notifies the
-// desktop hook either way so its read-only runtime state follows.
+// desktop hook either way so its read-only runtime state follows. Legacy
+// whole-device path: the hook's session param carries the released path when
+// one matched, else "" — the desktop clears its entire remote-held set for
+// the conservative device-wide semantics.
 func (s *Server) freeLeaseIfDeviceHeld(entry *deviceLiveness, deviceID, reason string) {
 	s.bindMu.Lock()
+	releasedPath := ""
 	keeper := s.leases
 	if keeper != nil {
 		if lease := keeper.Lease(); lease != nil {
 			current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
 			if _, held := entry.sessions[current]; held {
+				releasedPath = lease.Path()
 				lease.Release()
 				_ = keeper.Rebind("")
 				slog.Info("serve: released lease for remote device", "session", current, "device", deviceID, "reason", reason)
@@ -1908,28 +1992,78 @@ func (s *Server) freeLeaseIfDeviceHeld(entry *deviceLiveness, deviceID, reason s
 		}
 	}
 	s.bindMu.Unlock()
-	notifyRemoteWriteAuthority(deviceID, false)
+	notifyRemoteWriteAuthority(deviceID, false, agent.CanonicalSessionPath(releasedPath))
+}
+
+// freeLeaseIfSessionHeld releases this runtime's lease when the released or
+// expired session IS the one the keeper currently guards (tl1854 R5/S4:
+// freeing on any-held-session used to drop the lease of an unrelated current
+// session). The desktop hook always hears about the session so its
+// per-session read-only state tracks the device, matched or not.
+func (s *Server) freeLeaseIfSessionHeld(deviceID, name, reason string) {
+	sessionPath := s.canonicalSessionNamePath(name)
+	s.bindMu.Lock()
+	releasedPath := ""
+	keeper := s.leases
+	if keeper != nil {
+		if lease := keeper.Lease(); lease != nil {
+			current := strings.TrimSuffix(filepath.Base(lease.Path()), ".jsonl")
+			if current == name {
+				releasedPath = lease.Path()
+				lease.Release()
+				_ = keeper.Rebind("")
+				slog.Info("serve: released lease for remote device session", "session", current, "device", deviceID, "reason", reason)
+			}
+		}
+	}
+	s.bindMu.Unlock()
+	if releasedPath != "" {
+		sessionPath = agent.CanonicalSessionPath(releasedPath)
+	}
+	notifyRemoteWriteAuthority(deviceID, false, sessionPath)
+}
+
+// canonicalSessionNamePath maps a bare session name onto the canonical
+// transcript path inside the foreground session dir ("" when unmappable).
+// Notification-only: the desktop compares keys, it never touches the file.
+func (s *Server) canonicalSessionNamePath(name string) string {
+	name = strings.TrimSpace(name)
+	dir := ""
+	if cur := s.ctl(); cur != nil {
+		dir = strings.TrimSpace(cur.SessionDir())
+	}
+	if name == "" || dir == "" {
+		return ""
+	}
+	return agent.CanonicalSessionPath(filepath.Join(dir, name+".jsonl"))
 }
 
 // releaseExpiredHeartbeats drops serve-held leases whose remote client
-// stopped beating past heartbeatExpiry. Called from the heartbeat sweep
-// goroutine and lazily before takeover checks.
+// stopped beating past heartbeatExpiry. tl1854 R5/S3: expiry is judged per
+// SESSION timestamp (a device that only beats for session B releases its
+// stale hold on session A); the device record dies only when its last
+// session expires. Called from the heartbeat sweep goroutine.
 func (s *Server) releaseExpiredHeartbeats() {
 	s.heartbeatMu.Lock()
-	type expiredDevice struct {
-		id    string
-		entry *deviceLiveness
+	type expiredSession struct {
+		deviceID string
+		name     string
 	}
-	expired := make([]expiredDevice, 0, len(s.heartbeats))
+	expired := make([]expiredSession, 0, 2)
 	for id, entry := range s.heartbeats {
-		if time.Since(entry.lastBeat) > heartbeatExpiry {
-			expired = append(expired, expiredDevice{id: id, entry: entry})
+		for name, ts := range entry.sessions {
+			if time.Since(ts) > heartbeatExpiry {
+				expired = append(expired, expiredSession{deviceID: id, name: name})
+				delete(entry.sessions, name)
+			}
+		}
+		if len(entry.sessions) == 0 {
 			delete(s.heartbeats, id)
 		}
 	}
 	s.heartbeatMu.Unlock()
 	for _, e := range expired {
-		s.freeLeaseIfDeviceHeld(e.entry, e.id, "heartbeat expired")
+		s.freeLeaseIfSessionHeld(e.deviceID, e.name, "heartbeat expired")
 	}
 }
 
@@ -2052,6 +2186,24 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	// tl1854 R2 (self-held takeover): when a remote client opens an idle
+	// session, THIS runtime acquires the lease itself (/resume →
+	// control.SessionLeaseKeeper.Rebind). A later explicit takeover of that
+	// session used to collide with our own lease registry —
+	// TryAcquireSessionLeaseWithHandoff's first step fails on a self-held
+	// path — then fell into the 202 yield-wait for a desktop holder that does
+	// not exist and timed out (handoff GC-远程接管设计缺口 §3.6), while the
+	// gateway prompt could never change the outcome either. Self-held means
+	// the takeover's goal — this runtime holds the lease — is already true:
+	// answer 204 directly. No request marker, no background poll, and a
+	// stale recorded attempt is closed out so ?session= pollers see done.
+	if s.leases != nil && agent.CanonicalSessionPath(s.leases.HeldPath()) == agent.CanonicalSessionPath(abs) {
+		s.recordTakeoverState(abs, takeoverStateDone, "")
+		notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true, agent.CanonicalSessionPath(abs))
+		slog.Info("serve: takeover satisfied by the runtime's own lease (no desktop holder to yield)", "session", name)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From), newTakeoverHandoffID())
 	if err != nil {
 		// Cross-runtime takeover (539 route A, "take over without
@@ -2092,6 +2244,11 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 			"status":            takeoverStatePending,
 			"session":           name,
 			"pollWindowSeconds": int(agent.SessionTakeoverYieldWindow / time.Second),
+			// tl1854 R4: the desktop prompt's veto window (R3) so the remote
+			// client can render "auto-allows after Ns" without hardcoding it
+			// (handoff §3.1: carry the window in the response, not per-end
+			// constants).
+			"vetoWindowSeconds": int(agent.SessionTakeoverVetoWindow / time.Second),
 		})
 		return
 	}
@@ -2129,8 +2286,9 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 	s.bindMu.Unlock()
 	// Task 36 Phase 2: the remote device now holds write authority — flip the
 	// desktop's runtime read-only observer on (from may be empty for older
-	// clients; the hook treats it as an anonymous device).
-	notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true)
+	// clients; the hook treats it as an anonymous device). tl1854 R5: the
+	// effect is scoped to this one session.
+	notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true, agent.CanonicalSessionPath(abs))
 	w.WriteHeader(http.StatusNoContent)
 }
 

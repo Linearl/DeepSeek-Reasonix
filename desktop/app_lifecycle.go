@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	goruntime "runtime"
+	"strconv"
 	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -73,9 +74,10 @@ func NewApp() *App {
 	a.registerRemoteWriteAuthorityHook()
 	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
 		runtimeEventsEmitFallback(a.ctx, "app:takeover-request", map[string]string{
-			"marker": req.Marker,
-			"path":   req.Path,
-			"from":   req.From,
+			"marker":         req.Marker,
+			"path":           req.Path,
+			"from":           req.From,
+			"veto_window_ms": strconv.Itoa(req.VetoWindowMs),
 		})
 	})
 	RegisterTakeoverYieldNotifier(func(kind, path, detail string) {

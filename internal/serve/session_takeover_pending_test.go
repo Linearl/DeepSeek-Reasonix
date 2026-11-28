@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -43,6 +44,41 @@ func newTakeoverPendingFixture(t *testing.T) (*Server, string, string) {
 	return server, dir, target
 }
 
+// tl1854 R2: a takeover of a session THIS runtime already holds (the phone
+// /resume'd the idle session first) is an immediate 204 — the lease goal is
+// already satisfied, so no request marker, no background yield-wait poll, no
+// 202, and any stale recorded attempt is closed out.
+func TestTakeoverSessionSelfHeldAnswersDirectly(t *testing.T) {
+	server, _, target := newTakeoverPendingFixture(t)
+
+	// /resume semantics: the runtime's own keeper holds the idle session.
+	if err := server.leases.Rebind(target); err != nil {
+		t.Fatalf("seed self-held lease: %v", err)
+	}
+	marker := agent.TakeoverRequestMarkerPath(target)
+	// A stale pending attempt (single-flight leftover from an earlier flow)
+	// must be closed by the direct success, not left pending forever.
+	server.recordTakeoverState(target, takeoverStatePending, "")
+
+	rec := httptest.NewRecorder()
+	server.takeoverSession(rec, httptest.NewRequest(http.MethodPost, "/takeover-session",
+		strings.NewReader(`{"name":"target","from":"gc-1"}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("self-held takeover status = %d body=%q, want 204", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("self-held takeover must not write a request marker")
+	}
+	if pending, failed, message := server.takeoverStatusFor(target); pending || failed || message != "" {
+		t.Fatalf("attempt state = (pending %v, failed %v, %q), want a closed done attempt", pending, failed, message)
+	}
+	// The keeper still holds the session — nothing released it.
+	lease := server.leases.Lease()
+	if lease == nil || agent.CanonicalSessionPath(lease.Path()) != agent.CanonicalSessionPath(target) {
+		t.Fatalf("keeper lease = %v, want the self-held target untouched", lease)
+	}
+}
+
 func TestTakeoverSessionPendingUntilDesktopYields(t *testing.T) {
 	server, _, target := newTakeoverPendingFixture(t)
 	marker := agent.TakeoverRequestMarkerPath(target)
@@ -60,11 +96,20 @@ func TestTakeoverSessionPendingUntilDesktopYields(t *testing.T) {
 		t.Fatalf("takeover status = %d, want 202 pending (body %q)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Status  string `json:"status"`
-		Session string `json:"session"`
+		Status            string `json:"status"`
+		Session           string `json:"session"`
+		PollWindowSeconds int    `json:"pollWindowSeconds"`
+		VetoWindowSeconds int    `json:"vetoWindowSeconds"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != "pending" || body.Session != "target" {
 		t.Fatalf("202 body = %q (err %v), want pending/target", rec.Body.String(), err)
+	}
+	// tl1854 R4: both windows ride the body so clients never hardcode them.
+	if body.PollWindowSeconds != int(agent.SessionTakeoverYieldWindow/time.Second) {
+		t.Fatalf("pollWindowSeconds = %d, want %d", body.PollWindowSeconds, int(agent.SessionTakeoverYieldWindow/time.Second))
+	}
+	if body.VetoWindowSeconds != int(agent.SessionTakeoverVetoWindow/time.Second) {
+		t.Fatalf("vetoWindowSeconds = %d, want %d", body.VetoWindowSeconds, int(agent.SessionTakeoverVetoWindow/time.Second))
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
@@ -218,5 +263,66 @@ func TestStatusViewForPathDecoratesTakeoverFields(t *testing.T) {
 	}
 	if view["takeoverStatus"] != takeoverStateFailed || view["takeoverMessage"] != takeoverTimeoutMessage {
 		t.Fatalf("failure decoration = %v/%v", view["takeoverStatus"], view["takeoverMessage"])
+	}
+}
+
+// tl1854 R1: the owned-runtime early return in the ?session= status handler is
+// the main remote-takeover surface — the phone /resumes the target first, so
+// the target IS this serve's bound session and ownedRuntimeStatusView hits.
+// That return used to skip decorateTakeoverStatus, so a 202 poller never saw
+// takeoverPending and every poll read as "no fields" until the window
+// expired. The view must carry the fields through pending → terminal.
+func TestStatusOwnedRuntimeViewCarriesTakeoverPollFields(t *testing.T) {
+	server, dir, _ := newTakeoverPendingFixture(t)
+
+	// The target is this serve's own foreground session: resolveSessionPath
+	// succeeds, held=false, ownedRuntimeStatusView hits — the exact branch the
+	// fix decorates.
+	foreground := filepath.Join(dir, "active.jsonl")
+	get := func() map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/status?session="+url.QueryEscape(foreground), nil)
+		rec := httptest.NewRecorder()
+		server.status(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%q, want 200", rec.Code, rec.Body.String())
+		}
+		var view map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+			t.Fatalf("decode status body %q: %v", rec.Body.String(), err)
+		}
+		return view
+	}
+
+	// No attempt recorded: the field must exist (GC's poller treats a missing
+	// field as "not completed", so its presence is the contract) and read false.
+	view := get()
+	if pending, ok := view["takeoverPending"].(bool); !ok || pending {
+		t.Fatalf("takeoverPending without an attempt = %v (present %v), want present false", view["takeoverPending"], ok)
+	}
+
+	// Pending attempt (the serve just answered 202): the same view flips true.
+	server.recordTakeoverState(foreground, takeoverStatePending, "")
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); !p {
+		t.Fatalf("takeoverPending while pending = %v, want true", view["takeoverPending"])
+	}
+
+	// Terminal done: back to false (the success signal is takenOver/running,
+	// same convention as the statusViewForPath branches).
+	server.recordTakeoverState(foreground, takeoverStateDone, "")
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); p {
+		t.Fatalf("takeoverPending after done = %v, want false", view["takeoverPending"])
+	}
+
+	// Terminal failure: takeoverStatus/takeoverMessage ride the same view.
+	server.recordTakeoverState(foreground, takeoverStateFailed, takeoverTimeoutMessage)
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); p {
+		t.Fatal("takeoverPending true after failure")
+	}
+	if view["takeoverStatus"] != takeoverStateFailed || view["takeoverMessage"] != takeoverTimeoutMessage {
+		t.Fatalf("failure decoration = %v/%v, want failed/%q", view["takeoverStatus"], view["takeoverMessage"], takeoverTimeoutMessage)
 	}
 }

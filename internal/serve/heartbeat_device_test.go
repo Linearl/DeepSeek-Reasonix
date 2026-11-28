@@ -61,7 +61,13 @@ func (f *heartbeatFixture) postHeartbeat(t *testing.T, deviceID, session string)
 func (f *heartbeatFixture) ageDevice(deviceID string) {
 	f.server.heartbeatMu.Lock()
 	if entry := f.server.heartbeats[deviceID]; entry != nil {
-		entry.lastBeat = time.Now().Add(-2 * heartbeatExpiry)
+		aged := time.Now().Add(-2 * heartbeatExpiry)
+		entry.lastBeat = aged
+		// tl1854 R5/S3: expiry is judged per session timestamp, so aging the
+		// device means aging every session it touched.
+		for name := range entry.sessions {
+			entry.sessions[name] = aged
+		}
 	}
 	f.server.heartbeatMu.Unlock()
 	f.server.releaseExpiredHeartbeats()
@@ -111,8 +117,8 @@ func TestExplicitReleaseEndpointFreesImmediately(t *testing.T) {
 
 	var notified []string
 	prev := remoteWriteAuthorityHook
-	remoteWriteAuthorityHook = func(deviceID string, held bool) {
-		notified = append(notified, deviceID+":"+strconv.FormatBool(held))
+	remoteWriteAuthorityHook = func(deviceID string, held bool, session string) {
+		notified = append(notified, deviceID+":"+strconv.FormatBool(held)+":"+session)
 	}
 	t.Cleanup(func() { remoteWriteAuthorityHook = prev })
 
@@ -125,8 +131,13 @@ func TestExplicitReleaseEndpointFreesImmediately(t *testing.T) {
 	if f.leases.Lease() != nil {
 		t.Fatal("explicit device release must free the held lease immediately")
 	}
-	if len(notified) != 1 || notified[0] != "gc-a:false" {
-		t.Fatalf("hook notifications = %v, want [gc-a:false]", notified)
+	// The released session rides the notification (canonical path), so the
+	// desktop can clear exactly this session's remote-held state.
+	if len(notified) != 1 {
+		t.Fatalf("hook notifications = %v, want exactly one", notified)
+	}
+	if !strings.HasPrefix(notified[0], "gc-a:false:") || strings.HasSuffix(notified[0], ":") {
+		t.Fatalf("hook notification = %q, want device:held:<released session path>", notified[0])
 	}
 }
 
@@ -140,8 +151,8 @@ func TestRemoteDeviceHoldsWriteBlocksSubmit(t *testing.T) {
 	req := httptest.NewRequest("POST", "/submit", strings.NewReader(`{"input":"hello"}`))
 	rec := httptest.NewRecorder()
 	f.server.submit(rec, req)
-	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
-		t.Fatalf("submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	if rec.Code != 409 || !strings.Contains(rec.Body.String(), "session-level exclusion") {
+		t.Fatalf("submit = %d %q, want 409 session-level exclusion", rec.Code, rec.Body.String())
 	}
 	// After release the same submit is no longer blocked by device exclusion
 	// (it may still fail later checks — we only assert the exclusion gate).
@@ -194,12 +205,12 @@ func TestSubmitDeviceIdentityExemption(t *testing.T) {
 	}
 	// ② A foreign device identity (never beat) keeps the task 36 Phase 2
 	// exclusion.
-	if rec := post(`{"input":"x"}`, "gc-zz"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
-		t.Fatalf("foreign-device submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	if rec := post(`{"input":"x"}`, "gc-zz"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "session-level exclusion") {
+		t.Fatalf("foreign-device submit = %d %q, want 409 session-level exclusion", rec.Code, rec.Body.String())
 	}
 	// ③ No identity header (legacy client) keeps the exclusion.
-	if rec := post(`{"input":"x"}`, ""); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
-		t.Fatalf("legacy no-header submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	if rec := post(`{"input":"x"}`, ""); rec.Code != 409 || !strings.Contains(rec.Body.String(), "session-level exclusion") {
+		t.Fatalf("legacy no-header submit = %d %q, want 409 session-level exclusion", rec.Code, rec.Body.String())
 	}
 	// ④ The exemption dies with the heartbeat: gc-b joins and holds, then
 	// gc-a ages out — gc-a's identity no longer exempts its submits.
@@ -210,7 +221,7 @@ func TestSubmitDeviceIdentityExemption(t *testing.T) {
 	}
 	s.heartbeatMu.Unlock()
 	s.releaseExpiredHeartbeats()
-	if rec := post(`{"input":"x"}`, "gc-a"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "device-level exclusion") {
-		t.Fatalf("expired-holder submit = %d %q, want 409 device-level exclusion", rec.Code, rec.Body.String())
+	if rec := post(`{"input":"x"}`, "gc-a"); rec.Code != 409 || !strings.Contains(rec.Body.String(), "session-level exclusion") {
+		t.Fatalf("expired-holder submit = %d %q, want 409 session-level exclusion", rec.Code, rec.Body.String())
 	}
 }

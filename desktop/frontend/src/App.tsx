@@ -4382,40 +4382,46 @@ export default function App() {
   const { confirm: confirmRestartUpdate, dialog: restartUpdateDialog } = useConfirmDialog();
 
   // Task 36 Phase 1: a remote (GrandCouncil) takeover request used to yield
-  // the lease silently. The Go watcher now prompts here; timeout inside the
-  // Go watcher (9s, matching serve's poll) resolves as a refusal, so the
-  // dialog itself stays purely manual with explicit allow/deny.
-  // Task 539: the deadline note used to be a static line — the dialog now
-  // runs a real 30s countdown on the 拒绝 button and resolves false at zero,
-  // matching the Go gate's refusal. Accepting no longer interrupts the
-  // running turn: the desktop yields once the reply finishes (539 route A).
+  // the lease silently; it prompts here now. Task 539 route A: accepting
+  // never interrupts the running turn — the desktop yields once the reply
+  // finishes.
+  // tl1854 R3: the dialog is a VETO window — nobody at the desktop is the
+  // normal remote-takeover scenario, so the deadline now means the takeover
+  // PROCEEDS: the countdown auto-resolves true (allow) and the un-pressed
+  // 拒绝 button stays the only way to stop it. The window rides the event
+  // (veto_window_ms, the Go gate's gatewayTakeoverVetoWindow) so the two
+  // deadlines match exactly; an auto-accept that lands just before or after
+  // the gate's own timeout converges on the same allow outcome, and a stale
+  // auto-resolve on an already-timed-out prompt is dropped by the Go side.
   const { confirm: confirmTakeover, dialog: takeoverDialog } = useConfirmDialog();
   useEffect(() => {
     if (typeof window === "undefined" || !window.runtime) return;
     return window.runtime.EventsOn("app:takeover-request", async (data: unknown) => {
-      const d = (data ?? {}) as { marker?: string; path?: string; from?: string };
+      const d = (data ?? {}) as { marker?: string; path?: string; from?: string; veto_window_ms?: string };
       if (!d.marker) return;
+      const vetoWindowMs = Number(d.veto_window_ms) > 0 ? Number(d.veto_window_ms) : 10000;
       const accept = await confirmTakeover({
         title: "远程接管请求",
         message: (
           <span>
             设备 <b>{d.from || "远程客户端"}</b> 请求接管会话控制权。
             <br />
-            影响范围：接受后<b>当前回复会继续跑完</b>，跑完后自动完成移交，期间本会话不能发送新消息或回退；
-            移交完成后本机会话进入只读（重启不会残留），重新获取控制权走收回流程。
+            影响范围：接管后<b>当前回复会继续跑完</b>，跑完后自动完成移交，期间本会话不能发送新消息或回退；
+            移交完成后该会话在本机进入只读（重启不会残留，其他会话不受影响），重新获取控制权走收回流程。
             <br />
-            倒计时结束未作处理将自动拒绝该请求。
+            不做任何操作，倒计时结束后将自动允许接管；点「拒绝」可阻止。
           </span>
         ),
         confirmLabel: "允许接管（不打断当前回复）",
         cancelLabel: "拒绝",
         tone: "danger",
-        autoCancelAfterMs: 30000,
+        autoConfirmAfterMs: vetoWindowMs,
       });
       try {
         await app.ResolveTakeoverDecision(d.marker, accept);
       } catch {
-        // stale dialog or tearing-down host: the Go side times out as refusal
+        // stale dialog or tearing-down host: the Go side already resolved
+        // (tl1854 R3: an unanswered veto window resolves as allow)
       }
     });
   }, [confirmTakeover]);

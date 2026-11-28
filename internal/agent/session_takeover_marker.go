@@ -53,6 +53,17 @@ const (
 	// short grace so the desktop observes the serve's marker cleanup (and
 	// rolls back) instead of tearing down simultaneously.
 	SessionTakeoverYieldWindow = 30 * time.Second
+
+	// SessionTakeoverVetoWindow is the desktop takeover prompt's veto window
+	// (tl1854 R3): the prompt is a notification with a veto, not a
+	// confirmation — an unanswered prompt means nobody is at the desktop (the
+	// normal remote-takeover scenario), so the deadline ALLOWS the takeover.
+	// Deliberately independent from SessionTakeoverYieldWindow (it used to
+	// share the 30s T2 value) and shorter: a present desktop user only needs
+	// a moment to veto. Lives here so serve can expose it to remote clients
+	// (202 body vetoWindowSeconds, handoff R4) and the desktop gate can share
+	// the same constant instead of the two ends each hardcoding one.
+	SessionTakeoverVetoWindow = 10 * time.Second
 )
 
 // TakeoverRequestMarkerPath maps a session transcript path to its takeover
