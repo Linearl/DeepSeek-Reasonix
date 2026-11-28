@@ -302,5 +302,146 @@ for (const { id, prevFgFaint } of officialPacks) {
   }
 }
 
+console.log("\ntl1846 ask 接管按钮三态 WCAG contract（底对背景边界 + disabled 停驻合成）");
+
+// ---- ⑩按钮底对卡片背景边界钉（normal/hover ≥3，WCAG 非文本边界，tl1846 盲区②入钉） ----
+// 事实源链：takeover 按钮 bg/border = var(--control-primary-bg)（官方包注入值 = accent，
+// themePack.ts TOKEN_TO_CSS accent→[--accent,--accent-strong,--control-primary-bg]）；
+// 卡片 .prompt-shelf--ask .prompt-shelf__card 背景 = var(--bg-elev)（官方包 = bgElev）；
+// hover 底 = color-mix(in srgb, accent 86%, fg)。r2 只钉了字对底（accentFg vs accent），
+// 底对背景边界（autopilot 停驻等人眼定位按钮靠它）此前无钉。
+
+for (const { id } of officialPacks) {
+  const raw = readFileSync(resolve(testDir, "../../../themes/official", id, "theme.json"), "utf8");
+  const pack = JSON.parse(raw) as { tokens?: { light?: Record<string, string>; dark?: Record<string, string> } };
+  for (const mode of ["light", "dark"] as const) {
+    const t = pack.tokens?.[mode];
+    if (!t?.accent || !t?.accentFg || !t?.fg || !t?.bgElev) {
+      ok(false, `${id} ${mode}: accent/accentFg/fg/bgElev 可提取`);
+      continue;
+    }
+    ok(
+      wcagContrast(t.accent, t.bgElev) >= 3,
+      `${id} ${mode}: 按钮 accent 底 ${t.accent} vs 卡片 bgElev ${t.bgElev} = ${wcagContrast(t.accent, t.bgElev).toFixed(2)}:1 ≥ 3（normal 边界）`,
+    );
+    const hoverBg = mixOver(t.accent, 86, t.fg);
+    ok(
+      wcagContrast(hoverBg, t.bgElev) >= 3,
+      `${id} ${mode}: hover 混底 ${hoverBg} vs bgElev ${t.bgElev} = ${wcagContrast(hoverBg, t.bgElev).toFixed(2)}:1 ≥ 3`,
+    );
+  }
+}
+
+// 通用档同口径：块提取 --control-primary-bg（无覆盖档走 --accent 兜底）vs --bg-elev，
+// 字色 --control-primary-fg（无覆盖档走 --accent-fg 兜底）。amber 档无 --control-primary-bg
+// 与 --bg-elev 覆盖，读数与通用 forced-light 完全同值（⑥a 同款兜底先例），不重复钉。
+
+type TakeoverFace = { label: string; block: string };
+const takeoverFaces: TakeoverFace[] = [
+  { label: "通用 dark(:root)", block: rootBlock },
+  { label: "通用 auto-light", block: autoLightBlock },
+  { label: "通用 forced-light", block: forcedLightBlock },
+];
+for (const st of ["graphite", "aurora", "slate", "carbon", "nocturne"]) {
+  takeoverFaces.push({ label: `${st} dark`, block: blockAfter(stylesSource, `:root[data-theme-style="${st}"]`) });
+  takeoverFaces.push({ label: `${st} light`, block: blockAfter(stylesSource, `:root[data-theme="light"][data-theme-style="${st}"]`) });
+}
+
+function takeoverFaceColors(block: TakeoverFace["block"]) {
+  const primaryBg = extractColor(block, "--control-primary-bg") || extractColor(block, "--accent");
+  // 通用 auto/forced light 的 --accent-fg 写作 3 位 #fff（r2 段正则只收 6 位）；
+  // cascade 实际值即 #ffffff（:root --control-primary-fg = var(--accent-fg)）。
+  const primaryFg = extractColor(block, "--control-primary-fg") || extractColor(block, "--accent-fg") || "#ffffff";
+  const fg = extractColor(block, "--fg");
+  const bgElev = extractColor(block, "--bg-elev");
+  return { primaryBg, primaryFg, fg, bgElev };
+}
+
+for (const { label, block } of takeoverFaces) {
+  const { primaryBg, primaryFg, fg, bgElev } = takeoverFaceColors(block);
+  ok(primaryBg !== "" && primaryFg !== "" && fg !== "" && bgElev !== "", `${label}: control-primary/accent/fg/bg-elev 可提取`);
+  if (!primaryBg || !primaryFg || !fg || !bgElev) continue;
+  ok(
+    wcagContrast(primaryBg, bgElev) >= 3,
+    `${label}: 按钮 primary 底 ${primaryBg} vs bg-elev ${bgElev} = ${wcagContrast(primaryBg, bgElev).toFixed(2)}:1 ≥ 3（normal 边界）`,
+  );
+  const hoverBg = mixOver(primaryBg, 86, fg);
+  ok(
+    wcagContrast(hoverBg, bgElev) >= 3,
+    `${label}: hover 混底 ${hoverBg} vs bg-elev = ${wcagContrast(hoverBg, bgElev).toFixed(2)}:1 ≥ 3`,
+  );
+}
+
+// ---- ⑪disabled 停驻态合成钉（tl1846 盲区③：WCAG 禁用豁免但人眼不够，0.6→0.75 提亮） ----
+// autopilot 等待接管恰是该态。合成口径 = 整钮 opacity α 向卡片背景混 (1-α)（字与底同混）。
+
+const takeoverDisabledBlock = blockAfter(stylesSource, ".prompt-shelf--ask .prompt-shelf__header-button--takeover:disabled");
+ok(takeoverDisabledBlock.includes("opacity: 0.75;"), "takeover:disabled opacity 0.75 在位（tl1846 提亮）");
+ok(!takeoverDisabledBlock.includes("opacity: 0.6"), "takeover:disabled 旧值 opacity 0.6 已退场");
+
+const DISABLED_ALPHA = 75;
+
+// 达标面：官方 8 包 light+dark 全部（spark light 2.45/2.49 → 3.14/3.21）。
+for (const { id } of officialPacks) {
+  const raw = readFileSync(resolve(testDir, "../../../themes/official", id, "theme.json"), "utf8");
+  const pack = JSON.parse(raw) as { tokens?: { light?: Record<string, string>; dark?: Record<string, string> } };
+  for (const mode of ["light", "dark"] as const) {
+    const t = pack.tokens?.[mode];
+    if (!t?.accent || !t?.accentFg || !t?.bgElev) continue;
+    const dFg = mixOver(t.accentFg, DISABLED_ALPHA, t.bgElev);
+    const dBg = mixOver(t.accent, DISABLED_ALPHA, t.bgElev);
+    ok(
+      wcagContrast(dFg, dBg) >= 3,
+      `${id} ${mode}: disabled 字对底 = ${wcagContrast(dFg, dBg).toFixed(2)}:1 ≥ 3（opacity ${DISABLED_ALPHA}% 合成）`,
+    );
+    ok(
+      wcagContrast(dBg, t.bgElev) >= 3,
+      `${id} ${mode}: disabled 底对背 = ${wcagContrast(dBg, t.bgElev).toFixed(2)}:1 ≥ 3（合成底 ${dBg}）`,
+    );
+  }
+}
+
+// 通用档：dark/auto-light/forced-light + 5 风格 dark + slate light 达标（≥3 正钉）；
+// graphite/aurora/carbon/nocturne light 四面数学不可达——其 accent 对 bg-elev 的 normal
+// 边界余量本就只有 3.11–4.41（⑩钉着），任何淡化合成都会破 3，救面必须改 accent 色 =
+// 重开已达标项（non-goal）。四面改钉 0.75 实算下限（只升不降），opacity 本体另有字面钉，
+// 回退或漂移双保险即红。
+const subParLightFloors: Record<string, [number, number]> = {
+  // [字对底下限, 底对背下限] = floor(0.75 实算值 ×100 −1)/100
+  graphite: [2.41, 2.41],
+  aurora: [2.96, 2.91],
+  carbon: [2.62, 2.62],
+  nocturne: [2.91, 2.86],
+};
+
+for (const { label, block } of takeoverFaces) {
+  const { primaryBg, primaryFg, bgElev } = takeoverFaceColors(block);
+  if (!primaryBg || !primaryFg || !bgElev) continue;
+  const dFg = mixOver(primaryFg, DISABLED_ALPHA, bgElev);
+  const dBg = mixOver(primaryBg, DISABLED_ALPHA, bgElev);
+  const subPar = /^(graphite|aurora|carbon|nocturne) light$/.test(label);
+  if (subPar) {
+    const st = label.split(" ")[0];
+    const [ffFloor, bbFloor] = subParLightFloors[st];
+    ok(
+      wcagContrast(dFg, dBg) >= ffFloor,
+      `${label}: disabled 字对底 = ${wcagContrast(dFg, dBg).toFixed(2)}:1 ≥ ${ffFloor}（数学不可达面下限钉）`,
+    );
+    ok(
+      wcagContrast(dBg, bgElev) >= bbFloor,
+      `${label}: disabled 底对背 = ${wcagContrast(dBg, bgElev).toFixed(2)}:1 ≥ ${bbFloor}（数学不可达面下限钉）`,
+    );
+  } else {
+    ok(
+      wcagContrast(dFg, dBg) >= 3,
+      `${label}: disabled 字对底 = ${wcagContrast(dFg, dBg).toFixed(2)}:1 ≥ 3（opacity ${DISABLED_ALPHA}% 合成）`,
+    );
+    ok(
+      wcagContrast(dBg, bgElev) >= 3,
+      `${label}: disabled 底对背 = ${wcagContrast(dBg, bgElev).toFixed(2)}:1 ≥ 3（合成底 ${dBg}）`,
+    );
+  }
+}
+
 console.log(`\n${passed} passed, ${failed} failed, ${passed + failed} total`);
 if (failed > 0) process.exit(1);
