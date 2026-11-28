@@ -107,10 +107,7 @@ export interface SettingsView {
   // tl 1165: smooth streaming scroll follow (DSH ScrollFollow guards);
   // default off, pure frontend gate — settings save re-applies.
   experimentalSmoothScrollFollow?: boolean;
-  // tl 1132: DSH-style startup splash overlay (off = never renders, on =
-  // covers the main region until the core UI is mounted then fades out);
-  // default off, pure frontend gate — settings save re-applies.
-  experimentalStartupSplash?: boolean;
+  // tl1855：experimentalStartupSplash 随撤开关退役（遮罩恒显，件①）。
   // tl1741：experimentalWorkflowPanel / experimentalWorkflowTemplates 随撤开关
   // 退役——工作流面板/模板常显。
   // 任务 742: heartbeat background mode (runs park their tab detached after

@@ -1101,14 +1101,8 @@ export default function App() {
   const mainView = useOverlayStore((s) => s.mainView);
   const startupSplashVisible = useOverlayStore((s) => s.startupSplashVisible);
   const setStartupSplashVisible = useOverlayStore((s) => s.setStartupSplashVisible);
-  // tl 1132: the startup splash rides a lab flag (铁律 2 default off, user
-  // steer 2026-10-24 "做成实验特性，允许开关，方便对比") — with the flag off
-  // the splash never mounts, so startup is byte-for-byte the pre-gate
-  // behaviour. Boot snapshot timing: the flag reads default-false until
-  // applyLabFlags lands, which only ever withholds the overlay (never shows
-  // one for a flag-off user).
-  const [startupSplashEnabled, setStartupSplashEnabled] = useState(labFlagEnabled("startupSplash"));
-  useEffect(() => onLabFlagsChange(() => setStartupSplashEnabled(labFlagEnabled("startupSplash"))), []);
+  // tl1855：启动遮罩恒显（用户 20261127 实验室清理令件①）——tl1132 lab 开关
+  // 与 tl1703 首帧镜像一并退役，splash 不再读任何 flag，挂载即渲染。
   // Task 55: the startup splash must also cover the appearance settling. The base
   // accent is applied synchronously from the first-paint cache, but an active theme
   // pack lands later (its tokens arrive over IPC and its stylesheet is injected), so
@@ -1688,7 +1682,7 @@ export default function App() {
   }, []);
 
   const applyDesktopPreferences = useCallback(
-    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalMimoTts?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalStartupSplash?: boolean; experimentalTasklistPanel?: boolean; goalBudgetConfirm?: boolean; goalTokenBudget?: number }) => {
+    (settings: Pick<SettingsView, "desktopTheme" | "desktopThemeStyle" | "desktopTerminalTheme" | "desktopLayoutStyle" | "desktopLanguage" | "checkUpdates" | "statusBarStyle" | "statusBarItems" | "conversationWidth" | "quickCommands"> & { autopilot?: boolean; reasoningDisplayMode?: string; reasoningDisplayModeExplicit?: boolean; experimentalRestartUpdate?: boolean; experimentalSessionMonitor?: boolean; experimentalSplitView?: boolean; experimentalFeedback?: boolean; experimentalTodoSidebar?: boolean; experimentalSubagentPanel?: boolean; experimentalPromptHistoryPicker?: boolean; experimentalQuestionSearch?: boolean; experimentalSubagentTps?: boolean; experimentalSubagentPolicy?: boolean; experimentalCompletionSummary?: boolean; experimentalQuickCommands?: boolean; experimentalComposerDraft?: boolean; experimentalSelectionActions?: boolean; experimentalMimoTts?: boolean; experimentalSessionWall?: boolean; experimentalTabCompress?: boolean; tabPermissionIndicator?: string; experimentalSubagentDetail?: boolean; experimentalCollabGroupView?: boolean; experimentalCollabHub?: boolean; experimentalSessionCollabAutoFold?: boolean; experimentalTrajectoryView?: boolean; experimentalSidebarHoverLeft?: boolean; experimentalSidebarHoverRight?: boolean; experimentalApprovalSelect?: boolean; experimentalTableWrap?: boolean; experimentalSendTargetSelect?: boolean; experimentalSmoothScrollFollow?: boolean; experimentalWorkflowPanel?: boolean; experimentalWorkflowTemplates?: boolean; experimentalPerfMonitor?: boolean; experimentalDraftRewrite?: boolean; experimentalEditResend?: boolean; experimentalComposerToolsFold?: boolean; experimentalTasklistPanel?: boolean; goalBudgetConfirm?: boolean; goalTokenBudget?: number }) => {
       const nextTheme = normalizeThemePreference(settings.desktopTheme);
       const nextStyle = normalizeThemeStyleForTheme(settings.desktopThemeStyle, nextTheme);
       applyConfiguredBaseAppearance(nextTheme, nextStyle);
@@ -1791,10 +1785,7 @@ export default function App() {
         // tl1718: composer 工具组默认折叠。默认关（铁律 2：折叠仍只由宽度
         // 驱动——窄折宽不折，与引入前逐字节一致）；保存即换态免重启。
         composerToolsFold: settings.experimentalComposerToolsFold ?? false,
-        // tl 1132: DSH 式启动遮罩。默认关（用户 steer「做成实验特性，允许
-        // 开关，方便对比」）——关闭时 splash 不渲染、启动行为与引入前一致；
-        // 保存即换态。
-        startupSplash: settings.experimentalStartupSplash ?? false,
+        // tl1855：startupSplash 快照项随撤开关退役（遮罩恒显，件①）。
       });
       // 任务 651: tab permission indicator three-mode setting (badge | off |
       // background) — the server resolves the legacy 504 tint bool; re-applied
@@ -7709,7 +7700,7 @@ export default function App() {
         t={t}
       />
 
-      {startupSplashVisible && startupSplashEnabled && (
+      {startupSplashVisible && (
         <StartupSplash hold={startupSplashHold} onDone={() => setStartupSplashVisible(false)} />
       )}
 

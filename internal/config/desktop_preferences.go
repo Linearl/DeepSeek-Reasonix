@@ -285,16 +285,9 @@ type DesktopConfig struct {
 	// narrow folds at ≤559px exactly as today, wide windows never fold. Pure
 	// frontend gate: the settings save re-applies the boot snapshot, no restart.
 	ExperimentalComposerToolsFold bool `toml:"experimental_composer_tools_fold"`
-	// ExperimentalStartupSplash gates the DSH-style startup splash (tl 1132):
-	// the centred logo + subtitle + pulse-dots overlay that covers the main
-	// region until the core UI (tab strip / draft / composer / transcript) is
-	// mounted, then fades out. It ships off (铁律 2; user steer 2026-10-24:
-	// "做成实验特性，允许开关，方便对比"): with the zero value the splash
-	// never renders, so startup stays exactly the pre-gate behaviour — the
-	// index.html boot shell that covers bundle parse is a separate always-on
-	// layer and is not gated by this switch. Pure frontend gate: the settings
-	// save re-applies the boot snapshot, no restart.
-	ExperimentalStartupSplash bool `toml:"experimental_startup_splash"`
+	// tl1855：ExperimentalStartupSplash 字段随撤开关退役（用户 20261127 实验
+	// 室清理令件①）——遮罩恒显，不再有键面；存量手写
+	// experimental_startup_splash 由 deprecated 清单承接（tl1741 同款）。
 	// tl1741：workflowPanel（任务 686 可视化面板）+ workflowTemplates（tl1454
 	// 家族子键）两实验室开关随「稳定档不再提供开关」退役（用户 20261121 三拍）
 	// ——面板入口/模板视图常显。存量手写两键由 deprecated 清单承接。

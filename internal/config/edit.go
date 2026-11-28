@@ -1215,15 +1215,7 @@ func (c *Config) SetExperimentalComposerToolsFold(enabled bool) error {
 	return nil
 }
 
-// SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
-// (tl 1132): off (default) never renders the splash — startup keeps the exact
-// pre-gate behaviour; on shows the centred logo overlay until the core UI is
-// mounted, then fades it out. Pure frontend gate: the settings save
-// re-applies the boot snapshot, so a change is visible without a restart.
-func (c *Config) SetExperimentalStartupSplash(enabled bool) error {
-	c.Desktop.ExperimentalStartupSplash = enabled
-	return nil
-}
+// tl1855：SetExperimentalStartupSplash 随撤开关退役（遮罩恒显，件①）。
 
 // SetExperimentalPromptHistoryPicker gates the composer history-navigation
 // safety rework (task 261): clock-icon history picker + narrowed ArrowUp

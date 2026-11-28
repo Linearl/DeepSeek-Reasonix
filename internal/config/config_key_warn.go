@@ -54,6 +54,8 @@ var deprecatedConfigKeys = map[string]string{
 	// （true/false 皆然）由本清单承接：WARN 可见不阻断，fixed-key-set 渲染
 	// 下次保存清行。
 	"desktop.experimental_autopilot_composer": "retired key (tl1796 r2): the composer mode bar always offers the autopilot tier — the opt-in switch was removed",
+	// tl1855（用户 20261127 实验室清理令件①）：启动遮罩开关退役——遮罩恒显。
+	"desktop.experimental_startup_splash": "retired key (tl1855): the DSH-style startup splash is now always shown — the switch was removed",
 }
 
 // unknownKeyWarned tracks which unrecognized keys this process has already

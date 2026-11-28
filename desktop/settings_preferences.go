@@ -474,13 +474,7 @@ func (a *App) SetExperimentalComposerToolsFold(enabled bool) error {
 	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalComposerToolsFold(enabled) })
 }
 
-// SetExperimentalStartupSplash toggles the DSH-style startup splash overlay
-// (tl 1132): off (default) never renders the splash, on shows it until the
-// core UI is mounted then fades it out. Pure frontend gate: the settings save
-// re-applies the boot snapshot, no restart needed.
-func (a *App) SetExperimentalStartupSplash(enabled bool) error {
-	return a.applyConfigOnly(func(c *config.Config) error { return c.SetExperimentalStartupSplash(enabled) })
-}
+// tl1855：SetExperimentalStartupSplash 随撤开关退役（遮罩恒显，件①）。
 
 // SetStandardContinuation (任务 1070) toggles the Standard-flow same-Run
 // continuation total gate (lab switch standard_continuation). The config save

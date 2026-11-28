@@ -135,8 +135,9 @@ console.log("\ntask 561 lab regroup + merged cards");
   // rail 入口）→ 29→28。tl1772r2：decisionPatternsLayered 成员行二次移组
   // smartAutomation→safetyCostControl 卡——仍是成员行，rail census 不变。
   // tl1816：pinnedIndex 独立卡移组安全/成本控制卡成员行，「记忆与上下文」
-  // 组退役——28→27（tl1772 memoryIndexSlim 同款）。
-  ok(defEntries.length === 27, `default layout carries exactly 27 rail entries (tl1816 re-homed pinnedIndex as a safetyCostControl member; got ${defEntries.length})`);
+  // 组退役——28→27（tl1772 memoryIndexSlim 同款）。tl1855：「启动与加载」
+  // 卡随撤开关整体退役（页内仅启动遮罩一项）——27→26。
+  ok(defEntries.length === 26, `default layout carries exactly 26 rail entries (tl1855 retired the startupLoading card; got ${defEntries.length})`);
   // yaml 与内置默认同构同序（yaml 用 6 空格缩进标 entries、10 空格标 members）。
   const yamlText = readFileSync(fileURLToPath(new URL("../lab/lab-layout.yaml", import.meta.url)), "utf8");
   const yamlEntries = [...yamlText.matchAll(/^ {6}- id: (\w+)$/gm)].map((m) => m[1]);
@@ -178,11 +179,12 @@ console.log("\ntask 561 lab regroup + merged cards");
   // tl1772：memoryIndexSlim 出提效组（并入安全/成本控制卡成员行）→
   // efficiency 6→5 → 2/4/8/4/1/3/6/1。
   // tl1816：pinnedIndex 出「记忆与上下文」组（并入安全/成本控制卡成员行，
-  // 该组退役）→ 4/5/8/4/1/3/2（七组，总数 27）。
-  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 8 &&
+  // 该组退役）→ 4/5/8/4/1/3/2（七组，总数 27）。tl1855：startupLoading 卡
+  // 退役 → ui 8→7，总数 26。
+  ok(groups["automation"] === 4 && groups["efficiency"] === 5 && groups["ui"] === 7 &&
      groups["observability"] === 4 && groups["dev-debug"] === 1 && groups["storage"] === 3 && groups["infra"] === 2 &&
      groups["memory-context"] === undefined,
-    `group counts are 4/5/8/4/1/3/2 across 7 groups (tl1816 retired the memory-context group; got ${JSON.stringify(groups)})`);
+    `group counts are 4/5/7/4/1/3/2 across 7 groups (tl1816 retired the memory-context group, tl1855 retired the startupLoading card; got ${JSON.stringify(groups)})`);
   ok(new Set(defEntries).size === defEntries.length, "no duplicate rail ids");
   // 任务 722 六点：safetyCostControl 在提效组；sessionCollabAutoFold /
   // messageMerge / compactModel 以成员身份存在，不再占 rail 入口。
@@ -253,17 +255,16 @@ const families: Array<{ id: string; endMarker: string; members: Array<{ label: s
     // 任务 670: fork 首启提示（默认开，用户裁决）入卡，独立开关独立 setter。
     { label: "670 forkNotice", field: "s.forkNotice", setter: "app.SetDesktopForkNotice(on)" },
   ] },
-  // tl1309 卡③：「资源治理」合并卡（复用池/孤儿回收/闲置释放/GC/ACP 监听/
-  // 本地服务六成员）——四散条 + 两参数卡（自存储组迁入）随迁本卡；参数行经
-  // labParamFields 注册表绑定读写（值语义单源），field 断言钉绑定引用。
-  // tl1741 返修：卡体回归 rail（无主开关卡）——runtimeReuse 主键退役，成员行
-  // 回归为无开关展示行（field 改钉展示行 hint，setter 负钉见 M8 清单）。
+  // tl1309 卡③：「资源治理」合并卡——四散条 + 两参数卡（自存储组迁入）随迁
+  // 本卡；参数行经 labParamFields 注册表绑定读写（值语义单源），field 断言钉
+  // 绑定引用。tl1741 返修：卡体回归 rail（无主开关卡）——runtimeReuse 主键
+  // 退役。tl1855 三件减法（用户 20261127 实验室清理令）：卡头聚合说明行下架
+  // （件③①）、runtimeReuse 无开关展示行下架（件③②，仅撤展示）、acpListen
+  // 行移组「本地服务」页（件②）——成员清单随之四行。
   { id: "resourceGovernance", endMarker: '{selected === "logManagement" && (', members: [
-    { label: "tl1309 runtimeReuse (read-only row)", field: "settings.runtimeReuseHint", setter: "" },
     { label: "tl1309 orphanHandling", field: "s.experimentalOrphanHandling", setter: "app.SetExperimentalOrphanHandling(on)" },
     { label: "tl1309 idleReleaseMinutes", field: "LAB_PARAM_FIELDS.detachedIdleReleaseMinutes.write", setter: "" },
     { label: "tl1309 gcPercent", field: "LAB_PARAM_FIELDS.gcPercent.write", setter: "" },
-    { label: "tl1309 acpListen", field: "s.experimentalACPListen", setter: "app.SetExperimentalACPListen(on)" },
     { label: "tl1309 localServer", field: "s.experimentalLocalServer", setter: "app.SetExperimentalLocalServer(on)" },
   ] },
   // tl1309 卡②：「运行可观测」合并卡（monitoring+events 瘦身+轨迹观测）——

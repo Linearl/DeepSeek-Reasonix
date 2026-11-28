@@ -687,7 +687,9 @@ export function SettingsPanel({
   }, [t]);
   const settingsNavigationItems = useMemo(() => SETTINGS_NAV_TABS
     // Task 130: the local-server page stays hidden until the experiment is on.
-    .filter((id) => id !== "localserver" || Boolean(s?.experimentalLocalServer))
+    // tl1855 件②：本页新增承载 ACP 常驻监听行——监听已开的用户在
+    // experimental_local_server 关闭时仍可达本页（旧行为能力不因移组丢失）。
+    .filter((id) => id !== "localserver" || Boolean(s?.experimentalLocalServer) || Boolean(s?.experimentalACPListen))
     .map((id) => ({
     id,
     label: settingsTabLabel(id, t),
@@ -737,7 +739,9 @@ export function SettingsPanel({
                 {tab === "bots" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><BotsSection s={s} busy={pageBusy} apply={pageApply} initialFocus={initialFocus} /></SettingsPageShell>}
                 {tab === "mcp" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><MCPServersSettingsPage /></Suspense></SettingsPageShell>}
                 {tab === "remote" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><RemoteHostsPage /></Suspense></SettingsPageShell>}
-                {tab === "localserver" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><LocalServerPage /></Suspense></SettingsPageShell>}
+                {/* tl1855 件②：LocalServerPage 注入 s（ACP 行读开关态）与本页
+                    自有横幅回调；s 可空（导航过滤保证实际可达时已加载）。 */}
+                {tab === "localserver" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><LocalServerPage s={s} /></Suspense></SettingsPageShell>}
                 {tab === "skills" && <SettingsPageShell key={tab} s={s} tab={tab} busy={false} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><SkillsSettingsPage activeWorkspaceKey={activeWorkspaceKey} /></Suspense></SettingsPageShell>}
                 {tab === "subagents" && s && <SettingsPageShell key={tab} s={s} tab={tab} busy={pageBusy} apply={pageApply}><Suspense fallback={lazySettingsPageFallback}><SubagentsSettingsPage s={s} onUseInChat={(command) => {
                   pendingSubagentCommandRef.current = command;

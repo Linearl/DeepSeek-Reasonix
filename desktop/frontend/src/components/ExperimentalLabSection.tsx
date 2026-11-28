@@ -14,7 +14,7 @@ import LabBulkToggleDialog from "./LabBulkToggleDialog";
 import { useProviderT as useT } from "../lib/providerSettingsLocale";
 import { QuickCommandsManagerDialog } from "./QuickCommandsManagerDialog";
 import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Activity, FlaskConical, Folder, FolderLock, Monitor, RefreshCw, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Volume2, Zap } from "lucide-react";
+import { Activity, FlaskConical, Folder, FolderLock, RefreshCw, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Volume2, Zap } from "lucide-react";
 import { setCollabInboxOpen } from "./CollabInboxPanel";
 import { app } from "../lib/bridge";
 import { setSessionMonitorEnabled, setSessionMonitorOpen } from "../lib/sessionMonitor";
@@ -510,8 +510,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       reportFrontendLog("settings", "output style open dir failed", String(e));
     }
   };
-  // 任务 790: resident ACP listener live state for its lab card.
-  const [acpListenStatus, setACPListenStatus] = useState<Awaited<ReturnType<typeof app.ACPListenStatus>> | null>(null);
+  // tl1855：acpListenStatus state 随件②移组「本地服务」页（LocalServerPage
+  // 自取，本组件不再承载）。
   // 任务 727：心跳会话轮换状态按需加载——只在安全/成本控制卡打开时读一次
   // heartbeat-rotation.json（单一事实源桥接，无第二开关）。
   const [hbRotation, setHbRotation] = useState<Awaited<ReturnType<typeof app.HeartbeatRotationStatus>> | null>(null);
@@ -529,22 +529,8 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
       alive = false;
     };
   }, [selected]);
-  useEffect(() => {
-    // tl1309 卡③ → tl1741 返修：ACP 监听状态行随「资源治理」卡体回归为
-    // 卡内成员行——按需加载触发条件随迁卡 id（语义不变）。
-    if (selected !== "resourceGovernance") return undefined;
-    let alive = true;
-    void app.ACPListenStatus()
-      .then((st) => {
-        if (alive) setACPListenStatus(st);
-      })
-      .catch(() => {
-        if (alive) setACPListenStatus(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [selected, s.experimentalACPListen]);
+  // tl1855：ACP 监听状态行随件②移组「本地服务」页——按需拉取与 state
+  // 一并迁出本组件（LocalServerPage 自取，语义不变）。
   // Task 359: lab navigation — collapsible groups, intro banner (collapsed by
   // default), and the "disabled sink" display-order switch. The order switch
   // is a pure display preference (localStorage, no experimental_* chain — it
@@ -961,21 +947,16 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           {selectedEntry?.kind === "param" && selected !== "logManagement" && (
             <LabParamFieldsCard entry={selectedEntry} s={s} busy={busy} apply={apply} />
           )}
-          {/* tl1741 返修（tl1309 卡③再逆向=卡体回归）：资源治理合并卡 pane——
-              runtimeReuse 无开关展示行（主键退役、复用池常开），orphanHandling/
-              acpListen/localServer 三 feature 行 + idleReleaseMinutes/gcPercent
-              两参数行（LAB_PARAM_FIELDS 注册表绑定，值语义单源）随卡成员行承载；
-              acpListen 状态行随卡。键/setter/档位零变化。 */}
+          {/* tl1741 返修（tl1309 卡③再逆向=卡体回归）→ tl1855 三件减法
+              （用户 20261127 实验室清理令）：资源治理合并卡 pane——卡头聚合
+              说明行下架（件③①，组头已表达）；runtimeReuse 无开关展示行
+              下架（件③②，仅撤展示——复用池常开实现与键保留）；acpListen
+              行移组「本地服务」页（件②，键/语义/重启要求不动）。卡内余
+              orphanHandling/localServer 两 feature 行 + idleReleaseMinutes/
+              gcPercent 两参数行（LAB_PARAM_FIELDS 注册表绑定，值语义单源）。 */}
           {selected === "resourceGovernance" && (
             <>
-              <SettingsField testId="lab-toggle-resourceGovernance" label={labLabel("resourceGovernance", t("settings.resourceGovernance"))} hint={t("settings.resourceGovernanceHint")} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              {/* 成员行 1：运行时复用池（原 infra 独立卡，稳定档）——tl1741
-                  返修：无开关展示行（复用池常开，主键退役，deprecated 清单
-                  承接手写残留；glmPlanUsage 展示行先例）。 */}
-              <SettingsField testId="lab-toggle-runtimeReuse" label={labLabel("runtimeReuse", t("settings.runtimeReuse"))} icon={<Sparkles size={18} />} stacked>
-                <p className="settings-field__hint">{t("settings.runtimeReuseHint")}</p>
-              </SettingsField>
-              {/* 成员行 2：孤儿资源回收清理（原 infra 独立卡，推荐档——992
+              {/* 成员行：孤儿资源回收清理（原 infra 独立卡，推荐档——992
                   随复用池升推荐；与复用池同管运行时装配的生命周期两端）。 */}
               <SettingsField testId="lab-toggle-orphanHandling" label={labLabel("orphanHandling", t("settings.orphanHandling"))} hint={t("settings.orphanHandlingHint")} icon={<RefreshCw size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
@@ -1008,7 +989,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   }}
                 />
               </SettingsField>
-              {/* 成员行 4：GC 策略旋钮（原存储组参数卡，tl1286）——同上走注册
+              {/* 成员行 3：GC 策略旋钮（原存储组参数卡，tl1286）——同上走注册
                   表绑定；0=跟随默认等效 100，设置即热改。 */}
               <SettingsField testId="lab-toggle-gcPercent" label={labLabel("gcPercent", t("settings.gcPercent"))} hint={t(LAB_PARAM_FIELDS.gcPercent.hintKey)} icon={<Sparkles size={18} />}>
                 <input
@@ -1025,38 +1006,7 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
                   }}
                 />
               </SettingsField>
-              {/* 成员行 5：ACP 常驻监听（原 infra 独立卡，790；状态灯语义——
-                  监听在桌面 boot 装配，翻转需重启）。 */}
-              <SettingsField testId="lab-toggle-acpListen"
-                label={labLabel("acpListen", t("settings.acpListen"))}
-                hint={
-                  acpListenStatus && acpListenStatus.err
-                    ? `${t("settings.acpListen.notRunning")} ${acpListenStatus.err}`
-                    : acpListenStatus && acpListenStatus.running
-                      ? `${t("settings.acpListen.running")} ${acpListenStatus.addr}`
-                      : Boolean(s.experimentalACPListen) && acpListenStatus && !acpListenStatus.running
-                        ? t("settings.acpListen.awaitRestart")
-                        : t("settings.acpListenHint")
-                }
-                icon={<Server size={18} />}
-              >
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalACPListen) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        await app.SetExperimentalACPListen(on);
-                        setRestartNeeded(true);
-                      })}
-                    >
-                      {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-              {/* 成员行 6：本地服务（原 infra 独立卡）。 */}
+              {/* 成员行 4：本地服务（原 infra 独立卡）。 */}
               <SettingsField testId="lab-toggle-localServer" label={labLabel("localServer", t("settings.localServer"))} hint={t("settings.localServerHint")} icon={<Server size={18} />}>
                 <SettingsOptions layout="field" className="set-seg">
                   {[false, true].map((on) => (
@@ -1935,35 +1885,9 @@ const [selected, setSelected] = useState<ExperimentFeatureId>("autopilot");
           )}
           {/* tl1309 卡④：sessionWall/workflowPanel 两独立 pane 退役——并入上方
               「会话与任务面板」合并卡（sessionTaskPanels）成员行承载。 */}
-          {/* tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=
-              启动遮罩（DSH 式启动画面：logo+副文案+点动画，覆盖主区待核心
-              UI 挂载完成后淡出）；为 tl 1133 后续启动优化开关预留成员位。
-              默认关（用户 2026-10-24 steer：做成实验特性允许开关方便 A/B
-              对比）=splash 不渲染、启动行为与引入前一致（铁律 2）；纯前端
-              门，设置保存后的 onChanged 重放快照（applyLabFlags）即换态。 */}
-          {selected === "startupLoading" && (
-            <>
-              <SettingsField testId="lab-toggle-startupLoading" label={labLabel("startupLoading", t("settings.startupLoading"))} icon={<Sparkles size={18} />} stacked>{null}</SettingsField>
-              <SettingsField testId="lab-toggle-startupSplash" label={labLabel("startupSplash", t("settings.startupSplash"))} hint={t("settings.startupSplashHint")} icon={<Monitor size={18} />}>
-                <SettingsOptions layout="field" className="set-seg">
-                  {[false, true].map((on) => (
-                    <button
-                      key={String(on)}
-                      className={`set-seg__btn${Boolean(s.experimentalStartupSplash) === on ? " set-seg__btn--on" : ""}`}
-                      disabled={busy}
-                      onClick={() => void apply(async () => {
-                        // tl 1132：纯前端门——设置保存后的 onChanged 会重放
-                        // 快照（applyLabFlags），开关即时生效，无需重启。
-                        await app.SetExperimentalStartupSplash(on);
-                      })}
-                    >
-                      {t(on ? "settings.startupSplash.on" : "settings.startupSplash.off")}
-                    </button>
-                  ))}
-                </SettingsOptions>
-              </SettingsField>
-            </>
-          )}
+          {/* tl1855：startupLoading pane 随撤开关整体退役（用户 20261127
+              实验室清理令件①）——「启动与加载」页内仅启动遮罩一项，整卡
+              整 pane 移除；遮罩恒显，splash 不再读任何开关（死代码零残留）。 */}
           {/* 任务 742：标签页管理（合并卡）——506 标签栏自适应压缩 + 651
               标签权限指示的条目级合并。两行各读各的键、各写各的 setter
               （81/123 丢存铁律）；行级徽章保留（621 每特性一枚），容器卡
