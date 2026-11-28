@@ -116,9 +116,11 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
   ok(autoBlock.includes("- id: heartbeatBackground") && autoBlock.includes("labelKey: settings.heartbeatBackground"),
     "yaml registers heartbeatBackground in the automation group");
   // 任务 961：heartbeatBackground 由独立卡改为 smartAutomation 合并卡成员
-  // 行（optional tier 不变，键/setter 零变化）。
-  ok(labDefault.includes('{ id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "optional" }'),
-    "built-in default registers the same entry as a smartAutomation member (optional tier)");
+  // 行（键/setter 零变化）。tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）
+  // optional→recommended——关闭则心跳 tab 常驻堆积（tl264）复发，属体验缺口；
+  // 742 任务书旧口径「可选」由拍板覆盖（20261128 双树对照实锤本断言预存红后换代）。
+  ok(labDefault.includes('{ id: "heartbeatBackground", labelKey: "settings.heartbeatBackground", tier: "recommended" }'),
+    "built-in default registers the same entry as a smartAutomation member (recommended tier, tl1265)");
   ok(lightKeys.includes("experimentalHeartbeatBackground: (s: SettingsView) => Boolean(s.experimentalHeartbeatBackground)"),
     "the card light reads its own settings key");
   // Go 配置：零值 false 默认（铁律 2）+ 固定键集渲染 + setter 链。
@@ -166,9 +168,10 @@ console.log("\ntask 742 tab-management merge + heartbeat background mode");
 {
   // tl 1125：tabManagement 容器档位「可选 → 推荐」（用户 2026-10-24 指令：
   // 标签管理徽章档位提升为推荐；成员 tabCompress 仍推荐、tabModeTint 仍未
-  // 稳定，卡内成员档位零变化）。heartbeatBackground 保持 742 任务书指定可选。
-  ok(tiers.includes('tabManagement: "recommended"') && tiers.includes('heartbeatBackground: "optional"'),
-    "tier register pins tabManagement to recommended (tl 1125) and heartbeatBackground to optional (742 任务书)");
+  // 稳定，卡内成员档位零变化）。heartbeatBackground tl1265 拍板 optional→
+  // recommended（20261128 换代，旧 742 任务书口径被拍板覆盖）。
+  ok(tiers.includes('tabManagement: "recommended"') && tiers.includes('heartbeatBackground: "recommended"'),
+    "tier register pins tabManagement to recommended (tl 1125) and heartbeatBackground to recommended (tl1265)");
 }
 
 // ── ⑤ 三语 ──

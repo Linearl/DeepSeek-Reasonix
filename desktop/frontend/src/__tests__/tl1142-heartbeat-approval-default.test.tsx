@@ -77,6 +77,7 @@ Object.assign(window, {
         async HeartbeatTriggerNow() {},
         async HeartbeatGenerateID() { nextID += 1; return `draft-${nextID}`; },
         async ListWorkspaces() { return [{ name: "Project One", path: "/project-one", current: true }]; },
+        async ListAddressableSessions() { return []; }, // tl1851 directory hook（HeartbeatPanel 依赖，缺则面板挂）
         async Settings() {
           if (settingsShouldFail) throw new Error("settings unavailable");
           return { providers: [], defaultToolApprovalMode: settingsApprovalDefault };

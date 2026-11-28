@@ -88,6 +88,7 @@ Object.assign(window, {
         async HeartbeatTriggerNow() {},
         async HeartbeatGenerateID() { nextID += 1; return `draft-${nextID}`; },
         async ListWorkspaces() { return []; },
+        async ListAddressableSessions() { return []; }, // tl1851 directory hook（HeartbeatPanel 依赖）
         async Settings() { return { providers: [] }; },
       },
     },
