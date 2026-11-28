@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -218,5 +219,66 @@ func TestStatusViewForPathDecoratesTakeoverFields(t *testing.T) {
 	}
 	if view["takeoverStatus"] != takeoverStateFailed || view["takeoverMessage"] != takeoverTimeoutMessage {
 		t.Fatalf("failure decoration = %v/%v", view["takeoverStatus"], view["takeoverMessage"])
+	}
+}
+
+// tl1854 R1: the owned-runtime early return in the ?session= status handler is
+// the main remote-takeover surface — the phone /resumes the target first, so
+// the target IS this serve's bound session and ownedRuntimeStatusView hits.
+// That return used to skip decorateTakeoverStatus, so a 202 poller never saw
+// takeoverPending and every poll read as "no fields" until the window
+// expired. The view must carry the fields through pending → terminal.
+func TestStatusOwnedRuntimeViewCarriesTakeoverPollFields(t *testing.T) {
+	server, dir, _ := newTakeoverPendingFixture(t)
+
+	// The target is this serve's own foreground session: resolveSessionPath
+	// succeeds, held=false, ownedRuntimeStatusView hits — the exact branch the
+	// fix decorates.
+	foreground := filepath.Join(dir, "active.jsonl")
+	get := func() map[string]any {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet, "/status?session="+url.QueryEscape(foreground), nil)
+		rec := httptest.NewRecorder()
+		server.status(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d body=%q, want 200", rec.Code, rec.Body.String())
+		}
+		var view map[string]any
+		if err := json.Unmarshal(rec.Body.Bytes(), &view); err != nil {
+			t.Fatalf("decode status body %q: %v", rec.Body.String(), err)
+		}
+		return view
+	}
+
+	// No attempt recorded: the field must exist (GC's poller treats a missing
+	// field as "not completed", so its presence is the contract) and read false.
+	view := get()
+	if pending, ok := view["takeoverPending"].(bool); !ok || pending {
+		t.Fatalf("takeoverPending without an attempt = %v (present %v), want present false", view["takeoverPending"], ok)
+	}
+
+	// Pending attempt (the serve just answered 202): the same view flips true.
+	server.recordTakeoverState(foreground, takeoverStatePending, "")
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); !p {
+		t.Fatalf("takeoverPending while pending = %v, want true", view["takeoverPending"])
+	}
+
+	// Terminal done: back to false (the success signal is takenOver/running,
+	// same convention as the statusViewForPath branches).
+	server.recordTakeoverState(foreground, takeoverStateDone, "")
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); p {
+		t.Fatalf("takeoverPending after done = %v, want false", view["takeoverPending"])
+	}
+
+	// Terminal failure: takeoverStatus/takeoverMessage ride the same view.
+	server.recordTakeoverState(foreground, takeoverStateFailed, takeoverTimeoutMessage)
+	view = get()
+	if p, _ := view["takeoverPending"].(bool); p {
+		t.Fatal("takeoverPending true after failure")
+	}
+	if view["takeoverStatus"] != takeoverStateFailed || view["takeoverMessage"] != takeoverTimeoutMessage {
+		t.Fatalf("failure decoration = %v/%v, want failed/%q", view["takeoverStatus"], view["takeoverMessage"], takeoverTimeoutMessage)
 	}
 }

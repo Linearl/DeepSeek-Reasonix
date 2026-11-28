@@ -1581,7 +1581,16 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 			held := s.sessionMirrored(path) || leaseHeldByForeignRuntime(path)
 			if !held {
 				if view, ok := s.ownedRuntimeStatusView(path); ok {
-					writeJSON(w, view)
+					// tl1854 R1: the takeover-poll fields must ride EVERY
+					// ?session= view. This early return is the main remote
+					// takeover path — the phone /resumes the target before
+					// taking it over, so the target IS this serve's own bound
+					// session and ownedRuntimeStatusView hits — and skipping
+					// s.decorateTakeoverStatus here left a 202 poller reading a
+					// field-less view until its window expired (handoff
+					// GC-远程接管设计缺口 §3.2). The other two branches decorate
+					// inside statusViewForPath; behavior there is unchanged.
+					writeJSON(w, s.decorateTakeoverStatus(path, view))
 					return
 				}
 			}
