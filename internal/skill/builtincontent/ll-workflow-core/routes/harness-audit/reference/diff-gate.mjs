@@ -63,6 +63,15 @@ function getSessionId() {
 }
 
 // ─── 状态管理 ────────────────────────────────────────────────
+// 只读已落盘的会话 ID（tl1857：供 --status 展示用，不触 env）。
+function storedSessionId() {
+  try {
+    const existing = fs.readFileSync(SESSION_ID_FILE, "utf-8").trim();
+    if (existing) return existing;
+  } catch { /* 无已落盘 ID */ }
+  return "";
+}
+
 function getStatePath(sessionId) {
   return path.join(STATE_DIR, `session-${sessionId}.json`);
 }
@@ -162,7 +171,12 @@ function main() {
     const sessionId = getSessionId();
     const state = loadState(sessionId);
     const config = loadConfig();
-    console.log(JSON.stringify({ ...state, threshold: config.threshold, sessionId }, null, 2));
+    // tl1857 (CodeQL js/clear-text-logging #336): 不把 process.env 直读值打进
+    // stdout。CLAUDE_SESSION_ID 是外部注入的明文 env 值，--status 的展示改走
+    // 已落盘的 session-id 文件（固定路径读，非 env 污点源）；未设 env 时该文件
+    // 由 getSessionId() 刚写入、两者同值，输出字节不变；设了 env 时显示落盘
+    // ID（无则 null）——env 值被脱敏，不再明文出日志。
+    console.log(JSON.stringify({ ...state, threshold: config.threshold, sessionId: storedSessionId() || null }, null, 2));
     return;
   }
 

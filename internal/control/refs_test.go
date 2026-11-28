@@ -2,6 +2,7 @@ package control
 
 import (
 	"context"
+	"html"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -941,5 +942,33 @@ func TestReadFileRefPDFExtractionWithBaseDirUsesAbsPath(t *testing.T) {
 	}
 	if !strings.Contains(got, "workspace pdf") {
 		t.Fatalf("scoped pdf extraction missing text: %s", got)
+	}
+}
+
+// tl1857 (CodeQL go/unsafe-quoting #337-#340): ref context attributes wrap a
+// user-controlled @ path in manual double quotes. refAttrValue must keep such
+// an attribute unbreakable — no raw '"' may survive in its output — while
+// remaining a byte-level no-op over html.EscapeString (the behavior contract
+// the 4 video-attr call sites rely on). A filename containing a raw quote
+// cannot be created on Windows filesystems, so the probe is helper-level with
+// a constructed path rather than a ResolveRefs fixture.
+func TestRefAttrValueKeepsQuotedAttributeUnbreakable(t *testing.T) {
+	for _, path := range []string{
+		`videos/"cut".mp4`,
+		`plain.mp4`,
+		`C:\temp\reel & <b>tags</b> 'quote'.mp4`,
+		`"leading and trailing quotes"`,
+	} {
+		got := refAttrValue(path)
+		if got != html.EscapeString(path) {
+			t.Fatalf("refAttrValue(%q) = %q, want html.EscapeString output %q (no-op contract broken)", path, got, html.EscapeString(path))
+		}
+		attr := `path="` + got + `"`
+		if n := strings.Count(attr, `"`); n != 2 {
+			t.Fatalf("attribute for %q broke out of its quotes (%d quote chars): %q", path, n, attr)
+		}
+		if strings.Contains(got, `"`) {
+			t.Fatalf("refAttrValue(%q) leaked a raw double quote: %q", path, got)
+		}
 	}
 }

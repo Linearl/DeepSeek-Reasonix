@@ -61,7 +61,9 @@ test("tl1688: 三语键齐备且含额度影响说明", () => {
       "settings.backgroundJobWakeIdleSession.on",
       "settings.backgroundJobWakeIdleSession.off",
     ]) {
-      assert.match(src, new RegExp(`"${key.replace(/\./g, "\\.")}"`), `${locale} 缺 ${key}`);
+      // tl1857 (CodeQL js/incomplete-sanitization #335)：键为固定字面量（仅字母
+      // 与点号），无需构造正则——改用子串断言，语义等价且不再有不完整转义。
+      assert.ok(src.includes(`"${key}"`), `${locale} 缺 ${key}`);
     }
     // 额度影响说明必须写明自驱预算（轮数/窗口/间隔）。
     const hint = src.match(/"settings\.backgroundJobWakeIdleSessionHint":\s*"([^"]*)"/);
