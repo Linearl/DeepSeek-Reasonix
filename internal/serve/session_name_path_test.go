@@ -186,3 +186,44 @@ func TestRemoveSessionFilesRefusesOutsidePath(t *testing.T) {
 		t.Fatalf("inside transcript survived removal: %v", err)
 	}
 }
+
+// tl1857 (CodeQL go/path-injection #341): sessionFileForName now re-asserts
+// containment with an explicit strings.HasPrefix barrier guard (the shape the
+// query recognizes) on top of the Rel-based pathInsideDir proof. This pins
+// the guard's contract: every name the resolver accepts must satisfy the
+// prefix predicate, so the assertion can never turn a previously valid
+// session into a rejection, and the predicate agrees with pathInsideDir on
+// boundary paths.
+func TestSessionFileForNameContainmentPrefixParity(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"legit", "dot.dot", "C:evil", "sp ace", "wechat-群", "-dash"} {
+		absDir, abs, err := sessionFileForName(dir, name)
+		if err != nil {
+			t.Fatalf("sessionFileForName(%q): %v", name, err)
+		}
+		if !strings.HasPrefix(abs, absDir+string(filepath.Separator)) {
+			t.Fatalf("accepted name %q resolved to %q which fails the HasPrefix containment assertion (dir %q)", name, abs, absDir)
+		}
+		if !pathInsideDir(absDir, abs) {
+			t.Fatalf("accepted name %q resolved to %q which fails pathInsideDir (dir %q)", name, abs, absDir)
+		}
+	}
+
+	// Predicate agreement on boundary candidates (both must answer the same).
+	dirClean := filepath.Clean(dir)
+	sep := string(filepath.Separator)
+	candidates := []string{
+		filepath.Join(dirClean, "session.jsonl"),
+		dirClean,
+		dirClean + sep,
+		filepath.Dir(dirClean),
+		dirClean + sep + "sub" + sep + ".." + sep + "escape.jsonl",
+	}
+	for _, cand := range candidates {
+		inside := pathInsideDir(dirClean, cand)
+		prefix := strings.HasPrefix(filepath.Clean(cand), dirClean+sep)
+		if inside != prefix {
+			t.Fatalf("containment predicates disagree on %q: pathInsideDir=%v HasPrefix=%v", cand, inside, prefix)
+		}
+	}
+}

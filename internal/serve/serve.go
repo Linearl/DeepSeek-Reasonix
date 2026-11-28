@@ -1440,6 +1440,15 @@ func sessionFileForName(dir, name string) (absDir, abs string, err error) {
 	if !pathInsideDir(absDir, abs) {
 		return "", "", errSessionNameOutsideDir
 	}
+	// tl1857 (CodeQL go/path-injection #341): pathInsideDir already proves the
+	// containment structurally, but that Rel-based proof is not a shape the
+	// query models as a sanitizer. This explicit prefix re-assertion is
+	// recognized as a barrier guard (strings.HasPrefix on the tainted path)
+	// and is a no-op on every input pathInsideDir accepts: a Rel-derived
+	// relative subpath implies abs == absDir + separator + rel at string level.
+	if !strings.HasPrefix(abs, absDir+string(filepath.Separator)) {
+		return "", "", errSessionNameOutsideDir
+	}
 	return absDir, abs, nil
 }
 

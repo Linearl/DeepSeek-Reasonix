@@ -899,10 +899,10 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			if isVideoRef(r) {
 				if err := c.videoRefAvailable(r, baseDir); err != nil {
 					errs = append(errs, "@"+r.raw+" — "+err.Error())
-					appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
+					appendRefBlock(&b, "video", `path="`+refAttrValue(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
 					continue
 				}
-				appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoFileRefNote(r.path, c.videoInputEnabled()))
+				appendRefBlock(&b, "video", `path="`+refAttrValue(r.path)+`"`, videoFileRefNote(r.path, c.videoInputEnabled()))
 				continue
 			}
 			if isAudioRef(r) {
@@ -959,10 +959,10 @@ func (c *Controller) resolveRefs(ctx context.Context, line string, scopedOnly bo
 			}
 			if err := c.videoRefAvailable(r, refBaseDir); err != nil {
 				errs = append(errs, "@"+r.raw+" — "+err.Error())
-				appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
+				appendRefBlock(&b, "video", `path="`+refAttrValue(r.path)+`"`, videoAttachmentFailedNote(r.path, err))
 				continue
 			}
-			appendRefBlock(&b, "video", `path="`+html.EscapeString(r.path)+`"`, videoAttachmentNote(r.path, c.videoInputEnabled()))
+			appendRefBlock(&b, "video", `path="`+refAttrValue(r.path)+`"`, videoAttachmentNote(r.path, c.videoInputEnabled()))
 		case refImage, refRemoteImage, refFileID:
 			// The note has to describe what actually happened. A reference whose
 			// bytes never reach the model must not be announced as "attached as
@@ -1029,6 +1029,18 @@ func cleanAbsPath(path string) string {
 		return filepath.Clean(path)
 	}
 	return filepath.Clean(abs)
+}
+
+// refAttrValue renders a value for inclusion inside a double-quoted attribute
+// of a ref context block (tl1857 CodeQL go/unsafe-quoting #337-#340). The
+// value is user-controlled (@ token path), so wrapping it in manual quotes is
+// exactly the pattern that query flags. html.EscapeString already maps '"'
+// to &#34;, so the outer ReplaceAll is a byte-level no-op on its output —
+// but it states the no-quote invariant in a form the query recognizes as a
+// sanitizer, and it keeps the attribute unbreakable even if the escaping
+// upstream ever changes.
+func refAttrValue(value string) string {
+	return strings.ReplaceAll(html.EscapeString(value), `"`, "&#34;")
 }
 
 func appendRefBlock(b *strings.Builder, tag, attr, body string) {
