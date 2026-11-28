@@ -39,7 +39,6 @@ func TestSessionPathSpellingsSingleSource(t *testing.T) {
 		{"SessionTranscriptSuffix", SessionTranscriptSuffix, ".jsonl"},
 		{"SessionEventLogSuffix", SessionEventLogSuffix, ".events.jsonl"},
 		{"SessionEventLogDamagedSuffix", SessionEventLogDamagedSuffix, ".events.jsonl.damaged"},
-		{"SessionEventLogRotatingSuffix", SessionEventLogRotatingSuffix, ".events.jsonl.rotating"},
 		{"SessionTurnEventLogSuffix", SessionTurnEventLogSuffix, ".turns.jsonl"},
 		{"SessionConflictLogSuffix", SessionConflictLogSuffix, ".conflicts.jsonl"},
 		{"SessionEventIndexSuffix", SessionEventIndexSuffix, ".event-index.json"},

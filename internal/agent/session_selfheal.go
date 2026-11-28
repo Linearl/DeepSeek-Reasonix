@@ -65,7 +65,6 @@ var sessionBackupAllowlist = map[string]struct{}{
 	// rel 键 = 后缀常量剥前导点，拼写仍单一来源。
 	strings.TrimPrefix(store.SessionEventLogZstSuffix, "."):               {}, // events.jsonl.zst
 	strings.TrimPrefix(store.SessionTranscriptZstSuffix, "."):             {}, // jsonl.zst
-	strings.TrimPrefix(store.SessionEventLogRotatingSuffix, "."):          {}, // events.jsonl.rotating
 	strings.TrimPrefix(store.SessionTurnEventLogSuffix, ".") + ".damaged": {}, // turns.jsonl.damaged
 	// tl1841（d1 扫描 G2，同机制第三例）：新数据侧车补登记——tl1787 续作
 	// （splices）与 tl1652（rewritelog）进了 store 删除清单没跟到这份归档

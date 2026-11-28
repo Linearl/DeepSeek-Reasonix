@@ -1339,12 +1339,6 @@
     "internal/agent/session_dag_replay.go": {
       "essay": 12
     },
-    "internal/agent/session_dag_rotate.go": {
-      "essay": 9
-    },
-    "internal/agent/session_dag_rotate_test.go": {
-      "essay": 3
-    },
     "internal/agent/session_display_index.go": {
       "essay": 6
     },

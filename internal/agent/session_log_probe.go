@@ -112,7 +112,7 @@ func CensusStoredDAGSessions(dirs []string) SessionDAGCensus {
 				stem = strings.TrimSuffix(name, store.SessionEventLogZstSuffix)
 				archived = true
 			default:
-				continue // transcripts, leases, meta, .damaged/.rotating/.materializing siblings
+				continue // transcripts, leases, meta, .damaged/.materializing siblings
 			}
 			if seen[stem] {
 				continue

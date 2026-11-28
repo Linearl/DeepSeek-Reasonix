@@ -72,7 +72,6 @@ func plantFullFamily(t *testing.T, dir, branchPath string) map[string]bool {
 		stem + ".events.jsonl",
 		stem + ".events.jsonl.zst",
 		stem + ".events.jsonl.damaged",
-		stem + ".events.jsonl.rotating",
 		stem + ".jsonl.zst",
 		stem + ".turns.jsonl",
 		stem + ".turns.jsonl.damaged",

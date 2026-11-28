@@ -166,10 +166,9 @@ const foldProbeMaxStrikes = 2
 // sessions are few, and on overflow the whole state resets (cost: at most one
 // extra probe round), never an unbounded map.
 //
-// 键口径：gate 的两个调用方形态不同——schema-1 传会话路径（save.go），DAG 传
-// 已解析日志路径（sessionDAGLogOversized 的 st.path），而 save 尾部的地板归档
-// 拿的是会话路径。三个入口统一在 foldProbeKey 归一成日志路径，同一会话在
-// probe 记账与归档兜底之间才不会各记一本账。
+// 键口径：gate 的调用方传参形态不同——save/recovery 链传会话路径，save 尾部
+// 的地板归档也拿会话路径。各入口统一在 foldProbeKey 归一成日志路径，同一会话
+// 在 probe 记账与归档兜底之间才不会各记一本账。
 var foldProbeMemo struct {
 	mu         sync.Mutex
 	regime     map[string]int64
