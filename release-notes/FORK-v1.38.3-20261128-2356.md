@@ -1,7 +1,7 @@
-# 包123 release notes — v1.38.3-20261128-2356
+# 包123 release notes — v1.38.3-20261129-0010
 
 > 基线：包122（v1.38.3-20261128-1716，构建点 `afdfe9507b`）
-> 构建点：`13697221cd`（main-v2-stable；七分支滚合+两主线直提）
+> 构建点：`4653fb2b9e`（main-v2-stable 含 notes commit；七分支滚合+两主线直提；r1 前端 4 门红=node_modules 结构损坏，删整目录 offline 重装后 r2 一次过 rc=0）
 > 执行线：zcode 开发线（GC 域首批由 zcode 新 GC 线承接——20261128 用户拍板 fork 侧撤销独立 GC 开发线）
 > <!-- claims: feat-tl1861,feat-tl1862,feat-tl1859,feat-tl1756,feat-tl1866,feat-tl1867,feat-tl1747 -->
 
