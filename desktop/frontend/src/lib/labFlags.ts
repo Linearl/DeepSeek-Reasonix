@@ -5,7 +5,7 @@
 
 import { reportFrontendLog } from "./frontendLog";
 
-export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "composerToolsFold" | "startupSplash" | "tasklistPanel"
+export type LabFeatureFlag = "questionSearch" | "subagentTps" | "completionSummary" | "quickCommands" | "subagentPolicy" | "subagentPanel" | "sessionWall" | "tabCompress" | "subagentDetail" | "trajectoryView" | "sidebarHoverLeft" | "sidebarHoverRight" | "perfMonitor" | "approvalSelect" | "tableWrap" | "sendTargetSelect" | "smoothScrollFollow" | "draftRewrite" | "editResend" | "composerToolsFold" | "tasklistPanel"
 
 const defaults: Record<LabFeatureFlag, boolean> = {
   questionSearch: true,
@@ -79,10 +79,8 @@ const defaults: Record<LabFeatureFlag, boolean> = {
   // 折，与引入前逐字节一致；开启后宽窗口同样保持折叠为单图标，工具全集在
   // 既有「⋯ 工具」二级菜单查看，同一入口同一形态）。保存即换态免重启。
   composerToolsFold: false,
-  // tl 1132：DSH 式启动遮罩（logo+副文案+点动画，核心 UI 挂载完成后淡出）。
-  // 默认关（铁律 2 + 用户 2026-10-24 steer「做成实验特性，允许开关，方便
-  // 对比」）——关闭时 splash 不渲染，启动行为与引入前一致；保存即换态。
-  startupSplash: false,
+  // tl1855：startupSplash flag 随撤开关退役（用户 20261127 实验室清理令件①）
+  // ——启动遮罩恒显，不再经 lab flag 门控（tl1703 镜像机制随之退役）。
   // tl1746: the embedded read-only tasklist panel ships off (铁律 2). With it
   // off there is no palette entry and no lab card — the palette item list is
   // byte-for-byte unchanged and the existing three-piece surface (tl serve /
@@ -109,46 +107,14 @@ let tabPermissionIndicator: TabPermissionIndicatorMode = "badge";
 const flags: Record<LabFeatureFlag, boolean> = { ...defaults };
 const listeners = new Set<() => void>();
 
-// tl1703: the startup-splash gate must resolve on the first frame, but the
-// boot snapshot that carries the lab flags arrives asynchronously (the main
-// UI would otherwise stand uncovered for the whole snapshot round trip while
-// the switch is on — user OBS frame capture 2026-11-19). The last resolved
-// startupSplash value is mirrored to localStorage on every applyLabFlags, and
-// the mirror is read synchronously once at module init to seed the flag. The
-// seed covers only startupSplash — every other flag keeps the exact
-// default-until-snapshot behaviour. After the snapshot lands, applyLabFlags
-// remains the sole authority and corrects the seed through the existing
-// onLabFlagsChange listeners; a missing/denied mirror falls back to the
-// default (off), so flag-off behaviour is byte-for-byte unchanged.
-const STARTUP_SPLASH_MIRROR_KEY = "reasonix.labflag.startupSplash";
-
-function seedStartupSplashFromMirror(): void {
-  try {
-    const mirrored = window.localStorage.getItem(STARTUP_SPLASH_MIRROR_KEY);
-    if (mirrored === "1") flags.startupSplash = true;
-    else if (mirrored === "0") flags.startupSplash = false;
-  } catch {
-    // Restricted host (or plain Node test env): keep the default; the boot
-    // snapshot stays the only authority.
-  }
-}
-seedStartupSplashFromMirror();
-
-function mirrorStartupSplash(): void {
-  try {
-    window.localStorage.setItem(STARTUP_SPLASH_MIRROR_KEY, flags.startupSplash ? "1" : "0");
-  } catch {
-    // Restricted host: the mirror is advisory only; the snapshot stays
-    // authoritative for the next boot's seed attempt.
-  }
-}
+// tl1855：tl1703 startupSplash localStorage 镜像机制随撤开关退役（遮罩恒显，
+// 件①）——splash 不再是 lab flag，首帧即渲染，无 seed/mirror 面。
 
 /** Boot-time (or test) entry: replace the whole flag set from the snapshot. */
 export function applyLabFlags(next: Partial<Record<LabFeatureFlag, boolean>>): void {
   for (const key of Object.keys(defaults) as LabFeatureFlag[]) {
     flags[key] = next[key] ?? defaults[key];
   }
-  mirrorStartupSplash();
   reportFrontendLog(
     "desktop-prefs",
     "lab flags",

@@ -2,6 +2,9 @@ import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 
 import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
+import { EXPERIMENT_FEATURE_TIERS } from "../lib/experimentTiers";
+import type { SettingsView } from "../lib/settingsViewTypes";
+import { TierBadge } from "./TierBadge";
 
 const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
 
@@ -83,8 +86,13 @@ function classifyServeFailure(raw: string): ServeFailureKind {
 
 /** LocalServerPage is the Settings → 集成与连接 → 本地服务器服务 panel.
  *  It exposes the serve pool remote gateway toggle, its listen address, and a
- *  "copy gateway-token to clipboard" action for GrandCouncil / Tailscale setup. */
-export function LocalServerPage() {
+ *  "copy gateway-token to clipboard" action for GrandCouncil / Tailscale setup.
+ *  tl1855（用户 20261127 实验室清理令件②）：ACP 常驻监听行自实验室「资源
+ *  治理」卡移组本页（仅归组——配置键/开关语义/重启要求不动）。本页自取
+ *  ACPListenStatus；s 由 SettingsPanel 注入（可空——空时按缺省关语义渲染
+ *  hint，导航过滤保证实际可达时 s 已加载），翻转后以本页横幅与
+ *  awaitRestart 状态行表达「重启生效」原语义。 */
+export function LocalServerPage({ s }: { s?: SettingsView | null } = {}) {
   const t = useT();
   const [status, setStatus] = useState<ServePoolStatus | null>(null);
   const [busy, setBusy] = useState(false);
@@ -96,6 +104,12 @@ export function LocalServerPage() {
   const [portDraft, setPortDraft] = useState("");
   const [hostIdx, setHostIdx] = useState(0);
   const [customDraft, setCustomDraft] = useState("");
+  // tl1855：ACP 常驻监听行状态（自实验室资源治理卡迁入，语义不变）。
+  const [acpStatus, setAcpStatus] = useState<Awaited<ReturnType<typeof app.ACPListenStatus>> | null>(null);
+  const [acpRestartNeeded, setAcpRestartNeeded] = useState(false);
+  // 乐观显示态：本页不走 SettingsPageShell 的 apply 链，s 快照不随翻转刷新
+  // ——成功翻转后本地记忆，防 checkbox 视觉态卡旧值导致二次点击回翻。
+  const [acpOnLocal, setAcpOnLocal] = useState<boolean | null>(null);
 
   // failWith renders the classified cause and keeps the raw text beside it: the
   // category is what the user acts on, the detail is what they paste in a report.
@@ -124,6 +138,49 @@ export function LocalServerPage() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // tl1855：ACP 监听状态按需加载（原实验室资源治理卡同款语义——err/运行
+  // 地址/待重启三态提示）。try/catch 与上方 refresh() 同款——部分桥 mock
+  // （测试环境/受限宿主）可无此方法，缺位时按「未知态」落默认 hint。
+  useEffect(() => {
+    let alive = true;
+    try {
+      void app.ACPListenStatus()
+        .then((st) => {
+          if (alive) setAcpStatus(st);
+        })
+        .catch(() => {
+          if (alive) setAcpStatus(null);
+        });
+    } catch {
+      if (alive) setAcpStatus(null);
+    }
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // tl1855：ACP 开关翻转（键/setter/重启语义与实验室行零变化）——翻转后
+  // 拉新状态，横幅与 awaitRestart 行共同表达「重启生效」。
+  const toggleAcpListen = async () => {
+    if (busy) return;
+    const next = !(acpOn ?? false);
+    setBusy(true);
+    try {
+      await app.SetExperimentalACPListen(next);
+      setAcpOnLocal(next);
+      setAcpRestartNeeded(true);
+      try {
+        setAcpStatus(await app.ACPListenStatus());
+      } catch {
+        setAcpStatus(null);
+      }
+    } catch (e) {
+      failWith(e);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const toggle = async () => {
     if (!status || busy) return;
@@ -199,6 +256,17 @@ export function LocalServerPage() {
 
   const on = !!status?.enabled;
   const running = !!status?.running;
+  // tl1855：ACP 行派生态（与实验室行同款三态 hint；s 缺省按关语义）。
+  // acpOn = 快照态 ⊕ 乐观翻转态（快照不随本页 apply 刷新，见上）。
+  const acpSnapshotOn = Boolean(s?.experimentalACPListen);
+  const acpOn = acpOnLocal ?? acpSnapshotOn;
+  const acpHint = acpStatus && acpStatus.err
+    ? `${t("settings.acpListen.notRunning")} ${acpStatus.err}`
+    : acpStatus && acpStatus.running
+      ? `${t("settings.acpListen.running")} ${acpStatus.addr}`
+      : acpOn && acpStatus && !acpStatus.running
+        ? t("settings.acpListen.awaitRestart")
+        : t("settings.acpListenHint");
   // tl1536: candidate hosts come from ServePoolStatus.lan_hosts (best-first,
   // see lanHostsForQR). hostIdx may go stale after a refresh narrows the list,
   // so clamp before reading.
@@ -378,6 +446,40 @@ export function LocalServerPage() {
           <a className="settings-field__link" href="https://github.com/Linearl/GrandCouncil/releases" target="_blank" rel="noreferrer">
             {t("localserver.grandCouncilDownload")}
           </a>
+        </div>
+      </div>
+
+      {/* tl1855 件②：ACP 常驻监听（自实验室「资源治理」卡移组本页，仅归组
+          ——配置键 experimental_acp_listen/开关语义/重启要求零变化；562 ⑤
+          徽章随标题自带，opencodeGoUsage 卡先例）。 */}
+      <div className="settings-section" data-testid="acp-listen-section">
+        <div className="settings-section__header">
+          <h3>
+            {t("settings.acpListen")}
+            <TierBadge tier={EXPERIMENT_FEATURE_TIERS.acpListen} translator={t} />
+          </h3>
+        </div>
+
+        {acpRestartNeeded ? (
+          <div className="banner settings-restart-banner" role="status">
+            <span>{t("settings.restartRequired")}</span>
+            <button
+              type="button"
+              className="btn btn--primary btn--sm settings-restart-banner__action"
+              disabled={busy}
+              onClick={() => void app.RestartDesktop()}
+            >
+              {t("settings.restartNow")}
+            </button>
+          </div>
+        ) : null}
+
+        <div className="settings-field">
+          <label className="settings-toggle">
+            <input type="checkbox" checked={acpOn} onChange={() => void toggleAcpListen()} disabled={busy} />
+            <span>{t(acpOn ? "settings.acpListen.on" : "settings.acpListen.off")}</span>
+          </label>
+          <small>{acpHint}</small>
         </div>
       </div>
     </div>

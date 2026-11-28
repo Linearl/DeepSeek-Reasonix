@@ -46,15 +46,10 @@ export type TierFeatureId =
   // 「⋯ 工具」二级菜单查看；默认关=折叠仍只由宽度驱动，铁律 2）。界面组
   // 「视图布局」卡成员（940/959 先例）。
   | "composerToolsFold"
-  // tl 1132: DSH 式启动遮罩（默认关——关时 splash 不渲染，启动行为与
-  // 引入前一致）。落 config.toml experimental_startup_splash，Go 渲染表
-  // 同档登记（可选）。
-  | "startupSplash"
-  // tl 1132: 「启动与加载」合并卡容器（首项=启动遮罩；为 tl 1133 后续
-  // 启动优化开关预留成员位）。纯前端 rail 卡 id——没有自有配置键，卡内
-  // 各行写各的键；Go 渲染表无条目（562 测试 ③ 的前端独有豁免，
-  // tabManagement 先例）。
-  | "startupLoading"
+  // tl1855：startupSplash / startupLoading 双 id 随撤开关退役出表出类型
+  // （用户 20261127 实验室清理令件①）——遮罩恒显，「启动与加载」卡整体
+  // 移除（页内仅此一项，实施核实）；Go 渲染表条目同步退役，存量手写键走
+  // deprecated 清单。
   // 任务 517:「安全 / 成本控制」单键卡（吸收 561 的 autonomousIdleTerminate +
   // loopStreakNote 与 standalone eventWaitRecheck 三个表A id → 一个 id）。
   | "safetyCostControl"
@@ -120,8 +115,12 @@ export type TierFeatureId =
   // tl 1174: 冷会话 transcript zstd 归档（可选档，默认关——关时保存/加载
   // 行为与引入前一致；Go 渲染表同步登记 LabTierOptional）。
   | "jsonlZstd"
-  | "runtimeReuse"
+  // tl1855：runtimeReuse 随展示行下架出表出类型（件③——复用池常开实现与
+  // 键保留，仅撤实验室展示行；主键 tl1741 已退役，此处收展示面尾巴）。
   // 任务 790: ACP 常驻监听（loopback TCP，每连接独立 client 面，默认关）。
+  // tl1855：移组「本地服务」页（件②，仅归组——键/语义/重启要求不动），
+  // 注册表标注保留（562 ⑤ 徽章随 LocalServerPage 自带，opencodeGoUsage
+  // 先例），lab 行不再承载。
   | "acpListen"
   // tl1487 一组③：modelCapabilityFilter（模型能力过滤）随只读展示行一并
   // 出表出类型——用户 20261107 八组清单「移除（不展示）」；Go 配置键仍存在
@@ -350,10 +349,8 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // 痛点，关闭即缺口持续存在；默认关=宽度驱动的折叠行为零变化，铁律 2；
   // 镜像 Go 渲染表同步 +1）。
   composerToolsFold: "recommended",
-  // tl 1132：启动遮罩。镜像 Go 档位——可选（默认关，用户 steer A/B 对比）。
-  startupSplash: "optional",
-  // tl 1132：「启动与加载」合并卡容器（纯前端 rail 卡，成员最高档=可选）。
-  startupLoading: "optional",
+  // tl1855：startupSplash/startupLoading 条目随撤开关退役出表（件①，
+  // 注见 union 处）。
   tabCompress: "recommended",
   todoSidebar: "recommended",
   promptHistoryPicker: "recommended",
@@ -424,9 +421,9 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl 1174: 冷会话 transcript zstd 归档——档位与 Go 渲染表双侧一致（562
   // 门禁）。tl1487 六组：可选→推荐（用户 20261107 八组清单）。
   jsonlZstd: "recommended",
-  // ── infra（基础设施，6 项；785 退役 S1 常驻底座开关，790 增 acpListen，tl-1048 退役 zcodeTaskBus）──────
-  // 任务 1005 批1 转档：runtimeReuse 升「稳定」（992 刚升推荐的四项之一）。
-  runtimeReuse: "stable",
+  // ── infra（基础设施，4 项；785 退役 S1 常驻底座开关，790 增 acpListen，
+  //    tl-1048 退役 zcodeTaskBus，tl1855 退役 runtimeReuse 展示行）──────
+  // tl1855：runtimeReuse 展示行随件③下架出表（复用池常开实现/键保留）。
   acpListen: "unstable",
   // 任务 789: 编辑证据门宽松模式（放宽 evidence gate 属行为变更；
   // toolOptimizations 卡成员）。tl1487 七组②：可选→推荐（用户 20261107
@@ -509,9 +506,10 @@ export const EXPERIMENT_FEATURE_TIERS: Readonly<Record<TierFeatureId, LabTier>> 
   // tl1309 卡②：「运行可观测」合并卡容器档 = 成员最高档（监控推荐压过
   // events 瘦身/轨迹观测两可选 → 推荐）。
   runtimeObservability: "recommended",
-  // tl1309 卡③：「资源治理」合并卡容器档 = 成员最高档（运行时复用池稳定
-  // 压过闲置释放/孤儿回收两推荐 → 稳定）。合并是入口层组织，不降级成员。
-  resourceGovernance: "stable",
+  // tl1309 卡③：「资源治理」合并卡容器档 = 成员最高档。合并是入口层组织，
+  // 不降级成员。tl1855：复用池展示行下架+ACP 移组后成员最高档=推荐（孤儿/
+  // GC/闲置三推荐压过本地服务可选）——容器随聚合规则 稳定→推荐。
+  resourceGovernance: "recommended",
   // tl1309 卡③：两参数卡成员档随迁（与原独立参数卡 rail 徽章一致）。
   // tl1487 七组①：gcPercent 可选→推荐，建议值 100（用户 20261107 八组清单）。
   gcPercent: "recommended",

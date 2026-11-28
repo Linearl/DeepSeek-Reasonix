@@ -297,19 +297,9 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       key: "ui",
       labelKey: "settings.labGroup.ui",
       entries: [
-        // tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=
-        // 启动遮罩；为 tl 1133 后续启动优化开关预留成员位。容器档 = 成员
-        // 最高档（可选）。默认关（用户 2026-10-24 steer：做成实验特性允许
-        // 开关方便 A/B 对比；铁律 2——关时 splash 不渲染）。
-        {
-          id: "startupLoading",
-          labelKey: "settings.startupLoading",
-          tier: "optional",
-          onKeys: ["experimentalStartupSplash"],
-          members: [
-            { id: "startupSplash", labelKey: "settings.startupSplash", tier: "optional" },
-          ],
-        },
+        // tl1855：startupLoading 卡随撤开关整体退役（用户 20261127 实验室
+        // 清理令件①）——「启动与加载」页内仅启动遮罩一项（卡头+成员行），
+        // 整卡移除；遮罩恒显，splash 不再读任何开关。
         // 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离
         // 默认档；卡徽章可选。卡内两行各自读自己的键、写自己的 setter
         // （条目级合并，561/722 先例——配置键零变化，已存偏好零迁移）。
@@ -599,24 +589,24 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
       labelKey: "settings.labGroup.infra",
       // 任务 785：S1 常驻底座开关条目已随底座退役移除。
       // tl1741 返修（20261122 用户裁定）：资源治理合并卡（tl1309 卡③）回归
-      // ——runtimeReuse 撤开关（复用池常开，主键退役，卡内为无开关展示行），
-      // 其余五成员随卡（键/setter/档位零变化，non-goals：不动推荐/可选/未
-      // 稳定档开关）。
+      // ——runtimeReuse 撤开关（复用池常开，主键退役）。tl1855（用户 20261127
+      // 实验室清理令）：卡头聚合说明行下架（件③①，组头已表达）；复用池
+      // 无开关展示行下架（件③②，仅撤展示——实现与键保留、常开语义不变）；
+      // ACP 常驻监听成员行移组「本地服务」页（件②，仅归组——键/语义/重启
+      // 要求不动）。卡内余四成员（键/setter/档位零变化）。
       entries: [
-        // tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
-        // 复用池（无开关展示行）+ 孤儿回收 + ACP 常驻监听 + 本地服务四散条，
-        // 加 GC 策略与闲置释放两参数卡（自存储组迁入，字段绑定仍在
-        // labParamFields，值语义单源）。容器档 = 成员最高档（复用池稳定展示行
-        // → 稳定）；卡灯=三个活键家族（复用池主键退役不参与）。
+        // tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——孤儿
+        // 回收 + 本地服务两散条，加 GC 策略与闲置释放两参数卡（自存储组迁入，
+        // 字段绑定仍在 labParamFields，值语义单源）。tl1855：复用池展示行与
+        // ACP 常驻监听行出卡（件③②/件②）。容器档 = 成员最高档（孤儿回收/
+        // GC/闲置三推荐压过本地服务可选 → 推荐，原稳定源=复用池展示行已撤）；
+        // 卡灯=三个活键家族减 ACP（移组后不再驱动本卡灯）。
         {
           id: "resourceGovernance",
           labelKey: "settings.resourceGovernance",
-          tier: "stable",
-          onKeys: ["experimentalOrphanHandling", "experimentalACPListen", "experimentalLocalServer"],
+          tier: "recommended",
+          onKeys: ["experimentalOrphanHandling", "experimentalLocalServer"],
           members: [
-            // 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。tl1741
-            // 返修：无开关展示行（复用池常开，主键退役）。
-            { id: "runtimeReuse", labelKey: "settings.runtimeReuse", tier: "stable" },
             // 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
             { id: "orphanHandling", labelKey: "settings.orphanHandling", tier: "recommended" },
             // 后台会话闲置释放（原存储组 kind:param 参数卡，775 首批；推荐档）。
@@ -624,8 +614,6 @@ export const LAB_LAYOUT_DEFAULT: StrictLabLayout = {
             // GC 策略旋钮（原存储组 kind:param 参数卡，tl1286）。
             // tl1487 七组①：可选→推荐，建议值 100。
             { id: "gcPercent", labelKey: "settings.gcPercent", tier: "recommended" },
-            // ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
-            { id: "acpListen", labelKey: "settings.acpListen", tier: "unstable" },
             // 本地服务（原 infra 独立卡；tl1265 第2轮：未稳定→可选）。
             { id: "localServer", labelKey: "settings.localServer", tier: "optional" },
           ],

@@ -297,25 +297,13 @@ groups:
       # 卡成员行（档位与键不动，只移组；tl1733 原条目随之退役）。
       # 并集解（20261124 补滚冲突）：alwaysOn 标记=tl1741r2 尾项去置灰保留。
 
-  # ── 界面（11 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
+  # ── 界面（10 项；任务 742：tab 二开关合并为「标签页管理」；任务 782：
   #    三张条目级合并卡 + opencodeGoUsage 迁出至可观测性组；任务 961：
-  #    renderArtifact 并入视图布局卡；tl 1132：新增「启动与加载」合并卡）──
+  #    renderArtifact 并入视图布局卡；tl1855：「启动与加载」卡随撤开关
+  #    整体退役——页内仅启动遮罩一项，遮罩恒显）──
   - key: ui
     labelKey: settings.labGroup.ui
     entries:
-      # tl 1132：启动与加载（合并卡，742/782 条目级合并先例）——首项=启动
-      # 遮罩；为 tl 1133 后续启动优化开关预留成员位。容器档 = 成员最高档
-      # （可选）；卡内一行读自己的键、写自己的 setter。默认关（用户
-      # 2026-10-24 steer：做成实验特性允许开关方便 A/B 对比；铁律 2——关时
-      # splash 不渲染、启动行为与引入前逐字节一致）。
-      - id: startupLoading
-        labelKey: settings.startupLoading
-        tier: optional
-        onKeys: [experimentalStartupSplash]
-        members:
-          - id: startupSplash
-            labelKey: settings.startupSplash
-            tier: optional
       # 任务 742：标签页管理（合并卡）。灯 = 自适应压缩开 或 权限指示离默认档；
       # 卡徽章可选。卡内两行各自读自己的键、写自己的 setter：
       #   行1 标签栏自适应压缩（experimental_tab_compress，506）；
@@ -645,27 +633,25 @@ groups:
   # ── 基础设施（2 项；任务 785：S1 常驻底座开关条目随底座退役移除；
   #    任务 992：工具优化整体并入本组，原独立 tool-opt 组退役；tl1741 返修
   #    （20261122 用户裁定）：资源治理合并卡（tl1309 卡③）回归——runtimeReuse
-  #    撤开关（复用池常开，主键退役，卡内为无开关展示行），其余五成员随卡
-  #    （键/setter/档位零变化，non-goals：不动推荐/可选/未稳定档开关））──
+  #    撤开关（复用池常开，主键退役）。tl1855（用户 20261127 实验室清理令）：
+  #    卡头聚合说明行下架（件③①）；复用池无开关展示行下架（件③②，仅撤
+  #    展示——实现与键保留、常开语义不变）；ACP 常驻监听行移组「本地服务」
+  #    页（件②，仅归组——键/语义/重启要求不动））──
   - key: infra
     labelKey: settings.labGroup.infra
     entries:
-      # tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——运行时
-      # 复用池（tl1741 返修：无开关展示行）+ 孤儿回收 + ACP 常驻监听 + 本地
-      # 服务四散条，加 GC 策略与闲置释放两参数卡（自存储组迁入，字段绑定仍在
-      # labParamFields，值语义单源）。容器档 = 成员最高档（复用池稳定展示行
-      # → 稳定）；卡灯=三个活键家族（复用池主键退役不参与）。
+      # tl1309 卡③：资源治理（合并卡，742/782/961 条目级合并先例）——孤儿
+      # 回收 + 本地服务两散条，加 GC 策略与闲置释放两参数卡（自存储组迁入，
+      # 字段绑定仍在 labParamFields，值语义单源）。tl1855：复用池展示行与
+      # ACP 常驻监听行出卡（件③②/件②）。容器档 = 成员最高档（孤儿回收/GC/
+      # 闲置三推荐压过本地服务可选 → 推荐，原稳定源=复用池展示行已撤）；
+      # 卡灯=三个活键家族减 ACP（移组后不再驱动本卡灯）。
       - id: resourceGovernance
         labelKey: settings.resourceGovernance
-        tier: stable
-        onKeys: [experimentalOrphanHandling, experimentalACPListen, experimentalLocalServer]
+        tier: recommended
+        onKeys: [experimentalOrphanHandling, experimentalLocalServer]
         alwaysOn: true
         members:
-          # 运行时复用池（原 infra 独立卡，稳定档，1005 批1 转档）。tl1741
-          # 返修：无开关展示行（复用池常开，主键退役）。
-          - id: runtimeReuse
-            labelKey: settings.runtimeReuse
-            tier: stable
           # 孤儿资源回收清理（原 infra 独立卡，推荐档——992 随复用池升推荐）。
           - id: orphanHandling
             labelKey: settings.orphanHandling
@@ -680,10 +666,9 @@ groups:
           - id: gcPercent
             labelKey: settings.gcPercent
             tier: recommended
-          # ACP 常驻监听（原 infra 独立卡，未稳定档，790）。
-          - id: acpListen
-            labelKey: settings.acpListen
-            tier: unstable
+          # tl1855：ACP 常驻监听行随件②移组「本地服务」页（设置→本地服务，
+          # 设置面板常规 tab；键/语义/重启要求不动，徽章随页自带——562 ⑤
+          # opencodeGoUsage 自带徽章先例）。
           # 本地服务（原 infra 独立卡；tl1265 第2轮 2026-11-13 拍板：未稳定→可选）。
           - id: localServer
             labelKey: settings.localServer

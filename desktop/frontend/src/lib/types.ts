@@ -2817,8 +2817,7 @@ export interface DesktopStartupSettingsView {
   experimentalSendTargetSelect?: boolean;
   /** 流式滚动平滑跟随（tl 1165，DSH ScrollFollow 同款四条防线）：off（默认）= 每次流式尾部写入瞬移定位不变，on = 原生平滑 scrollTo（未完成目标不发新请求/手势取消/reduced-motion 退化）；纯前端门，保存即生效。 */
   experimentalSmoothScrollFollow?: boolean;
-  /** 启动遮罩（tl 1132，DSH 式启动画面）：off（默认）= splash 不渲染，on = 覆盖主区待核心 UI 挂载完成后淡出；纯前端门，保存即生效。 */
-  experimentalStartupSplash?: boolean;
+  // tl1855：experimentalStartupSplash 随撤开关退役（遮罩恒显，件①）。
   // tl1741：experimentalWorkflowPanel / experimentalWorkflowTemplates 随撤开关
   // 退役——面板与模板常显（键退役，deprecated 清单承接）。
   /** 心跳任务后台化（任务 742）；默认关；开启后心跳触发不进标签栏（264 detached 语义）。 */

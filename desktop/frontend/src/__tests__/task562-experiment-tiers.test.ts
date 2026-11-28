@@ -288,7 +288,8 @@ console.log("\ntask 562 lab three-tier badges");
   // tl1844 换代：原快照钉「恰 74 条」跨语言登记窗口每件必跟 → 下界棘轮（811/
   // task705「计数不倒退」先例）：跌破即 Go 注册表解析丢条目（③ goOnly/feOnly
   // 精确清单同红双保险）；有意的退役批次在退役 commit 内随件下调本下界。
-  ok(Object.keys(goTiers).length >= 74, `Go registry parses to >= 74 entries (tl1844 ratchet, exact 74 @ 案C; got ${Object.keys(goTiers).length})`);
+  // tl1855：startupSplash 条目随撤开关退役——74→73。
+  ok(Object.keys(goTiers).length >= 73, `Go registry parses to >= 73 entries (tl1844 ratchet, exact 73 @ tl1855; got ${Object.keys(goTiers).length})`);
 
   const feIds = Object.keys(EXPERIMENT_FEATURE_TIERS).sort();
   const goIds = Object.keys(goTiers).sort();
@@ -316,7 +317,11 @@ console.log("\ntask 562 lab three-tier badges");
   // ——图墙/徽章展示面用，拍板条款②「注册表不动」）；idleReleaseMinutes/
   // gcPercent 随资源治理拆卡回散条 param 卡（仍 feOnly）。tl1816：
   // fallbackModel（备用模型开关行徽章，模型目标行在设置→模型偏好）入 feOnly。
-  ok(JSON.stringify(feOnly) === JSON.stringify(["autopilot", "cdpDebugPort", "coldCacheCompact", "collabHub", "fallbackModel", "gcPercent", "glmPlanUsage", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "runtimeReuse", "searchHistory", "sessionCollab", "sessionStorage", "sessionTaskPanels", "smartAutomation", "startupLoading", "tabManagement", "usageMonitoring", "viewLayout", "workflowPanel", "workflowTemplates"]),
+  // tl1855：startupLoading（整卡退役）与 runtimeReuse（展示行下架出表）双
+  // id 出 feOnly——两侧注册表同步退役，清单 27→25。随件收口预存红：tl1835
+  // goalTokenBudgetM 入注册表时本清单漏跟（goal_token_budget 为裸 token 键、
+  // Go 渲染表无条目，本属 feOnly——992 漏同步 drift 收口同款）。
+  ok(JSON.stringify(feOnly) === JSON.stringify(["autopilot", "cdpDebugPort", "coldCacheCompact", "collabHub", "fallbackModel", "gcPercent", "glmPlanUsage", "goalTokenBudgetM", "heartbeatRotation", "idleReleaseMinutes", "inputSelection", "interactionPresentation", "logManagement", "opencodeGoUsage", "resourceGovernance", "runtimeObservability", "searchHistory", "sessionCollab", "sessionStorage", "sessionTaskPanels", "smartAutomation", "tabManagement", "usageMonitoring", "viewLayout", "workflowPanel", "workflowTemplates"]),
     `frontend-only ids are exactly the display/json-bridge/container exemptions (got ${JSON.stringify(feOnly)})`);
   let mismatch = 0;
   for (const id of feIds) {
@@ -376,8 +381,9 @@ console.log("\ntask 562 lab three-tier badges");
   // // 65→68（并集解 20261124）。tl1816：pinnedIndex 独立卡移组 safetyCostControl
   // tl1844 换代：原快照钉「恰 70 成员」布局登记窗口每件必跟 → 下界棘轮（同
   // ③ Go 条目钉口径）：跌破即有卡成员行被删（有意退役批次随件下调）；成员
-  // ⊆ 注册表由下方 covered 自洽断言把守。
-  ok(members.length >= 70, `merged cards carry >= 70 member features (tl1844 ratchet, exact 70 @ 案C; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
+  // ⊆ 注册表由下方 covered 自洽断言把守。tl1855：startupSplash/runtimeReuse
+  // 两成员行下架 + acpListen 行移组本地服务页——70→67。
+  ok(members.length >= 67, `merged cards carry >= 67 member features (tl1844 ratchet, exact 67 @ tl1855; got ${members.length})`);  ok(members.every((id) => isTierFeatureId(id)), "every merged member is a registered 表A feature");
   const covered = new Set([...members, ...Object.keys(EXPERIMENT_FEATURE_TIERS).filter((id) => !members.includes(id as TierFeatureId))]);
   // 任务 782 三容器 → 56；任务 783 用量监测容器+子项 → 58；任务 815
   // 登记窗口收口（sidebarHover×2 + editEvidenceRelaxed + homePointer 计入）
@@ -464,11 +470,12 @@ console.log("\ntask 562 lab three-tier badges");
   // 未稳定]，卡头仍单枚推荐。
   ok(JSON.stringify(railTiersForDefault("runtimeObservability")) === JSON.stringify(["recommended", "optional", "unstable"]) && agg("runtimeObservability") === "recommended",
     `runtimeObservability: input [推荐,可选,未稳定] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("runtimeObservability"))} → ${String(agg("runtimeObservability"))})`);
-  // tl1741r2：资源治理卡卡体回归（无主开关卡）——六成员回卡：聚合输入
-  // [稳定(复用池展示行), 推荐(孤儿/GC/闲置), 可选(本地服务), 未稳定(ACP)]
-  // → 卡头单枚 稳定。
-  ok(JSON.stringify(railTiersForDefault("resourceGovernance")) === JSON.stringify(["stable", "recommended", "optional", "unstable"]) && agg("resourceGovernance") === "stable",
-    `resourceGovernance: tl1741r2 input [稳定,推荐,可选,未稳定] aggregates to the single 稳定 badge (got ${JSON.stringify(railTiersForDefault("resourceGovernance"))} → ${String(agg("resourceGovernance"))})`);
+  // tl1741r2：资源治理卡卡体回归（无主开关卡）——六成员回卡。tl1855 三件
+  // 减法（复用池展示行下架+ACP 移组本地服务页）后聚合输入
+  // [推荐(孤儿/GC/闲置), 可选(本地服务)] → 卡头单枚 推荐（容器档随成员最高
+  // 档聚合规则 稳定→推荐）。
+  ok(JSON.stringify(railTiersForDefault("resourceGovernance")) === JSON.stringify(["recommended", "optional"]) && agg("resourceGovernance") === "recommended",
+    `resourceGovernance: tl1855 input [推荐,可选] aggregates to the single 推荐 badge (got ${JSON.stringify(railTiersForDefault("resourceGovernance"))} → ${String(agg("resourceGovernance"))})`);
   // tl1309 卡④：标签页管理（推荐容器+推荐成员）单枚推荐；会话与任务面板
   // 聚合输入 tl1487 二组⑤ 后 [稳定(工作流), 推荐(图墙/完成摘要)] → 卡头单枚 稳定。
   ok(JSON.stringify(railTiersForDefault("tabManagement")) === JSON.stringify(["recommended"]) && agg("tabManagement") === "recommended",
@@ -549,12 +556,20 @@ console.log("\ntask 562 lab three-tier badges");
     // （tl1746 合并态条目）；opencodeGoUsage/modelCapabilityFilter/logManagement
     // 三真豁免保留。safetyCostControl=tl1816 豁免：总开关行（原 labLabel
     // 宿主）随方案A 退役，卡徽章由 rail 聚合面承载（labEntryBadgeTier）。
+    // acpListen=tl1855 豁免：行移组「本地服务」页（设置面板常规 tab，
+    // LocalServerPage 承接，下方专属断言把守徽章——opencodeGoUsage 卡先例）。
+    // resourceGovernance=tl1855 豁免：卡头聚合说明行随件③①下架（组头已
+    // 表达），卡徽章由 rail 聚合面承载（safetyCostControl 同款豁免）。
     if (["opencodeGoUsage", "modelCapabilityFilter", "logManagement",
-         "tasklistPanel", "safetyCostControl"].includes(id)) continue;
+         "tasklistPanel", "safetyCostControl", "acpListen", "resourceGovernance"].includes(id)) continue;
     if (!wrapped.has(id)) missing.push(id);
 
   }
   ok(missing.length === 0, `pane labels wrap every non-card id in SettingsPanel + the usage card covers opencodeGoUsage (missing: ${JSON.stringify(missing)})`);
+  // tl1855：acpListen 徽章随「本地服务」页自带（opencodeGoUsage 卡同款契约
+  // ——TierBadge 直读注册表，两视图同源）。
+  const localServerPage = readFileSync(fileURLToPath(new URL("../components/LocalServerPage.tsx", import.meta.url)), "utf8");
+  ok(localServerPage.includes("EXPERIMENT_FEATURE_TIERS.acpListen"), "local services page badges the resident ACP listener (tl1855)");
   // 任务 774：rail 行渲染单枚聚合徽章（features 表预解析 badgeTier），
   // 多枚 .map 渲染必须消失——卡头不再出现两枚档位徽章。
   ok(panel.includes("badgeTier: labEntryBadgeTier(labLayoutResolved.layout, entry.id)"),

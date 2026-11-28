@@ -146,11 +146,11 @@ export type ExperimentFeatureId =
   | "tasklistPanel"
   // 任务 783：「用量监测」合并卡（可观测性组）——GLM Plan 用量 + OpenCode
   // Go 用量（opencodeGoUsage 独立 pane 并入此卡，742 先例）。
-  | "usageMonitoring"
-  // tl 1132：启动与加载合并卡（界面组）——首项=启动遮罩（DSH 式启动画面），
-  // 为 tl 1133 后续启动优化开关预留成员位（742 条目级合并先例）。
-  | "startupLoading";
-// tl1287：dagMigration pane 已退役——DAG 迁移动作卡转正进会话存储卡
+  | "usageMonitoring";
+  // tl1855：startupLoading pane/union id 随撤开关整体退役（用户 20261127
+  // 实验室清理令件①）——「启动与加载」卡页内仅启动遮罩一项，整卡移除，
+  // 遮罩恒显。
+  // tl1287：dagMigration pane 已退役——DAG 迁移动作卡转正进会话存储卡
 // （ExperimentalLabSection 的 sessionStore 分支内 DagMigrationSection），
 // 不再是实验室 rail 卡；id 同步从布局与白名单 Set 摘除。
 
@@ -179,8 +179,7 @@ export const LAB_PANE_IDS: ReadonlySet<string> = new Set([
   "modelStrategy",
   // tl1741 返修：collabHub 白名单 id 随卡体回归。
   "collabHub",
-  // tl 1132：启动与加载合并卡（首项=启动遮罩，1133 预留成员位）。
-  "startupLoading",
+  // tl1855：startupLoading 白名单 id 随撤开关整体退役（件①，见 union 尾注）。
   "tabManagement",
   "viewLayout",
   // tl1309 卡④：会话与任务面板合并卡（sessionTaskPanels）容器 id 入表；

@@ -62,16 +62,18 @@ const paneIds = new Set<string>();
   ok(storage?.entries.length === 3, "storage group carries sessionStore + homePointer + jsonlZstd (tl1309 card-3 move)");
   const infra = LAB_LAYOUT_DEFAULT_DATA.groups.find((g) => g.key === "infra");
   // tl1741r2 打回返修：资源治理合并卡（tl1309 卡③）卡体回归（无主开关卡
-  // ——runtimeReuse 主键退役，成员行=无开关展示行），五成员随卡（775 两参数
-  // 回成员行承载，tier/label 零变化）。
+  // ——runtimeReuse 主键退役），五成员随卡（775 两参数回成员行承载，tier/
+  // label 零变化）。tl1855 三件减法（用户 20261127 实验室清理令）：复用池
+  // 展示行下架（件③②）+ acpListen 行移组「本地服务」页（件②）——容器档
+  // 随成员最高档聚合规则 稳定→推荐，成员清单四枚，卡灯两键。
   const gov = infra?.entries.find((e) => e.id === "resourceGovernance");
-  ok(gov !== undefined && gov.tier === "stable" && !gov.onKeys?.includes("experimentalRuntimeReuse"),
-    "resourceGovernance merged card is back without the retired runtimeReuse light (tl1741r2)");
+  ok(gov !== undefined && gov.tier === "recommended" && !gov.onKeys?.includes("experimentalRuntimeReuse") && !gov.onKeys?.includes("experimentalACPListen"),
+    "resourceGovernance merged card carries no reuse-pool/ACP lights after tl1855 (container tier re-derived to recommended)");
   const govMemberIds = (gov?.members ?? []).map((m: { id: string }) => m.id);
-  ok(govMemberIds.includes("runtimeReuse") && govMemberIds.includes("orphanHandling") &&
+  ok(!govMemberIds.includes("runtimeReuse") && govMemberIds.includes("orphanHandling") &&
      govMemberIds.includes("idleReleaseMinutes") && govMemberIds.includes("gcPercent") &&
-     govMemberIds.includes("acpListen") && govMemberIds.includes("localServer"),
-    "the governance card hosts all six members (runtimeReuse as read-only row)");
+     !govMemberIds.includes("acpListen") && govMemberIds.includes("localServer"),
+    "the governance card hosts the four remaining members (reuse-pool row + acpListen row out, tl1855)");
   const idleMember = gov?.members?.find((m: { id: string }) => m.id === "idleReleaseMinutes");
   const gcMember = gov?.members?.find((m: { id: string }) => m.id === "gcPercent");
   ok(idleMember?.tier === "recommended" && (idleMember as { labelKey?: string }).labelKey === "settings.detachedIdleRelease",

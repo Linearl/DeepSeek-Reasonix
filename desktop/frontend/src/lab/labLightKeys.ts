@@ -34,8 +34,7 @@ export const LAB_LIGHT_KEYS = {
   experimentalEditResend: (s: SettingsView) => Boolean(s.experimentalEditResend),
   // tl1718：composer 工具组默认折叠（默认关——宽窗口折叠行为零变化）。
   experimentalComposerToolsFold: (s: SettingsView) => Boolean(s.experimentalComposerToolsFold),
-  // tl 1132：DSH 式启动遮罩（默认关——关时 splash 不渲染）。
-  experimentalStartupSplash: (s: SettingsView) => Boolean(s.experimentalStartupSplash),
+  // tl1855：experimentalStartupSplash 谓词随撤开关摘除（遮罩恒显，件①）。
   // 任务 1070：Standard 流续跑总闸（默认关）。
   standardContinuation: (s: SettingsView) => Boolean(s.standardContinuation),
   // tl1816：experimentalSafetyCostControl 灯键随总开关退役——「安全 / 成本
@@ -116,8 +115,9 @@ export const LAB_LIGHT_KEYS = {
   experimentalSessionMonitor: (s: SettingsView) => Boolean(s.experimentalSessionMonitor),
   experimentalPerfMonitor: (s: SettingsView) => Boolean(s.experimentalPerfMonitor),
   // tl1741：experimentalCDPDebugPort / experimentalRuntimeReuse 谓词随撤开关摘除。
+  // tl1855：experimentalACPListen 谓词随行移组「本地服务」页摘除（本页不再
+  // 有卡灯面；本地服务页开关行直读 SettingsView，不实验室灯）。
   experimentalLifecycleNoiseGate: (s: SettingsView) => Boolean(s.experimentalLifecycleNoiseGate),
-  experimentalACPListen: (s: SettingsView) => Boolean(s.experimentalACPListen),
   experimentalOrphanHandling: (s: SettingsView) => Boolean(s.experimentalOrphanHandling),
   experimentalLocalServer: (s: SettingsView) => Boolean(s.experimentalLocalServer),
   // 任务 915：键未写入（null/undefined）按面板层默认开判亮——与卡片开态

@@ -61,7 +61,9 @@ ok(inbox.includes("collabInbox.cleaned") && inbox.includes("collabInbox.cleanNot
   // 下一分支变为 sessionWall——切片终点随分支序更新（778 收口）。
   // tl1309 卡④：sessionWall 分支退役入 sessionTaskPanels（其在源码序中位于
   // subagentSuite 之前，不能作终点）——终点随迁物理下一分支 startupLoading。
-  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "startupLoading" && (');
+  // tl1855 件①：startupLoading pane 随撤开关整体退役——终点再随迁物理下一
+  // 分支 tabManagement（旧 marker 不存在会让 cardSlice 返回空，742 同款教训）。
+  const subagentCard = cardSlice('{selected === "subagentSuite" && (', '{selected === "tabManagement" && (');
   ok(subagentCard.length > 0, "the subagent-suite card branch located");
   ok(!subagentCard.includes('isDockTabHidden("subagents")'),
     "the subagent-suite card no longer renders its own tab-visibility checkbox");

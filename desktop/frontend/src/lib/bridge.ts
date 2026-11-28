@@ -2114,9 +2114,7 @@ export interface AppBindings extends ToolRecoveryBindings, ModelSettingsBindings
   // tl1718: composer 工具组默认折叠（宽窗口同样折叠为单图标，复用既有「⋯
   // 工具」二级菜单；re-applied on settings save, no restart）。
   SetExperimentalComposerToolsFold(enabled: boolean): Promise<void>;
-  // tl 1132: DSH 式启动遮罩（off = 不渲染，on = 核心区就绪后淡出；
-  // re-applied on settings save, no restart）。
-  SetExperimentalStartupSplash(enabled: boolean): Promise<void>;
+  // tl1855：SetExperimentalStartupSplash 随撤开关退役（遮罩恒显，件①）。
   // 任务 1070: Standard 流续跑总闸（普通对话续跑通道开闸；re-applied on
   // settings save + live controller mirror, next run applies）。
   SetStandardContinuation(enabled: boolean): Promise<void>;
@@ -7412,7 +7410,7 @@ function makeMockApp(): AppBindings {
     async SetExperimentalEditResend() {},
     // tl1718: composer 工具组默认折叠 mock（浏览器 dev 无桌面桥）。
     async SetExperimentalComposerToolsFold() {},
-    async SetExperimentalStartupSplash() {},
+    // tl1855：SetExperimentalStartupSplash mock 随撤开关退役（件①）。
     async SetStandardContinuation() {},
     // tl1741：SetExperimentalWorkflowPanel mock 随撤开关退役。
     // 任务 934：浏览器 dev mock 无工作流服务，给诚实的空表/不可中止。

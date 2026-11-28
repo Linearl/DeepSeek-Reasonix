@@ -192,11 +192,8 @@ var labFeatureTiers = []labFeatureTier{
 	// 默认关=宽度驱动的折叠行为与引入前逐字节一致（铁律 2）。纯前端门，
 	// 设置保存即换态免重启。
 	{"composerToolsFold", LabTierRecommended, []string{"experimental_composer_tools_fold"}},
-	// tl 1132：启动遮罩（DSH 式启动画面，logo+副文案+点动画，核心 UI 挂载
-	// 完成后淡出）。展示类开关按 550 口径定档可选——默认关（用户 2026-10-24
-	// steer：做成实验特性允许开关方便 A/B 对比），关闭时 splash 不渲染、
-	// 启动行为与引入前一致（铁律 2）。
-	{"startupSplash", LabTierOptional, []string{"experimental_startup_splash"}},
+	// tl1855：startupSplash 条目随撤开关退役（用户 20261127 实验室清理令件①）
+	// ——遮罩恒显，deprecated 清单承接存量手写键。
 	// 任务 742：心跳任务后台化（默认关）。开启后心跳触发不进标签栏（复用 264
 	// detached 语义，提交成功后 park）；原按 550 口径可选。
 	// tl1265 第2轮（2026-11-13 拍板 dec-73872eee136e22de）：可选→推荐——
@@ -684,10 +681,8 @@ func RenderTOMLForScope(c *Config, scope RenderScope) string {
 		// every save and the switch would flip itself back off (81/123
 		// lesson). Off keeps the width-driven fold byte-for-byte (铁律 2).
 		fmt.Fprintf(&b, "experimental_composer_tools_fold = %v   # desktop: composer tools fold as the default state — off (default) = fold driven by width only (narrow ≤559px folds, wide never folds), on = the four buttons (emoji/screenshot/history/rewrite) stay folded into the existing ⋯ menu at any width, same entry and items (tl1718; settings save re-applies, no restart)\n", c.Desktop.ExperimentalComposerToolsFold)
-		// tl 1132: same fixed-key-set rule — an unlisted key is dropped on
-		// every save and the switch would flip itself back off (81/123
-		// lesson). Off never renders the startup splash (铁律 2 zero regression).
-		fmt.Fprintf(&b, "experimental_startup_splash = %v   # desktop: DSH-style startup splash overlay (logo + subtitle + pulse dots) covering the main region until the core UI is mounted — off (default) = never renders, on = shows until ready then fades out (tl 1132; settings save re-applies, no restart)\n", c.Desktop.ExperimentalStartupSplash)
+		// tl1855：experimental_startup_splash 渲染行随撤开关退役（遮罩恒显，
+		// deprecated 清单承接存量键）。
 		// tl1741：experimental_workflow_panel / experimental_workflow_templates
 		// 渲染行随撤开关退役（面板/模板常显，deprecated 清单承接存量键）。
 		// Task 651: same fixed-key-set rule — an unlisted key is dropped on

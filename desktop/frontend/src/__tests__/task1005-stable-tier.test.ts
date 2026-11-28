@@ -1,8 +1,9 @@
 // Run: npx tsx --tsconfig tsconfig.tsx-runner.json src/__tests__/task1005-stable-tier.test.ts
 // 任务 1005 acceptance harness → tl1741 换代（用户 20261121 三拍：稳定档不再
 // 提供开关，1005 C1/C4 口径对 autopilot/sessionCollab/runtimeReuse 废止；
-// fullAccess 保留）：
-//  ① 注册表标注保留（拍板②「注册表不动」——图墙/徽章展示面仍用）：四项在
+// fullAccess 保留）→ tl1855 再换代（用户 20261127 实验室清理令件③：复用池
+// 展示行下架，runtimeReuse 出注册表/布局——稳定 rail 卡体剩三）：
+//  ① 注册表标注保留（拍板②「注册表不动」——图墙/徽章展示面仍用）：三项在
 //     前端注册表同为 stable；LAB_TIER_ORDER 稳定居首；稳定档永不 nag；
 //     Go 表条目退役（feOnly 承接，562 对账）。
 //  ② C4（Go 面）：三键退役（struct 无字段=读取层不存在），fullAccess 默认开
@@ -40,9 +41,9 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
 
 // ── ① 档位与徽章（C1/C5 数据面）─────────────────────────────────
 {
-  const four: TierFeatureId[] = ["autopilot", "sessionCollab", "fullAccess", "runtimeReuse"];
+  const four: TierFeatureId[] = ["autopilot", "sessionCollab", "fullAccess"];
   ok(four.every((id) => EXPERIMENT_FEATURE_TIERS[id] === "stable"),
-    "register: the batch-1 four carry the stable tier");
+    "register: the batch-1 four carry the stable tier (runtimeReuse out since tl1855, three remain)");
   ok(LAB_TIER_ORDER[0] === "stable" && LAB_TIER_ORDER.length === 5,
     "LAB_TIER_ORDER puts stable first (strongest tier, 5 tiers)");
   // 任务 959：① tableWrap + ② sendTargetSelect 入表——可选 34→36（计数
@@ -115,17 +116,17 @@ console.log("\ntask 1005 lab stable tier (batch-1 transfer + locked display + de
     e.id,
     ...(e.members ?? []).map((m) => m.id),
   ])));
-  ok(layoutIds.has("autopilot") && layoutIds.has("sessionCollab") && layoutIds.has("runtimeReuse") && layoutIds.has("fullAccess"),
-    "layout data carries the four card bodies again (tl1741r2, no master switches)");
-  // runtimeReuse 无独立 rail 卡（资源治理卡成员行承载）——其稳定档经宿主卡
-  // 聚合展示（findLabEntry 只搜顶层 entry，成员直查=null 是预期形态）。
+  ok(layoutIds.has("autopilot") && layoutIds.has("sessionCollab") && layoutIds.has("fullAccess") && !layoutIds.has("runtimeReuse"),
+    "layout data carries the three stable card bodies (tl1741r2, no master switches); runtimeReuse display row out since tl1855");
+  // tl1855：runtimeReuse 展示行随件③下架（注册表/布局双出）——资源治理卡
+  // 容器档随成员最高档聚合规则 稳定→推荐；复用池实现与键保留（仅撤展示）。
   const govEntry = LAB_LAYOUT_DEFAULT_DATA.groups.flatMap((g) => g.entries).find((e) => e.id === "resourceGovernance");
   ok(labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "fullAccess") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "autopilot") === "stable" &&
      labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "sessionCollab") === "stable" &&
-     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "runtimeReuse") === null &&
-     Boolean(govEntry?.members?.some((m) => m.id === "runtimeReuse" && m.tier === "stable")),
-    "rail aggregation: the four stable bodies surface again — three as rail cards, runtimeReuse as the governance card's stable member row (tl1741r2; fullAccess remains the only one with a switch)");
+     !govEntry?.members?.some((m) => m.id === "runtimeReuse") &&
+     labEntryBadgeTier(LAB_LAYOUT_DEFAULT_DATA, "resourceGovernance") === "recommended",
+    "rail aggregation: the three stable rail cards surface; the governance card drops the reuse-pool row and aggregates to 推荐 (tl1855; fullAccess remains the only one with a switch)");
   // TierBadge 渲染 stable（轻渲染：类名 + 文案 + tooltip 键）。
   const dom = new JSDOM("<div id='root'></div>");
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });

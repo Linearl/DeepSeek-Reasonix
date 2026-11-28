@@ -151,8 +151,11 @@ var labBulkSetters = map[string]func(*Config, bool) error{
 	// tl1718：composer 工具组默认折叠（推荐档；布尔主开关，纯前端门），
 	// 随批量面。
 	"composerToolsFold": func(c *Config, on bool) error { return c.SetExperimentalComposerToolsFold(on) },
-	// tl 1132：启动遮罩（默认关；纯布尔展示开关，无护栏/前置，随批量面）。
-	"startupSplash": func(c *Config, on bool) error { return c.SetExperimentalStartupSplash(on) },
+	// tl1835：goalMode 激活确认弹窗（可选档；纯布尔开关，无护栏/前置，保存
+	// 即生效免重启，随批量面）。tl1855 随件收口预存红：tl1835 入表窗口漏登
+	// 记批量面（TestLabBulkSettersRegistryHygiene 门禁，基点 a70a178928 实红）。
+	"goalBudgetConfirm": func(c *Config, on bool) error { return c.SetGoalBudgetConfirm(on) },
+	// tl1855：startupSplash 批量条目随撤开关退役（遮罩恒显，件①）。
 	// 任务 1056：网络重试预算分级（[network.retry_budget] 总开关；family 子键
 	// （max_retries/dial_timeout_seconds 等）不进批量——批量只翻 enabled，
 	// 细粒度旋钮保持用户现值）。

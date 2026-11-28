@@ -70,8 +70,7 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 	orig.Desktop.ExperimentalSendTargetSelect = true // sendTargetSelect
 	// tl 1165：流式滚动平滑跟随（默认关=瞬移定位不变）。
 	orig.Desktop.ExperimentalSmoothScrollFollow = true // smoothScrollFollow
-	// tl 1132：启动遮罩（默认关=不渲染 splash）。
-	orig.Desktop.ExperimentalStartupSplash = true // startupSplash
+	// tl1855：startupSplash 随撤开关退役（遮罩恒显），测试行同步移除。
 	// 任务 686：工作流可视化面板（默认关）。
 	orig.Desktop.ExperimentalCompletionSummary = boolPtr(true) // completionSummary (*bool, nil means on)
 	orig.Agent.ExperimentalAutoLoadOlder = true                // autoLoadOlder ([agent] authoritative after task 473)
@@ -153,11 +152,10 @@ func TestRenderTOMLRoundTripsLabSwitches(t *testing.T) {
 		"experimental_table_wrap = true",
 		// 任务 959 ②：发送目标形态键无条件渲染（fixed-key-set rule）。
 		"experimental_send_target_select = true",
-		// tl 1165：流式滚动平滑跟随键无条件渲染（fixed-key-set rule）。
-		"experimental_smooth_scroll_follow = true",
-		// tl 1132：启动遮罩键无条件渲染（fixed-key-set rule）。
-		"experimental_startup_splash = true",
-		// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
+	// tl 1165：流式滚动平滑跟随键无条件渲染（fixed-key-set rule）。
+	"experimental_smooth_scroll_follow = true",
+	// tl1855：startup_splash 键随撤开关退役（遮罩恒显），期望行同步移除。
+	// 任务 686：工作流可视化面板键无条件渲染（fixed-key-set rule）。
 		// (workflow_panel/templates absent: tl1741 retired the switches.)
 		"experimental_question_search = true",
 		// tl1787 续作：pre-repair 自愈拼接开关键无条件渲染（fixed-key-set）。
