@@ -261,18 +261,36 @@ export class TurnEventProjector {
       this.gapQueueByTab.delete(tabId);
       const remaining: WireEvent[] = [];
       for (const live of pending) {
-        if (typeof live.seq !== "number" || live.seq <= 0) {
+        // tl1848: the terminal drain dispatch rides the same
+        // authoritative-replay flag as projectEnvelope below. Without it every
+        // drained live event re-entered acceptLive while this repair promise
+        // was still pending (its finally had not run, so repairByTab still
+        // held the tab) and was re-queued instead of delivered: the drain
+        // drained nothing, the cursor stalled right below the queued prompt
+        // card, and an ask waiting on a quiet turn — no further live events,
+        // no snapshot reconcile while the user keeps watching the tab — never
+        // mounted its panel (the tl1848 "session stuck waiting, no AskCard,
+        // no toast" shape). These events are already sequence-adjacent
+        // (cursor+1) by the drain's own admission, so the replay face is the
+        // correct admission path; fence/generation gates upstream in the
+        // handler keep adjudicating as before.
+        this.projectingReplayByTab.add(tabId);
+        try {
+          if (typeof live.seq !== "number" || live.seq <= 0) {
+            this.handler(live);
+            continue;
+          }
+          if (live.seq <= cursor) continue;
+          if (live.seq !== cursor + 1) {
+            remaining.push(live);
+            continue;
+          }
           this.handler(live);
-          continue;
+          cursor = live.seq;
+          this.sequenceByTab.set(tabId, cursor);
+        } finally {
+          this.projectingReplayByTab.delete(tabId);
         }
-        if (live.seq <= cursor) continue;
-        if (live.seq !== cursor + 1) {
-          remaining.push(live);
-          continue;
-        }
-        this.handler(live);
-        cursor = live.seq;
-        this.sequenceByTab.set(tabId, cursor);
       }
       if (remaining.length === 0) return;
       this.gapQueueByTab.set(tabId, remaining);
