@@ -1,7 +1,7 @@
-# 包120 release notes — v1.38.3-20261128-1030
+# 包120 release notes — v1.38.3-20261128-0916
 
 > 基线：包119（v1.38.3-20261127-2143，构建点 `f7c408fe3b`）
-> 构建点：`9e327c64ae`（main-v2-stable；zcode 侧五支+三语文案搭车件）
+> 构建点：`9e327c64ae`（main-v2-stable；zcode 侧五支+三语文案搭车件；三轮 rc=0——r1 node_modules 掏穿重装/r2 签名门抓 wailsjs 过期 regenerate+棗轮六线超线实测抬齐/r3 干净过）
 > 执行线：zcode 开发线（本批五支全量；reasonix 侧 9 件其线节奏另批并包，见候拍板）
 > <!-- claims: feat-tl1838,feat-tl1827d,feat-tl1845,feat-tl1835,feat-tl1837 -->
 
