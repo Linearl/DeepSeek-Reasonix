@@ -915,6 +915,13 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
   for (let modelIndex = models.length - 1; modelIndex >= 0; modelIndex -= 1) {
     const model = models[modelIndex];
     const modelRows: TranscriptRowWithLayout[] = [];
+    // tl1858: compaction-only segments（tl1701 flush 产物，tl1669 同步语义下
+    // 压缩在回合结束后跑）的行（fold 头 + 展开体）整体挪到 turn-actions 行
+    // 之后——进度卡此前插在回合内容与复制/工具按钮行之间，把按钮行压到下方
+    // （20261128 包121 装机截图）。整个段一起挪保证头与体不分离（体行只在
+    // 段 fold 展开时构建，头行是唯一入口）。混合段（压缩与工具/思考同段，
+    // mid-turn 压力压缩）保持原位——tl1701 的时序保真只对该形态有意义。
+    const turnTailCompactionRows: TranscriptRowWithLayout[] = [];
     const user = model.user;
     // Turn numbers come from the checkpoint-aware map, not the raw question
     // index, so rewind targets survive history paging.
@@ -925,8 +932,18 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
     for (const segment of model.segments) {
       if (segment.displayItems.length > 0) {
         const open = options.folds.get(segment.key)?.open ?? defaultFoldOpen(segment, foldExperience);
-        modelRows.push({ kind: "process-header", key: `ph:${segment.key}`, segment, open, layoutVariant: "static" });
-        if (open) modelRows.push(...processBodyRows(segment, renderExperience, subcallsByParent, groupingEnabled));
+        const segmentRows: TranscriptRowWithLayout[] = [
+          { kind: "process-header", key: `ph:${segment.key}`, segment, open, layoutVariant: "static" },
+        ];
+        if (open) segmentRows.push(...processBodyRows(segment, renderExperience, subcallsByParent, groupingEnabled));
+        if (
+          segment.processItems.length > 0
+          && segment.processItems.every((item) => item.kind === "compaction")
+        ) {
+          turnTailCompactionRows.push(...segmentRows);
+        } else {
+          modelRows.push(...segmentRows);
+        }
       }
       for (const item of segment.outsideItems) {
         if (item.kind === "extension") {
@@ -975,6 +992,11 @@ export function buildTranscriptRowBlocks(models: readonly TurnModel[], options: 
     ) {
       modelRows.push({ kind: "turn-actions", key: `ta:${user.id}`, turn, text: model.actionText, tally: turnTallyForActionsRow(model), tail: turnTailForActionsRow(model), layoutVariant: "static" });
     }
+    // tl1858: 回合尾锚定——压缩段行（头 + 展开体）落在 turn-actions 之后，
+    // 是本回合块的最后一批行；无 turn-actions 行（活跃回合/prelude）时落在
+    // 块尾，与既有段序（压缩段本就殿后）视觉等价。必须在去重循环之前合入，
+    // 键去重才覆盖挪位后的行。
+    modelRows.push(...turnTailCompactionRows);
     for (let index = modelRows.length - 1; index >= 0; index -= 1) {
       const row = modelRows[index];
       if (usedKeys.has(row.key)) modelRows[index] = { ...row, key: `${row.key}@${stableStringHash(`${turnStableIdentity(model)}|${row.kind}|${row.key}`)}` };
