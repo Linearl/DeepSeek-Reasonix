@@ -3,10 +3,10 @@
     "note": "tl1807 批次刷新（2026-11-25，基点 edd56a7ab5，全量 tsc 实跑重建）：登记 tsconfig.test.json 面（src/__tests__ + bench/transcript-layout.tsx）的全部存量类型诊断。本批构成=1061 条诊断 / 578 对 file+错误码，分布 385 个文件；Top 错误码 TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22。批次依据：2026-10-10 任务 745 立账（226 对/472 条）后测试面持续新增换代，基线未跟，多轮会话申报「基线外 N 条=预存漂移面」无批次依据（预存红集中清零-实施报告-20261124.md §五.5 实录 574/572 条、§八.3 候拍板；本批用户拍板五件批落地）。自本批起名单外新诊断即红（tsc-test-gate.mjs 比对，无自动刷新通道，条目只减不增——还清后人工核对删除对应行）。已知盲区（刻意取舍）：同文件同错误码的新增诊断会被基线吸收，换取行号/文案变化不产生假红。",
     "generated": "2026-11-25",
     "commit": "5cee2b49b",
-    "pairs": 572,
-    "diagnostics": 1061,
-    "files": 380,
-    "topCodes": "TS6133×171 TS2322×95 TS2345×44 TS2339×44 TS2353×30 TS2352×29 TS2739×23 TS2741×22",
+    "pairs": 586,
+    "diagnostics": 1081,
+    "files": 388,
+    "topCodes": "TS6133×173 TS2322×97 TS2339×48 TS2345×47 TS2353×30 TS2352×29 TS2739×23 TS2741×22",
     "history": [
       {
         "generated": "2026-10-10",
@@ -28,6 +28,13 @@
         "pairs": 576,
         "diagnostics": 1061,
         "note": "tl1826 首批清理还清 2 对（只减不增）：transcript-residency TS6133（文件随 A3 删除，诊断不可能再产生）、resource-governance TS6133（测试随 A2 修剪后该文件零诊断）；task686 TS2345+TS6133 经实跑核为仍存在的预存诊断（此前被条目吸收非还清），条目保留——tl701 pairs 同步先例"
+      },
+      {
+        "generated": "2026-11-28",
+        "commit": "598fd198c4",
+        "pairs": 586,
+        "diagnostics": 1081,
+        "note": "tl1756 轮次2 批次拍板（20261128 用户批 A）：退役 3 对（tl1703 文件已删悬空 2 对 + tl1776 TS6133 stale 1 对，深验双跑实锤）；登记 9 文件 17 对 23 条基线外（tl1817/tl1840/tl1848/tl1855r2/heartbeat-rebind/capabilities-panel-actions/composer-audio-gate-toast/task1814x-onboarding-bare-colors/tl1835 测试面新增未登记，双树实锤=tip 预存漂移，涉事文件 11-27/28 触碰晚于 tl1807 刷新；diagnostics 为推算 1061−3+23，pairs/files 为 entries 实算）。同批立进侧随件登记纪律：新增测试面件有类型诊断→随件报数候拍板（gate-metadata-retirement.md §进侧纪律 + workspace AGENTS.md fork 纪律）。"
       }
     ]
   },
@@ -1135,10 +1142,6 @@
     "src/__tests__/tl1701-compaction-anchor-below-stats.test.ts": [
       "TS2459"
     ],
-    "src/__tests__/tl1703-startup-splash-first-frame.test.ts": [
-      "TS2307",
-      "TS2345"
-    ],
     "src/__tests__/tl1704-question-jump-rail-visibility.test.tsx": [
       "TS6133"
     ],
@@ -1186,8 +1189,7 @@
     ],
     "src/__tests__/tl1776-stream-append-tail-bounce.test.tsx": [
       "TS18047",
-      "TS2440",
-      "TS6133"
+      "TS2440"
     ],
     "src/__tests__/tl1777-context-strip-budget.test.tsx": [
       "TS2322",
@@ -1362,6 +1364,41 @@
     ],
     "src/__tests__/workspace-turn-verification.test.tsx": [
       "TS2322",
+      "TS6133"
+    ],
+    "src/__tests__/capabilities-panel-actions.test.ts": [
+      "TS2551",
+      "TS7006"
+    ],
+    "src/__tests__/composer-audio-gate-toast.test.tsx": [
+      "TS2322"
+    ],
+    "src/__tests__/heartbeat-rebind.test.tsx": [
+      "TS2339",
+      "TS2345",
+      "TS7006"
+    ],
+    "src/__tests__/task1814x-onboarding-bare-colors.test.ts": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1817-mimo-tts.test.tsx": [
+      "TS2345",
+      "TS2349"
+    ],
+    "src/__tests__/tl1835-goal-budget-confirm.test.tsx": [
+      "TS6133"
+    ],
+    "src/__tests__/tl1840-folded-popover-anchor.test.tsx": [
+      "TS2322",
+      "TS2769"
+    ],
+    "src/__tests__/tl1848-ask-live-arrival.test.tsx": [
+      "TS18048",
+      "TS2339"
+    ],
+    "src/__tests__/tl1855r2-acp-row-lab-style.test.tsx": [
+      "TS18048",
+      "TS2345",
       "TS6133"
     ]
   }
