@@ -2119,6 +2119,11 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 			"status":            takeoverStatePending,
 			"session":           name,
 			"pollWindowSeconds": int(agent.SessionTakeoverYieldWindow / time.Second),
+			// tl1854 R4: the desktop prompt's veto window (R3) so the remote
+			// client can render "auto-allows after Ns" without hardcoding it
+			// (handoff §3.1: carry the window in the response, not per-end
+			// constants).
+			"vetoWindowSeconds": int(agent.SessionTakeoverVetoWindow / time.Second),
 		})
 		return
 	}

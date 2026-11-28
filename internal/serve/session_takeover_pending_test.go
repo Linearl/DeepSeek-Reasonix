@@ -96,11 +96,20 @@ func TestTakeoverSessionPendingUntilDesktopYields(t *testing.T) {
 		t.Fatalf("takeover status = %d, want 202 pending (body %q)", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		Status  string `json:"status"`
-		Session string `json:"session"`
+		Status            string `json:"status"`
+		Session           string `json:"session"`
+		PollWindowSeconds int    `json:"pollWindowSeconds"`
+		VetoWindowSeconds int    `json:"vetoWindowSeconds"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Status != "pending" || body.Session != "target" {
 		t.Fatalf("202 body = %q (err %v), want pending/target", rec.Body.String(), err)
+	}
+	// tl1854 R4: both windows ride the body so clients never hardcode them.
+	if body.PollWindowSeconds != int(agent.SessionTakeoverYieldWindow/time.Second) {
+		t.Fatalf("pollWindowSeconds = %d, want %d", body.PollWindowSeconds, int(agent.SessionTakeoverYieldWindow/time.Second))
+	}
+	if body.VetoWindowSeconds != int(agent.SessionTakeoverVetoWindow/time.Second) {
+		t.Fatalf("vetoWindowSeconds = %d, want %d", body.VetoWindowSeconds, int(agent.SessionTakeoverVetoWindow/time.Second))
 	}
 	raw, err := os.ReadFile(marker)
 	if err != nil {
