@@ -63,7 +63,7 @@ func (s *Store) DiscardPendingItems(ids []string) error {
 // DiscardPendingItemsOwned atomically removes pending IDs belonging to source.
 // Foreign-source IDs are ignored so one frontend cannot cancel another.
 func (s *Store) DiscardPendingItemsOwned(ids []string, source string) error {
-	_, err := s.discardPendingItemsOwnedResult(ids, source, true)
+	_, err := s.DiscardPendingItemsOwnedMetasResultStrict(ids, source)
 	return err
 }
 
@@ -72,10 +72,38 @@ func (s *Store) DiscardPendingItemsOwned(ids []string, source string) error {
 // already crossed the durable delivery boundary are ignored instead of making
 // a mixed batch fail as a whole.
 func (s *Store) DiscardPendingItemsOwnedResult(ids []string, source string) ([]string, error) {
-	return s.discardPendingItemsOwnedResult(ids, source, false)
+	metas, err := s.discardPendingItemsOwnedMetas(ids, source, false)
+	if err != nil {
+		return nil, err
+	}
+	return InboxItemIDs(metas), nil
 }
 
-func (s *Store) discardPendingItemsOwnedResult(ids []string, source string, strict bool) ([]string, error) {
+// DiscardPendingItemsOwnedMetasResult is DiscardPendingItemsOwnedResult with
+// the full item metadata (tl1747): the cancel observation line needs each
+// discarded item's CollabMailTo / Source coordinates, which bare IDs cannot
+// carry. The removal semantics are identical.
+func (s *Store) DiscardPendingItemsOwnedMetasResult(ids []string, source string) ([]InboxItemMeta, error) {
+	return s.discardPendingItemsOwnedMetas(ids, source, false)
+}
+
+// DiscardPendingItemsOwnedMetasResultStrict is the strict-mode variant used by
+// DiscardPendingItemsOwned (any non-cancellable selected item fails the whole
+// batch). It exists so the exported wrapper keeps its error-only contract.
+func (s *Store) DiscardPendingItemsOwnedMetasResultStrict(ids []string, source string) ([]InboxItemMeta, error) {
+	return s.discardPendingItemsOwnedMetas(ids, source, true)
+}
+
+// InboxItemIDs projects item metadata onto the bare-ID contract.
+func InboxItemIDs(metas []InboxItemMeta) []string {
+	out := make([]string, 0, len(metas))
+	for _, item := range metas {
+		out = append(out, item.ID)
+	}
+	return out
+}
+
+func (s *Store) discardPendingItemsOwnedMetas(ids []string, source string, strict bool) ([]InboxItemMeta, error) {
 	if s == nil {
 		return nil, ErrClosed
 	}
@@ -86,7 +114,7 @@ func (s *Store) discardPendingItemsOwnedResult(ids []string, source string, stri
 		}
 	}
 	if len(wanted) == 0 {
-		return []string{}, nil
+		return []InboxItemMeta{}, nil
 	}
 
 	s.mu.Lock()
@@ -135,7 +163,7 @@ func (s *Store) discardPendingItemsOwnedResult(ids []string, source string, stri
 		kept = append(kept, item)
 	}
 	if len(removed) == 0 {
-		return []string{}, nil
+		return []InboxItemMeta{}, nil
 	}
 	next.Items = kept
 	now := time.Now().UTC()
@@ -155,11 +183,7 @@ func (s *Store) discardPendingItemsOwnedResult(ids []string, source string, stri
 		s.removeBlobLocked(blobNameFor(item))
 	}
 	s.notifyLocked(s.snapshotLocked())
-	discarded := make([]string, 0, len(removed))
-	for _, item := range removed {
-		discarded = append(discarded, item.ID)
-	}
-	return discarded, nil
+	return removed, nil
 }
 
 // MoveItem reorders the queue. toIndex is 0-based; values past the end append.
