@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"log"
 	"log/slog"
 	"net"
@@ -35,6 +36,12 @@ type Config struct {
 	// PortFileDir is where per-project serve.port / serve.token files are
 	// written; defaults to the project's .reasonix directory.
 	PortFileDir string
+	// ServeLogDir overrides the directory the persisted serve instance log
+	// (serve.log, tl1867) is written to; defaults to
+	// <MemoryUserDir>/projects/<config.WorkspaceSlug(root)>/logs/. Empty
+	// keeps the default. The outlet is best-effort either way — an
+	// unwritable log dir never fails the spawn (detach-only, servelog.go).
+	ServeLogDir string
 	// IdleTimeout is how long a project serve may sit without traffic before
 	// being reclaimed. Default 15 minutes; the [serve.pool] config key
 	// idle_timeout_seconds overrides it.
@@ -121,9 +128,15 @@ type project struct {
 	// (task 272 L2): it reaps this serve whenever the desktop dies by ANY
 	// path — taskkill, crash, watchdog exit — so an orphan can never keep a
 	// session lease held (incident ②④).
-	job           uintptr
-	port          int
-	token         string
+	job   uintptr
+	port  int
+	token string
+	// serveLog is the persisted instance log outlet (tl1867, servelog.go).
+	// Set on a successful spawn, closed and cleared on every stop path —
+	// without it the serve's slog only lives in the 8KB tailBuffer and is
+	// lost on exit. Same lifecycle as cmd/job: written by spawn, torn down
+	// by stopLocked.
+	serveLog      *serveLogFile
 	lastUse       time.Time
 	failures      int
 	degradedUntil time.Time
@@ -501,6 +514,15 @@ func (m *Manager) stopLocked(p *project) {
 		proc.KillTracked(p.cmd, p.job)
 		_, _ = p.cmd.Process.Wait()
 	}
+	// tl1867: flush and close the persisted instance log on every stop path
+	// (Manager.Close / idle reclaim / RefreshProjects all funnel here). The
+	// wait above does not wait for exec's pipe copiers, so a straggler write
+	// racing this close is dropped (counted in the file's closing summary);
+	// everything captured before the kill is queued and drained by Close.
+	if p.serveLog != nil {
+		p.serveLog.Close()
+		p.serveLog = nil
+	}
 	p.cmd = nil
 	p.job = 0
 	p.port = 0
@@ -536,8 +558,20 @@ func (m *Manager) spawn(p *project) error {
 	// becomes ready leaves the failure reason in the log (task 248: a silent
 	// 8s timeout used to hide "serve: unknown command" from a wrong binary).
 	out := &tailBuffer{max: 8 * 1024}
-	cmd.Stdout = out
-	cmd.Stderr = out
+	// tl1867: tee the same capture into the persisted per-project serve log
+	// (projects/<slug>/logs/serve.log) so instance-side slog survives the
+	// process — the tailBuffer alone is lost on exit. The outlet is async,
+	// bounded and best-effort; nil keeps the historical tailBuffer-only
+	// capture untouched (detach-only).
+	serveLog := m.newServeLogFor(p)
+	var sink io.Writer = out
+	if serveLog != nil {
+		// Both legs never return an error, so the MultiWriter stays
+		// error-free and neither stream can be cut short by the other.
+		sink = io.MultiWriter(out, serveLog)
+	}
+	cmd.Stdout = sink
+	cmd.Stderr = sink
 	// Task 272 L2 (iron rule 4): start inside a Job Object instead of a bare
 	// proc.Command start — KILL_ON_JOB_CLOSE reaps the serve on ANY desktop
 	// death (taskkill/crash/watchdog exit), so it can never linger holding a
@@ -545,9 +579,19 @@ func (m *Manager) spawn(p *project) error {
 	// the job IS the orphan bug this fixes.
 	job, err := proc.StartTrackedRequired(cmd)
 	if err != nil {
+		// No child was started, so no further output can arrive. Flush the
+		// header line and release the outlet before reporting the failure.
+		if serveLog != nil {
+			serveLog.Close()
+		}
 		m.markFailed(p, fmt.Errorf("spawn serve: %w", err))
 		log.Printf("[servepool] spawn serve failed project=%q bin=%q: %v", p.id, m.bin, err)
 		return err
+	}
+	if serveLog != nil {
+		// Record the child pid in the persisted log so a run can be
+		// cross-referenced with serve.spawn and pid-based forensics.
+		serveLog.noteChildPID(cmd.Process.Pid)
 	}
 	p.cmd = cmd
 	p.job = job
@@ -601,6 +645,9 @@ func (m *Manager) spawn(p *project) error {
 				p.lastUse = time.Now()
 				p.failures = 0
 				p.err = ""
+				// tl1867: the outlet lives as long as the serve does; every
+				// stop path closes it via stopLocked.
+				p.serveLog = serveLog
 				m.mu.Unlock()
 				ready = true
 				return nil
@@ -611,6 +658,14 @@ func (m *Manager) spawn(p *project) error {
 	// Task 272 L2: kill through the Job so a wedged spawn's descendants go too.
 	proc.KillTracked(cmd, job)
 	_, _ = cmd.Process.Wait()
+	// tl1867: flush the wedged spawn's captured output to the persisted log
+	// before reporting failure — the tailBuffer summary below still rides the
+	// error, and the file now keeps the full capture. A straggler copier
+	// write racing this close is dropped (and counted in the file's summary).
+	if serveLog != nil {
+		serveLog.Close()
+		serveLog = nil
+	}
 	p.cmd = nil
 	p.job = 0
 	// Task 1049: a bare "did not become ready within Xs" forced every
