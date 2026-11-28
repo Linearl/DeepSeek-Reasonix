@@ -99,11 +99,16 @@ var sessionBackupAllowlist = map[string]struct{}{
 	"guardian" + store.SessionDisplayIndexSuffix: {},
 	"guardian" + store.SessionEventIndexSuffix:   {},
 	"guardian.cursor.json":                       {},
-	// tl1850：tl1841 曾对 guardian 家族同批补登 conflict-preserved/splices/
-	// rewritelog 三审计键——实施重核三键均无 guardian 写入方（takeover 保全
-	// 梯子只挂主会话、desktop 拼接链 owner 恒主会话、rewritelog 四个入队源对
-	// guardian 会话无触发面），tl1850 清单收窄后清单侧不再派生 guardian 版，
-	// 三死键同 commit 删除。主会话三键（上方 TrimPrefix 行）不受影响。
+	// tl1850r2：tl1841 曾对 guardian 家族同批补登三审计键，tl1850 收窄时
+	// 误删 rewritelog——枚举四个入队源漏数了 guardian 自己（internal/guardian
+	// 合并连续用户消息走 Session.Rewrite("guardian_merge")，flush 以 guardian
+	// 转录路径为持久基线落 <stem>.guardian.rewritelog.jsonl；磁盘实锤
+	// 2026-11-24 活跃写入）。白名单缺键 = 转正链「先归档后换位」对它零归档
+	// （backupSessionFiles 白名单 skip 只留 Info），已实测复现。键随清单
+	// （SessionGuardianSidecarFiles）同 commit 补回。conflict-preserved/
+	// splices 维持收窄（无 guardian 写入方结论不变）。主会话三键（上方
+	// TrimPrefix 行）不受影响。
+	"guardian" + store.SessionRewriteAttributionLogSuffix: {},
 }
 
 // SelfHealOptions picks which repair steps run. Every step is independent and

@@ -21,16 +21,20 @@ import (
 // 纪律）都是 Go 守卫测试。故本门禁落包级测试；check-fork-integrity 另补
 // 锚段防上游 merge 静默丢行（该脚本职责即 fork-only 特征锚）。
 //
-// 存量欠账口径（tl1850 已清偿）：静态换位清单里 guardian 家族的派生数据侧车
-// 只有核心 6 键在白名单（meta/events/转录/双 index/cursor），其余 11 键是
-// tl1841 门禁首跑实测出的存量缺口（G2 同机制存量面），按「上限+新增即红」
-// 纪律显式登记在 exemptions 里。tl1849 实证这 11 键 guardian 路径写入方缺失
-// +磁盘零实例（构造器对 guardianPath 全量重跑主会话侧车构造器的理论派生面），
-// tl1850 据此收窄：清单侧改走 SessionGuardianSidecarFiles（实际数据面），
-// 豁免表对应 11 键同 commit 删除；guardian.repairlog.jsonl 豁免键也随清单
-// 收窄失去清单来源，按表内纪律一并删（共 12 键出表，repairlog 主会话键
-// 保留）——清单里没有→不要求白名单；未来若真新增 guardian 派生写入方，
-// 写入方须同 commit 登记两处清单（门禁纪律照常覆盖）。
+// 存量欠账口径（tl1850 已清偿，tl1850r2 修正一处误判）：静态换位清单里
+// guardian 家族的派生数据侧车只有核心 6 键在白名单（meta/events/转录/
+// 双 index/cursor），其余 11 键是 tl1841 门禁首跑实测出的存量缺口（G2 同
+// 机制存量面），按「上限+新增即红」纪律显式登记在 exemptions 里。tl1849
+// 实证这 11 键 guardian 路径写入方缺失+磁盘零实例（构造器对 guardianPath
+// 全量重跑主会话侧车构造器的理论派生面），tl1850 据此收窄：清单侧改走
+// SessionGuardianSidecarFiles（实际数据面），豁免表对应 11 键同 commit
+// 删除；guardian.repairlog.jsonl 豁免键也随清单收窄失去清单来源，按表内
+// 纪律一并删（共 12 键出表，repairlog 主会话键保留）——清单里没有→不要求
+// 白名单。tl1850r2：rewritelog 键的「无写入方」判定错了——guardian 自己
+// 是第五入队源（guardian_merge → Session.Rewrite → flush 落
+// <stem>.guardian.rewritelog.jsonl，磁盘实锤 2026-11-24），清单与白名单
+// 双位已同 commit 补回；其余收窄结论不变。未来若真新增 guardian 派生
+// 写入方，写入方须同 commit 登记两处清单（门禁纪律照常覆盖）。
 
 // tl1841AllowlistExemptions 是差集门禁的显式豁免登记（键=stem 相对 rel）。
 // 每个键必须给出理由；豁免被清（对应 rel 从清单消失）后应同步删键。

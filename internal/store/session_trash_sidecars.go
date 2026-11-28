@@ -60,14 +60,22 @@ func SessionTrashSidecars(sessionPath string) []string {
 // SessionGuardianSidecarFiles returns the data sidecars the guardian
 // companion session actually produces (tl1850). Guardian saves go through the
 // same session layer, but the guardian conversation only ever writes and
-// consumes its transcript, replay cursor, meta, event log, and the two
-// indexes — goal state, recovery, projection context, turn/conflict ledgers,
-// and the diagnostic/audit sidecars have no writer on the guardian path
-// (field-measured zero instances; tl1849). The inventory used to re-run
-// SessionSidecarFiles on the guardian path, which drafted those eleven
-// never-produced shapes into every deletion chain as phantom entries; the
-// stem-prefix catch-all sweep at each call site still covers any shape this
-// narrowed list stops naming.
+// consumes its transcript, replay cursor, meta, event log, the two indexes,
+// and its rewrite-attribution journal — goal state, recovery, projection
+// context, turn/conflict ledgers, and the remaining diagnostic/audit sidecars
+// have no writer on the guardian path (field-measured zero instances;
+// tl1849). The inventory used to re-run SessionSidecarFiles on the guardian
+// path, which drafted those eleven never-produced shapes into every deletion
+// chain as phantom entries; the stem-prefix catch-all sweep at each call site
+// still covers any shape this narrowed list stops naming.
+//
+// tl1850r2: the rewrite-attribution journal belongs on this real data face —
+// the guardian itself is an enqueue source (internal/guardian merges
+// consecutive user turns via Session.Rewrite("guardian_merge"), whose flush
+// persists to SessionRewriteAttributionLog(guardianPath); on-disk instance
+// measured 2026-11-24). tl1850 mis-scoped the "no writer" audit to four
+// enqueue sources and dropped this key from both this inventory and the
+// backup allowlist, leaving promotion with zero archive preservation for it.
 func SessionGuardianSidecarFiles(guardianPath string) []string {
 	guardianPath = strings.TrimSpace(guardianPath)
 	if guardianPath == "" {
@@ -78,6 +86,7 @@ func SessionGuardianSidecarFiles(guardianPath string) []string {
 		SessionEventLog(guardianPath),
 		SessionEventIndex(guardianPath),
 		SessionDisplayIndex(guardianPath),
+		SessionRewriteAttributionLog(guardianPath),
 	}
 }
 
