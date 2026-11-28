@@ -1,7 +1,7 @@
-# 包121 release notes — v1.38.3-20261128-1130
+# 包121 release notes — v1.38.3-20261128-1248
 
 > 基线：包120（v1.38.3-20261128-0916，构建点 `9e327c64ae`；含 notes 校准/棘轮抬齐两治理 commit）
-> 构建点：`0237fad233`（main-v2-stable；八支全量+tl1851r2 红收口）
+> 构建点：`0237fad233`（main-v2-stable；八支全量+tl1851r2 红收口+修锚/热修两治理 commit；三轮 rc=0——r1 integrity 锚拦空格漂移修锚/r2 签名门拦 wailsjs 过期 regenerate/r3 干净过）
 > 执行线：zcode 开发线（reasonix 侧转派 9 件全量由 zcode 子代理执行交付）
 > <!-- claims: feat-tl1846,feat-tl1800x,feat-tl1848,feat-tl1855,feat-tl1854,feat-tl1851,feat-tl1847,feat-tl1741x -->
 
