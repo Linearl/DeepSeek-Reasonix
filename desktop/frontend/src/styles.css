@@ -75,6 +75,25 @@
   --brand-qq: #ff5a3d;
   --brand-lark: #4f7dff;
   --brand-weixin: #22b35f;
+  /* tl1800 batch 2 (tl1814 plan B4 registry): high-frequency status pairs,
+     definition value = the replaced literal (same-value, zero visual delta).
+     --status-* are shared state colors (collab / taskmonitor / menu danger);
+     --im-* are the approximate IM platform palette (tailwind 500/600 pairs —
+     distinct from the official --brand-* identities above); --onboarding-*
+     are the onboarding error row colors, component-scoped per tl1814 naming. */
+  --status-done: #2e9e5b;
+  --status-blocked: #d9534f;
+  --status-error: #ef4444;
+  --status-ok-bright: #4ade80;
+  --status-danger-hover: #e5534b;
+  --im-generic: #3b82f6;
+  --im-generic-deep: #2563eb;
+  --im-feishu: #0ea5e9;
+  --im-feishu-deep: #0284c7;
+  --im-weixin: #22c55e;
+  --im-weixin-deep: #16a34a;
+  --onboarding-error-text: #ff8b7a;
+  --onboarding-error-tint: rgb(255, 70, 70);
   --global-font-scale: 1;
   --font-scale: var(--global-font-scale);
   --text-2xs: calc(10px * var(--font-scale));
@@ -4480,13 +4499,13 @@ a[href] {
   border-color: color-mix(in srgb, var(--accent, #22c55e) 40%, var(--border-soft));
 }
 .collab-card__status--done {
-  color: #2e9e5b;
-  border-color: color-mix(in srgb, #2e9e5b 40%, var(--border-soft));
+  color: var(--status-done);
+  border-color: color-mix(in srgb, var(--status-done) 40%, var(--border-soft));
 }
 .collab-card__status--blocked,
 .collab-card__status--failed {
-  color: #d9534f;
-  border-color: color-mix(in srgb, #d9534f 45%, var(--border-soft));
+  color: var(--status-blocked);
+  border-color: color-mix(in srgb, var(--status-blocked) 45%, var(--border-soft));
 }
 .collab-card__fields {
   display: grid;
@@ -12214,7 +12233,7 @@ button.statusbar__mcp:focus-visible {
 
 :root[data-theme="dark"] .prompt-shelf__card,
 :root[data-theme="dark"][data-theme-style] .prompt-shelf__card {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--highlight-color) 8%, transparent);
 }
 .prompt-shelf__content {
   display: grid;
@@ -17933,18 +17952,18 @@ button.statusbar__mcp:focus-visible {
 }
 .badge--project {
   color: var(--ok);
-  border-color: rgba(116, 184, 122, 0.4);
+  border-color: color-mix(in srgb, var(--ok) 40%, transparent);
 }
 .badge--local {
   color: var(--warn);
-  border-color: rgba(217, 164, 65, 0.4);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
 }
 .badge--ancestor {
   color: var(--fg-faint);
 }
 .badge--feedback {
   color: var(--warn);
-  border-color: rgba(217, 164, 65, 0.4);
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
 }
 .badge--reference {
   color: var(--accent);
@@ -20866,7 +20885,7 @@ button.statusbar__mcp:focus-visible {
 }
 .hist-item__badge--current { color: var(--accent); }
 .hist-item__badge--current::before { background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.hist-item__badge--open::before { background: #3b82f6; }
+.hist-item__badge--open::before { background: var(--im-generic); }
 .hist-item__badge--deleted::before { background: var(--fg-faint); }
 /* tl1429d2: trash 同族合并明细里的副本徽标（recovery-<hex8> 区分各副本桶）。 */
 .hist-item__badge--copy { color: var(--accent); }
@@ -28432,9 +28451,9 @@ button.statusbar__mcp:focus-visible {
 .onboarding__error {
   font-size: var(--text-sm);
   line-height: 1.5;
-  color: #ff8b7a;
-  background: rgba(255, 70, 70, 0.08);
-  border: 1px solid rgba(255, 70, 70, 0.25);
+  color: var(--onboarding-error-text);
+  background: color-mix(in srgb, var(--onboarding-error-tint) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--onboarding-error-tint) 25%, transparent);
   border-radius: var(--radius-sm);
   padding: 8px 10px;
 }
@@ -29106,19 +29125,19 @@ button.statusbar__mcp:focus-visible {
   max-width: 160px;
   height: 18px;
   padding: 0 6px;
-  border: 1px solid color-mix(in srgb, #0ea5e9 18%, var(--border-soft));
+  border: 1px solid color-mix(in srgb, var(--im-feishu) 18%, var(--border-soft));
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, #0ea5e9 8%, transparent);
-  color: color-mix(in srgb, #0284c7 76%, var(--fg-dim));
+  background: color-mix(in srgb, var(--im-feishu) 8%, transparent);
+  color: color-mix(in srgb, var(--im-feishu-deep) 76%, var(--fg-dim));
   font-size: var(--text-xs);
   font-weight: 620;
   line-height: 1;
 }
 
 .topicbar__source-chip--weixin {
-  border-color: color-mix(in srgb, #22c55e 18%, var(--border-soft));
-  background: color-mix(in srgb, #22c55e 8%, transparent);
-  color: color-mix(in srgb, #16a34a 76%, var(--fg-dim));
+  border-color: color-mix(in srgb, var(--im-weixin) 18%, var(--border-soft));
+  background: color-mix(in srgb, var(--im-weixin) 8%, transparent);
+  color: color-mix(in srgb, var(--im-weixin-deep) 76%, var(--fg-dim));
 }
 
 .topicbar__action-btn {
@@ -30480,8 +30499,8 @@ button.statusbar__mcp:focus-visible {
   gap: 3px;
   padding: 0 5px;
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, #3b82f6 10%, transparent);
-  color: color-mix(in srgb, #2563eb 78%, var(--fg-dim));
+  background: color-mix(in srgb, var(--im-generic) 10%, transparent);
+  color: color-mix(in srgb, var(--im-generic-deep) 78%, var(--fg-dim));
   font-size: 10.5px;
   font-weight: 650;
   line-height: 1;
@@ -30499,14 +30518,14 @@ button.statusbar__mcp:focus-visible {
 }
 
 .project-tree__topic-im--weixin {
-  background: color-mix(in srgb, #22c55e 11%, transparent);
-  color: color-mix(in srgb, #16a34a 78%, var(--fg-dim));
+  background: color-mix(in srgb, var(--im-weixin) 11%, transparent);
+  color: color-mix(in srgb, var(--im-weixin-deep) 78%, var(--fg-dim));
 }
 
 .project-tree__topic-im--feishu,
 .project-tree__topic-im--lark {
-  background: color-mix(in srgb, #0ea5e9 11%, transparent);
-  color: color-mix(in srgb, #0284c7 78%, var(--fg-dim));
+  background: color-mix(in srgb, var(--im-feishu) 11%, transparent);
+  color: color-mix(in srgb, var(--im-feishu-deep) 78%, var(--fg-dim));
 }
 
 .project-tree__topic-status {
@@ -30868,7 +30887,7 @@ button.statusbar__mcp:focus-visible {
 
 .context-menu__item--danger:not(:disabled):hover,
 .context-menu__item--danger:not(:disabled):focus-visible {
-  color: #e5534b !important;
+  color: var(--status-danger-hover) !important;
 }
 
 .transcript-selection-action {
@@ -40539,7 +40558,7 @@ button.statusbar__mcp:focus-visible {
 .taskmonitor--popover .taskmonitor__body { max-height:calc(min(72vh, 680px) - 44px); }
 .taskmonitor__category-title { padding:10px 16px 4px; color:var(--fg-dim,#aaa); font-size: var(--text-xs); font-weight:650; text-transform:uppercase; letter-spacing:.06em; }
 .taskmonitor__state { display:flex; align-items:center; gap:8px; padding:16px; font-size: var(--text-md); color:var(--muted,#888); }
-.taskmonitor__state--error { color:#ef4444; }
+.taskmonitor__state--error { color:var(--status-error); }
 .taskmonitor__task { border-bottom:1px solid var(--border,#2a2a2a); }
 .taskmonitor__task-head { display:flex; align-items:center; }
 .taskmonitor__expand { display:flex; align-items:center; gap:6px; width:100%; min-height:32px; padding:6px 12px; background:none; border:0; color:inherit; cursor:pointer; font-size: var(--text-sm); }
@@ -40565,8 +40584,8 @@ button.statusbar__mcp:focus-visible {
 .taskmonitor__confirm-actions { display:flex; gap:8px; }
 .taskmonitor__confirm .taskmonitor__confirm-stop { border-color:var(--danger,#ef4444); background:var(--danger,#ef4444); color:var(--text-on-color); font-weight:650; }
 .taskmonitor__confirm .taskmonitor__confirm-stop:hover:not(:disabled),.taskmonitor__confirm .taskmonitor__confirm-stop:focus-visible { border-color:var(--danger,#ef4444); outline-color:color-mix(in srgb,var(--danger,#ef4444) 42%,transparent); }
-.taskmonitor__error { color:#ef4444; margin-top:6px; }
-.taskmonitor__message { color:#4ade80; margin-top:6px; }
+.taskmonitor__error { color:var(--status-error); margin-top:6px; }
+.taskmonitor__message { color:var(--status-ok-bright); margin-top:6px; }
 
 /* Integrated terminal */
 :root {
