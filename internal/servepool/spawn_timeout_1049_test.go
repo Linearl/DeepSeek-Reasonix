@@ -32,6 +32,13 @@ func TestMain(m *testing.M) {
 // ready: it prints the marker on both streams and then sits silent — no port
 // file — so the spawn always rides the timeout path with captured output.
 func runFakeServeHelper() {
+	// tl1867: ready-mode dispatch — the persisted-serve-log tests need a
+	// helper that becomes ready, runs, and is killed by the pool (see
+	// servelog_tl1867_test.go runReadyServeHelperTL1867).
+	if os.Getenv("REASONIX_SERVEPOOL_HELPER_READY") == "1" {
+		runReadyServeHelperTL1867()
+		return
+	}
 	const marker = "SERVEPOOL1049 fake serve output"
 	_, _ = os.Stdout.WriteString(marker + " (stdout)\n")
 	_, _ = os.Stderr.WriteString(marker + " (stderr)\n")
