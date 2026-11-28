@@ -5,9 +5,57 @@
   },
   "entries": [
     {
-      "package": "desktop",
+      "package": "reasonix/desktop",
+      "reason": "desktop 全包 30m 超时=病态变慢非断言红（挂死排查报告 docs/reasonix/report/desktop-全包挂死排查-20261128.md：probeBash 探测缓存被测试环境结构性击穿——fresh REASONIX_HOME 清空持久缓存+inventory 30s TTL 过期即全量重探，3925 测试×1.87s≈122min，超时 victim 无差别每轮不同、单跑全绿）。tl1819 语义边界：本条目只放行 desktop 包级聚合事件（超时 panic/聚合 fail），测试级断言红不受此条目影响仍逐条拦截。M1 治本（tl1862 desktop TestMain PinResolveShellForTest）落地后应退役",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 用户四项拍板 20261128 M5"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestStampExecutableSupportsWindowsReleaseArchitectures",
+      "reason": "已知巨慢（挂死排查三轮取样实测 56.97s，出包族多架构重编译），病态变慢环境下的时敏 victim 候选；非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round1.log）"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestLegacyClassicLayoutQuickClicksSerializeWorkspaceRebuild",
+      "reason": "已知巨慢（挂死排查三轮取样实测 42.27s，多轮 rebuild 族），病态变慢环境下的时敏 victim 候选；非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round2.log）"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestCompactReconcilesStaleWorkspaceBeforeCompaction",
+      "reason": "已知巨慢（挂死排查三轮取样实测 41.05s，多轮 rebuild 族），病态变慢环境下的时敏 victim 候选；非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round2.log）"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestWorkbenchLayoutQuickClicksSerializeWorkspaceRebuild",
+      "reason": "已知巨慢（挂死排查三轮取样实测 38.33s，多轮 rebuild 族——报告 §二「最大 38.3s」即此条），病态变慢环境下的时敏 victim 候选；非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round2.log）"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestEffortCommandUsesPinnedSessionOwnerBeforeStaleWorkspaceRoot",
+      "reason": "已知巨慢（挂死排查三轮取样实测 33.40s，时敏 victim 候选；该轮 FAIL 属病态变慢挤压断言窗口，串行健康环境下同族 count=3 全绿——tl1846 判例），非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round2.log）"
+    },
+    {
+      "package": "reasonix/desktop",
+      "test": "TestEnsureBlankTabStartsProjectRuntimeWithCurrentWorkspaceContext",
+      "reason": "已知巨慢（挂死排查三轮取样实测 28.73s，boot 链族），病态变慢环境下的时敏 victim 候选；非断言红",
+      "registered": "2026-11-28",
+      "source": "tl1862 / 挂死排查报告 20261128 §复现取样表（round3.log）"
+    },
+    {
+      "package": "reasonix/desktop",
       "test": "TestRunShell_HeredocCancelReleasesTurn",
-      "reason": "主线同红实证（tl1607 回板 2026-11-15：本轮实证主线同红，建议补进在案清单）",
+      "reason": "主线同红实证（tl1607 回板 2026-11-15：本轮实证主线同红，建议补进在案清单）。tl1862 口径修正 2026-11-28：package 由 desktop 改为 reasonix/desktop——checker 精确匹配 go test -json 的 Package 字段（module path），原值永不命中（死条目）；spot 实证 desktop 嵌套 module 输出 reasonix/desktop",
       "registered": "2026-11-15",
       "source": "to-main tl1607 DONE 块"
     }
