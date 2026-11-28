@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"reasonix/internal/agent"
 	"reasonix/internal/servepool"
 )
 
@@ -33,11 +34,11 @@ import (
 // deadline now ALLOWS the takeover (walking the same non-interrupting yield
 // path as an explicit accept). It used to resolve as a refusal, which made
 // takeover unusable exactly when it matters (nobody at the desktop), and
-// shared the 539 T2 yield-window constant. The veto window is independent and
-// shorter: a present desktop user needs only a moment to click 拒绝.
-// A logged-in GC reads the window from the takeover response's
-// pollWindowSeconds / vetoWindowSeconds rather than hardcoding it (see R4).
-const gatewayTakeoverVetoWindow = 10 * time.Second
+// shared the 539 T2 yield-window constant. The single source lives in
+// internal/agent (SessionTakeoverVetoWindow) so serve can expose it in the
+// 202 body (vetoWindowSeconds, handoff R4) instead of the ends each
+// hardcoding one.
+const gatewayTakeoverVetoWindow = agent.SessionTakeoverVetoWindow
 
 // gatewayTakeoverVetoWindowForTest lets tests shrink the veto window.
 var gatewayTakeoverVetoWindowForTest = gatewayTakeoverVetoWindow
