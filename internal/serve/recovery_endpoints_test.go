@@ -17,6 +17,7 @@ import (
 type pendingPromptAPI struct {
 	control.SessionAPI
 	compactInstructions string
+	compactTrigger      string
 }
 
 func (p *pendingPromptAPI) ReplayPendingPromptsTo(sink event.Sink) {
@@ -25,6 +26,14 @@ func (p *pendingPromptAPI) ReplayPendingPromptsTo(sink event.Sink) {
 
 func (p *pendingPromptAPI) Compact(_ context.Context, instructions string) error {
 	p.compactInstructions = instructions
+	return nil
+}
+
+// tl1719 后 /compact 走 CompactForTrigger（trigger=serve）；fake 内嵌真
+// Controller 时不覆写此方法会让调用静默落到真控制器（204 但捕获恒空）。
+func (p *pendingPromptAPI) CompactForTrigger(_ context.Context, instructions, trigger string) error {
+	p.compactInstructions = instructions
+	p.compactTrigger = trigger
 	return nil
 }
 
@@ -63,6 +72,9 @@ func TestServeRecoveryEndpointsFailClosedAndExposeRuntime(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusNoContent || api.compactInstructions != "preserve tests" {
 		t.Fatalf("compact = status:%v instructions:%q", resp.StatusCode, api.compactInstructions)
+	}
+	if api.compactTrigger != "serve" {
+		t.Fatalf("compact trigger = %q, want serve (tl1719 入口契约)", api.compactTrigger)
 	}
 	resp.Body.Close()
 
