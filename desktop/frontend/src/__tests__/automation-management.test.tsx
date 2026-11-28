@@ -21,6 +21,8 @@ Object.assign(window, { go: { main: { App: {
     tasks = value.tasks; return { revision: 2, etag: "b", tasks };
   },
   async ListWorkspaces() { return []; }, async HeartbeatGenerateID() { return "draft-new"; },
+  // tl1851: the panel resolves bound-conversation display names on mount.
+  async ListAddressableSessions() { return []; }, async ListProjectTree() { return []; },
   // #30: the task editor reads Settings() to offer configured provider models as
   // a per-task override. Leaving it out made the editor's effect throw on mount.
   async Settings() {

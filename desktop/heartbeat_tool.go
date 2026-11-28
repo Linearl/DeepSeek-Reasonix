@@ -134,13 +134,13 @@ func (a heartbeatManagerAdapter) UpsertTask(req builtin.HeartbeatUpsertRequest) 
 		}
 		tasks = append(tasks, edited)
 	} else {
-		// tl 1059: topicId stays engine-owned on the update path. The scheduler
-		// owns the binding after creation (mergeHeartbeatDiskRunHistory and the
-		// run-state merge both treat it as run state), and a mid-life re-bind
-		// would race in-flight runs and silently swap the conversation a
-		// resume-mode task appends to.
+		// tl 1059: the agent update path refuses topicId edits outright. Since
+		// tl1851 the PANEL can re-bind (the revision gate + the run-write-back
+		// guard in mergeHeartbeatRunUpdates make that safe), but the agent
+		// surface has no picker and no fresh-directory view, so it still hands
+		// the user the panel path instead of a blind swap.
 		if set := patch.Provided; set != nil && set["topicId"] {
-			return builtin.HeartbeatUpsertResult{}, fmt.Errorf("field \"topicId\": engine-owned after creation and cannot be changed by an update — create the task with topicId to bind it, or delete and recreate the task with the new binding")
+			return builtin.HeartbeatUpsertResult{}, fmt.Errorf("field \"topicId\": cannot be changed by an agent update — re-bind from the automation panel's session picker, or create the task with topicId to bind it, or delete and recreate the task with the new binding")
 		}
 		idx := -1
 		for i := range tasks {
@@ -272,25 +272,31 @@ func (e *HeartbeatEngine) topicBindingTargetExists(topicID string) bool {
 }
 
 // validateHeartbeatTopicBindings checks the explicit topicId bindings (tl 1059)
-// the caller introduced on NEW tasks — ids absent from the on-disk list. Rows
-// that already exist on disk keep the disk binding (mergeHeartbeatDiskRunHistory
-// forces TopicID back to the disk value), so a panel save can never re-bind an
-// existing task through this path and the engine's mid-life re-bind protection
-// holds on both editor surfaces. Shared by the panel save (ReplaceTasks /
-// ReplaceConfig) and the agent upsert adapter's create branch.
+// the caller introduced on NEW tasks — ids absent from the on-disk list — and,
+// since tl1851, CHANGED bindings on existing rows (the panel's re-bind picker).
+// An existing row whose submitted binding equals the disk binding is untouched
+// and skips validation; a different (or cleared) binding is the user's
+// deliberate re-bind, validated exactly like a create: the target must resolve,
+// and it cannot be combined with per-run-fresh mode. Shared by the panel save
+// (ReplaceTasks / ReplaceConfig) and the agent upsert adapter's create branch;
+// the agent update path keeps refusing topicId edits outright.
 func (e *HeartbeatEngine) validateHeartbeatTopicBindings(submitted, disk []HeartbeatTask) error {
 	if len(submitted) == 0 {
 		return nil
 	}
-	diskIDs := make(map[string]bool, len(disk))
+	diskByID := make(map[string]HeartbeatTask, len(disk))
 	for _, d := range disk {
-		diskIDs[d.ID] = true
+		diskByID[d.ID] = d
 	}
 	for _, t := range submitted {
-		if diskIDs[t.ID] {
-			continue // existing row: the binding is disk-owned run state
-		}
 		binding := strings.TrimSpace(t.TopicID)
+		if diskTask, exists := diskByID[t.ID]; exists {
+			if strings.TrimSpace(diskTask.TopicID) == binding {
+				continue // unchanged binding: disk-owned run state, untouched
+			}
+			// tl1851 deliberate re-bind (or unbind): fall through to the same
+			// checks a create faces.
+		}
 		if binding == "" {
 			continue // no explicit binding: first-run self-binding, unchanged
 		}
