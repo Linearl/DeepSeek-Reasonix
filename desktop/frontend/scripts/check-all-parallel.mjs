@@ -51,6 +51,7 @@ const checks = [
   ["check:swatch-sync", "node", ["scripts/check-theme-swatch-sync.mjs"]],
   ["check:color-ratchet", "node", ["scripts/check-css-color-ratchet.mjs"]],
   ["check:class-contract", "node", ["scripts/check-class-contract.mjs"]],
+  ["check:reachability-freeze", "node", ["scripts/check-reachability-freeze.mjs"]],
   ["check:bridge-json-tags", "node", ["../../scripts/check-bridge-json-tags.mjs", "../.."]],
   ["check:bridge-signatures", "node", ["../../scripts/check-bridge-signatures.mjs", "../.."]],
 ];

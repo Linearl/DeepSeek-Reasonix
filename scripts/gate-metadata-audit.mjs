@@ -2,26 +2,29 @@
 // gate-metadata-audit.mjs — 门禁元数据退役盘点端（tl1756，政策文档 docs/gate-metadata-retirement.md）。
 //
 // 盘对象（只读）：
-//   ① tsc 豁免  desktop/frontend/scripts/tsc-test-baseline.json（163 文件 226 对 file+错误码）
+//   ① tsc 豁免  desktop/frontend/scripts/tsc-test-baseline.json（tl1807 刷新后现 380 文件 572 对 file+错误码，随退役漂移）
 //      深验（--with-tsc）：复用 tsc-test-gate.mjs 导出的 parseDiagnostics/classify 跑全量 tsc，
 //      pair 诊断消失 = 可退役候选（强）；未跑 tsc 时只做文件存在性（悬空检测）+ 待深验标记。
 //   ② fork-integrity 判例  scripts/check-fork-integrity.mjs CHECKS 数组（847 条）
 //      与门禁同构的存在性+锚点核对（只读复算，不改门禁）、git blame 行级钉龄、
 //      feature 标签任务号（任务/task/tl/#PR）追溯抽取。
+//   ③ reachability-freeze 冻结基线  desktop/frontend/scripts/reachability-baseline.json（tl1861，104 文件）
+//      复用 check-reachability-freeze.mjs 导出的 reachableClosure 只读复算闭包；
+//      已删/已接线 = 可退役候选，减行记进度（C-3 手术口径）。
 //
 // 本脚本【不是门禁】：不接 CI/Makefile（self-test 有防复发断言），exit 0 = 盘点跑通。
-// 候选清单是产出物，不阻断任何流程；退役动作（改 baseline / 删 CHECKS 行）候拍板，本脚本从不写回两份元数据。
+// 候选清单是产出物，不阻断任何流程；退役动作（改 baseline / 删 CHECKS 行）候拍板，本脚本从不写回各份元数据。
 //
 // 用法：
-//   node scripts/gate-metadata-audit.mjs                       # 机械层全量（快：存在性+钉龄+任务号）
+//   node scripts/gate-metadata-audit.mjs                       # 机械层全量（快：存在性+钉龄+任务号+闭包）
 //   node scripts/gate-metadata-audit.mjs --with-tsc            # 附加全量 tsc 深验（慢，约 1-2 分钟）
-//   node scripts/gate-metadata-audit.mjs --source=tsc|fork-integrity|all
+//   node scripts/gate-metadata-audit.mjs --source=tsc|fork-integrity|reachability|all
 //   node scripts/gate-metadata-audit.mjs --json=<path>         # 结构化报告落盘
 //   node scripts/gate-metadata-audit.mjs --sample=15           # 人工判定抽样（fork 取最旧 N 条；tsc 取候选优先 N 条）
 //   node scripts/gate-metadata-audit.mjs --repo=<path>         # 默认仓库根（本脚本上级目录）
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -277,10 +280,83 @@ async function auditForkIntegrity(repoRoot, todayISO) {
   };
 }
 
+/** Python `sum(1 for _ in open(f))` 同语义行数（空文件 0 行，结尾换行不虚增）。 */
+export function countLines(text) {
+  if (text === "") return 0;
+  const lines = text.split("\n").length;
+  return text.endsWith("\n") ? lines - 1 : lines;
+}
+
+/** reachability-freeze 冻结基线逐条判级：文件在/可达性/行数对账（tl1861）。 */
+export function judgeReachabilityEntries(entries, repoRoot, reachable) {
+  const frontendSrc = join(repoRoot, "desktop", "frontend", "src");
+  return Object.entries(entries).map(([file, frozenLines]) => {
+    const full = join(frontendSrc, file);
+    const exists = existsSync(full);
+    let current = null;
+    if (exists) current = countLines(readFileSync(full, "utf8"));
+    const isReachable = exists && reachable.has(full);
+    return {
+      file,
+      frozenLines,
+      current,
+      verdict: !exists ? "dangling-file"
+        : isReachable ? "wired"
+        : current > frozenLines ? "grew"
+        : current < frozenLines ? "shrank" : "frozen",
+      candidate: !exists || isReachable,
+    };
+  });
+}
+
+async function auditReachability(repoRoot) {
+  const gatePath = join(repoRoot, "desktop", "frontend", "scripts", "check-reachability-freeze.mjs");
+  const { reachableClosure } = await import(pathToFileURL(gatePath).href);
+  const baselinePath = join(repoRoot, "desktop", "frontend", "scripts", "reachability-baseline.json");
+  const parsed = JSON.parse(readFileSync(baselinePath, "utf8"));
+  const entries = parsed.entries ?? {};
+  const frontendSrc = join(repoRoot, "desktop", "frontend", "src");
+  const files = [];
+  const walk = (dir) => {
+    for (const name of readdirSync(dir)) {
+      const full = join(dir, name);
+      if (statSync(full).isDirectory()) {
+        if (!["__tests__", "test-support", "node_modules", "wailsjs"].includes(name)) walk(full);
+        continue;
+      }
+      if ((name.endsWith(".ts") || name.endsWith(".tsx")) && !name.endsWith(".d.ts")) files.push(full);
+    }
+  };
+  walk(frontendSrc);
+  const reachable = reachableClosure(files);
+  const records = judgeReachabilityEntries(entries, repoRoot, reachable);
+  const frozenLines = records.reduce((sum, r) => sum + (r.verdict === "frozen" ? r.current : r.frozenLines), 0);
+  return {
+    source: "reachability",
+    baselinePath: "desktop/frontend/scripts/reachability-baseline.json",
+    batchSince: parsed._meta?.generated ?? null,
+    files: records.length,
+    lines: frozenLines,
+    summary: {
+      frozen: records.filter((r) => r.verdict === "frozen").length,
+      wired: records.filter((r) => r.verdict === "wired").length,
+      dangling: records.filter((r) => r.verdict === "dangling-file").length,
+      grew: records.filter((r) => r.verdict === "grew").length,
+      shrank: records.filter((r) => r.verdict === "shrank").length,
+    },
+    candidates: records.filter((r) => r.candidate),
+    records,
+  };
+}
+
 function renderHuman(report) {
   const lines = [];
   for (const source of report.sources) {
-    if (source.source === "tsc") {
+    if (source.source === "reachability") {
+      lines.push(`[reachability] ${source.files} 文件 / ${source.lines} 行冻结面（批量登记 ${source.batchSince}）`);
+      lines.push(`  判级：冻结中 ${source.summary.frozen}｜已接线 ${source.summary.wired}｜文件已删 ${source.summary.dangling}｜冻结面增行 ${source.summary.grew}｜冻结面减行 ${source.summary.shrank}`);
+      lines.push(`  可退役候选（已删+已接线）：${source.candidates.length}${source.candidates.length ? "（明细见 --json）" : ""}`);
+    } else if (source.source === "tsc") {
       lines.push(`[tsc] ${source.files} 文件 / ${source.pairs} 对豁免（批量登记 ${source.batchSince}，深验=${source.deepVerified ? "是" : "否"}）`);
       lines.push(`  判级：仍需要文件 ${source.summary.okFiles}｜含 stale 候选文件 ${source.summary.staleFiles}｜悬空文件 ${source.summary.danglingFiles}｜待深验 ${source.summary.unverifiedFiles}`);
       lines.push(`  可退役候选（pair 数）：${source.summary.candidatePairs}${source.summary.candidatePairs ? "（明细见 --json 或下方候选段）" : ""}`);
@@ -330,8 +406,8 @@ async function main(argv) {
   const retiredTsc = Math.max(0, Number(getArg("--retired-tsc", 0)) || 0);
   const retiredFork = Math.max(0, Number(getArg("--retired-fork", 0)) || 0);
   const todayISO = String(getArg("--today", new Date().toISOString().slice(0, 10)));
-  if (!["all", "tsc", "fork-integrity"].includes(source)) {
-    console.error(`未知 --source=${source}（可选 all|tsc|fork-integrity）`);
+  if (!["all", "tsc", "fork-integrity", "reachability"].includes(source)) {
+    console.error(`未知 --source=${source}（可选 all|tsc|fork-integrity|reachability）`);
     return EXIT_USAGE;
   }
   if (!existsSync(repoRoot)) {
@@ -352,6 +428,7 @@ async function main(argv) {
   try {
     if (source === "all" || source === "tsc") report.sources.push(await auditTsc(repoRoot, { withTsc }));
     if (source === "all" || source === "fork-integrity") report.sources.push(await auditForkIntegrity(repoRoot, todayISO));
+    if (source === "all" || source === "reachability") report.sources.push(await auditReachability(repoRoot));
     // 清零率（政策 §4.5）：退役数由台账人工累计后经参数传入；首轮起算退役=0 → 0%。
     const tscSource = report.sources.find((s) => s.source === "tsc");
     const forkSource = report.sources.find((s) => s.source === "fork-integrity");
