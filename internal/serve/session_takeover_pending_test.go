@@ -44,6 +44,41 @@ func newTakeoverPendingFixture(t *testing.T) (*Server, string, string) {
 	return server, dir, target
 }
 
+// tl1854 R2: a takeover of a session THIS runtime already holds (the phone
+// /resume'd the idle session first) is an immediate 204 — the lease goal is
+// already satisfied, so no request marker, no background yield-wait poll, no
+// 202, and any stale recorded attempt is closed out.
+func TestTakeoverSessionSelfHeldAnswersDirectly(t *testing.T) {
+	server, _, target := newTakeoverPendingFixture(t)
+
+	// /resume semantics: the runtime's own keeper holds the idle session.
+	if err := server.leases.Rebind(target); err != nil {
+		t.Fatalf("seed self-held lease: %v", err)
+	}
+	marker := agent.TakeoverRequestMarkerPath(target)
+	// A stale pending attempt (single-flight leftover from an earlier flow)
+	// must be closed by the direct success, not left pending forever.
+	server.recordTakeoverState(target, takeoverStatePending, "")
+
+	rec := httptest.NewRecorder()
+	server.takeoverSession(rec, httptest.NewRequest(http.MethodPost, "/takeover-session",
+		strings.NewReader(`{"name":"target","from":"gc-1"}`)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("self-held takeover status = %d body=%q, want 204", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatal("self-held takeover must not write a request marker")
+	}
+	if pending, failed, message := server.takeoverStatusFor(target); pending || failed || message != "" {
+		t.Fatalf("attempt state = (pending %v, failed %v, %q), want a closed done attempt", pending, failed, message)
+	}
+	// The keeper still holds the session — nothing released it.
+	lease := server.leases.Lease()
+	if lease == nil || agent.CanonicalSessionPath(lease.Path()) != agent.CanonicalSessionPath(target) {
+		t.Fatalf("keeper lease = %v, want the self-held target untouched", lease)
+	}
+}
+
 func TestTakeoverSessionPendingUntilDesktopYields(t *testing.T) {
 	server, _, target := newTakeoverPendingFixture(t)
 	marker := agent.TakeoverRequestMarkerPath(target)

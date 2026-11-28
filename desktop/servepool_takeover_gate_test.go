@@ -178,27 +178,98 @@ func TestGatewayTakeoverGateRejectDenies(t *testing.T) {
 	}
 }
 
-func TestGatewayTakeoverGateTimeoutDenies(t *testing.T) {
+// tl1854 R3: the dialog is a veto window, not a confirmation — nobody at the
+// desktop is the NORMAL remote-takeover scenario, so an unanswered prompt now
+// ALLOWS the takeover and walks the same non-interrupting yield path as an
+// explicit accept (the old deadline-refusal made takeover unusable exactly
+// when it matters). The explicit 拒绝 verdict below stays a hard 409.
+func TestGatewayTakeoverGateTimeoutAllowsAndYields(t *testing.T) {
 	f := newGatewayTakeoverFixture(t)
-	gatewayTakeoverPromptTimeoutForTest = 50 * time.Millisecond
-	t.Cleanup(func() { gatewayTakeoverPromptTimeoutForTest = gatewayTakeoverPromptTimeout })
+	gatewayTakeoverVetoWindowForTest = 50 * time.Millisecond
+	t.Cleanup(func() { gatewayTakeoverVetoWindowForTest = gatewayTakeoverVetoWindow })
 
 	lease, err := agent.TryAcquireSessionLease(f.path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	f.tab.sessionLease = lease
+	// The forwarded serve request writes the plain marker right after the gate
+	// allows; pre-write it so the yield machine can complete deterministically.
+	if err := os.WriteFile(agent.TakeoverRequestMarkerPath(f.path), []byte(agent.SessionWriterID()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var forcedNotices []string
+	RegisterTakeoverYieldNotifier(func(kind, path, detail string) {
+		if kind == "forced" {
+			forcedNotices = append(forcedNotices, path)
+		}
+	})
+	t.Cleanup(func() { RegisterTakeoverYieldNotifier(nil) })
 
 	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
-		// Never answers: the bounded prompt window must refuse.
+		// Never answers: the bounded veto window must ALLOW, not refuse. The
+		// payload must also carry the window so the dialog countdown matches.
+		if req.VetoWindowMs <= 0 {
+			t.Errorf("prompt VetoWindowMs = %d, want the gate's veto window", req.VetoWindowMs)
+		}
 	})
 
 	allow, status, message := f.app.servePoolTakeoverGate(f.request())
-	if allow || status != http.StatusConflict {
-		t.Fatalf("gate = (%v, %d, %q), want 409 deny", allow, status, message)
+	if !allow || status != 0 || message != "" {
+		t.Fatalf("gate = (%v, %d, %q), want timeout-allow with no denial", allow, status, message)
 	}
-	if !strings.Contains(message, "timed out") {
-		t.Fatalf("deny message = %q, want the explicit timeout notice", message)
+	// Same machine as the accept path: the tab entered the yielding state and,
+	// with no runtime work, drained and released the lease with a consumable
+	// handoff reservation.
+	if !waitForSessionYieldIdle(f.tab, 5*time.Second) {
+		t.Fatal("yield machine never finished after the veto window")
+	}
+	if !lease.Released() {
+		t.Fatal("lease not released after the timeout-allow yield")
+	}
+	if len(forcedNotices) != 0 {
+		t.Fatalf("forced notices = %v, want none (timeout-allow must not interrupt a running turn)", forcedNotices)
+	}
+}
+
+func TestGatewayTakeoverGateTimeoutStaleRejectIsDropped(t *testing.T) {
+	f := newGatewayTakeoverFixture(t)
+	gatewayTakeoverVetoWindowForTest = 50 * time.Millisecond
+	t.Cleanup(func() { gatewayTakeoverVetoWindowForTest = gatewayTakeoverVetoWindow })
+
+	lease, err := agent.TryAcquireSessionLease(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.tab.sessionLease = lease
+	if err := os.WriteFile(agent.TakeoverRequestMarkerPath(f.path), []byte(agent.SessionWriterID()), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var markers []string
+	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
+		markers = append(markers, req.Marker)
+	})
+
+	allow, status, _ := f.app.servePoolTakeoverGate(f.request())
+	if !allow || status != 0 {
+		t.Fatalf("gate = (%v, %d), want timeout-allow", allow, status)
+	}
+	// A late rejection on the already-timed-out dialog must be a no-op — the
+	// answer channel was unregistered before the deadline fired.
+	if len(markers) != 1 {
+		t.Fatalf("markers = %v, want exactly one prompt", markers)
+	}
+	if SubmitTakeoverDecision(markers[0], false) {
+		t.Fatal("stale rejection after the veto window was accepted; it must be dropped")
+	}
+	// The yield still completes: the late click changed nothing.
+	if !waitForSessionYieldIdle(f.tab, 5*time.Second) {
+		t.Fatal("yield machine never finished")
+	}
+	if !lease.Released() {
+		t.Fatal("lease not released; the stale rejection must not roll the takeover back")
 	}
 }
 
@@ -211,6 +282,25 @@ func TestGatewayTakeoverGatePassthroughWithoutSink(t *testing.T) {
 	}
 	if len(f.prompts) != 0 {
 		t.Fatalf("prompts = %d, want 0", len(f.prompts))
+	}
+}
+
+// tl1854 R2: an idle session (the phone /resume'd it, so the pooled serve
+// holds the lease itself and no desktop tab does) must pass through WITHOUT
+// the desktop prompt — neither answer could change the outcome, and the
+// forwarded serve request answers 204 on its own (self-held takeover).
+func TestGatewayTakeoverGatePassesThroughIdleSession(t *testing.T) {
+	f := newGatewayTakeoverFixture(t)
+	// The tab exists but holds NO lease: nothing for a desktop yield to serve.
+	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
+		f.prompts = append(f.prompts, req)
+	})
+	allow, status, message := f.app.servePoolTakeoverGate(f.request())
+	if !allow || status != 0 || message != "" {
+		t.Fatalf("gate = (%v, %d, %q), want pass-through for a session no tab holds", allow, status, message)
+	}
+	if len(f.prompts) != 0 {
+		t.Fatalf("prompts = %d, want 0 (idle session must not prompt)", len(f.prompts))
 	}
 }
 

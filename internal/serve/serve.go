@@ -2061,6 +2061,24 @@ func (s *Server) takeoverSession(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session not found", http.StatusNotFound)
 		return
 	}
+	// tl1854 R2 (self-held takeover): when a remote client opens an idle
+	// session, THIS runtime acquires the lease itself (/resume →
+	// control.SessionLeaseKeeper.Rebind). A later explicit takeover of that
+	// session used to collide with our own lease registry —
+	// TryAcquireSessionLeaseWithHandoff's first step fails on a self-held
+	// path — then fell into the 202 yield-wait for a desktop holder that does
+	// not exist and timed out (handoff GC-远程接管设计缺口 §3.6), while the
+	// gateway prompt could never change the outcome either. Self-held means
+	// the takeover's goal — this runtime holds the lease — is already true:
+	// answer 204 directly. No request marker, no background poll, and a
+	// stale recorded attempt is closed out so ?session= pollers see done.
+	if s.leases != nil && agent.CanonicalSessionPath(s.leases.HeldPath()) == agent.CanonicalSessionPath(abs) {
+		s.recordTakeoverState(abs, takeoverStateDone, "")
+		notifyRemoteWriteAuthority(strings.TrimSpace(body.From), true)
+		slog.Info("serve: takeover satisfied by the runtime's own lease (no desktop holder to yield)", "session", name)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	lease, err := agent.TryAcquireSessionLeaseWithHandoff(abs, strings.TrimSpace(body.From), newTakeoverHandoffID())
 	if err != nil {
 		// Cross-runtime takeover (539 route A, "take over without

@@ -301,11 +301,15 @@ func (t *WorkspaceTab) stopTakeoverRequestWatcher() {
 
 // takeoverDecisionReq is one pending remote-takeover prompt handed to the
 // App-owned sink (task 36 Phase 1). Reply receives the user's verdict.
+// VetoWindowMs (tl1854 R3) carries the gate's veto window so the frontend
+// countdown matches the Go deadline exactly — the deadline means ALLOW now,
+// so the dialog's auto-resolution must never race the gate as a rejection.
 type takeoverDecisionReq struct {
-	Marker string
-	Path   string
-	From   string
-	Reply  chan bool
+	Marker       string
+	Path         string
+	From         string
+	VetoWindowMs int
+	Reply        chan bool
 }
 
 var (
