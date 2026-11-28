@@ -13,7 +13,9 @@ package main
 //     since task 465's two-axis matrix this entry AUTO-SATISFIES the
 //     precondition (approval moves to yolo, decision recorded) instead of
 //     refusing — the gate still bounds what a refused enable would produce
-//   - settings default for new sessions → SetDesktopAutopilot
+//   - settings default for new sessions → SetDesktopAutopilot（tl1741x 注：
+//     该 setter 随撤主键退役，入口已消失——新会话恒默认 unattended，本行
+//     仅留档）
 //   - new-tab defaults → createTabEntryWithID
 //   - restart restore / recovery-created autopilot sessions → restoreTabs
 //   - any approval-mode change while autopilot is on → SetToolApprovalModeForTab
@@ -31,8 +33,9 @@ const (
 	// NoticeCodeAutopilotRequiresYolo: an autopilot enable request was refused
 	// because the approval mode is not yolo (task 325). The composer tier
 	// switch (SetCollaborationModeForTab) no longer refuses — task 465's
-	// two-axis matrix auto-satisfies the precondition there — but the code
-	// stays alive for the settings-default refusal and any future entry.
+	// two-axis matrix auto-satisfies the precondition there. tl1741x：the
+	// settings-default refusal（SetDesktopAutopilot）随撤主键退役——code
+	// stays alive for the new-tab/restore entries and any future entry.
 	NoticeCodeAutopilotRequiresYolo = "autopilot_requires_yolo"
 	// NoticeCodeAutopilotClosedOffYolo: autopilot was on and the approval mode
 	// moved away from yolo — autopilot turned itself off (task 325 reverse

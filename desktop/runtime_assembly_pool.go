@@ -14,9 +14,10 @@ import (
 // runtimeAssemblyPool is the task-363A reuse pool: one ReusedAssembly per
 // (workspace root, model, effort) so a new conversation tab with the same
 // configuration skips prompt/skills/commands/hooks discovery instead of
-// paying the full boot rebuild. The gate (experimental_runtime_reuse) is read
-// at call time; when it is off every helper is a no-op and the build path is
-// byte-identical to before.
+// paying the full boot rebuild. tl1741x：experimental_runtime_reuse 门随撤
+// 开关删除（tl1741 主件已撤 runtimeReuseEnabled 配置门）——池无条件启用，
+// helper 不再有 off 分支；池冷时 acquire 返回 nil、构建路径退化为
+// boot.Build 同形。
 //
 // Lifecycle is last-writer-wins per key: store overwrites the entry for that
 // key and acquire never mutates. Pooled assemblies share the exact objects

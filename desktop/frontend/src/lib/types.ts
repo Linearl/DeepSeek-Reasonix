@@ -2783,8 +2783,9 @@ export interface DesktopStartupSettingsView {
   experimentalSplitView?: boolean;
   /** LEGACY group-chat entry switch (task 677; task 856 migration source only). */
   experimentalCollabGroupView?: boolean;
-  /** Unified collaboration-hub entry switch (task 856 ③): gates the merged utility-row icon; off unless the user opts in. */
-  experimentalCollabHub?: boolean;
+  // tl1741x：experimentalCollabHub（856③）镜像字段随撤开关退役——协作中心
+  // 入口常显，Go view 侧已无此字段（settings_app.go tl1741 注记），恒
+  // undefined 的死类型残留不再保留。
   /** Cross-session message auto-fold (task 705): collapse over-long collab messages into a summary bar; off = render in full. */
   experimentalSessionCollabAutoFold?: boolean;
   /** Trajectory view switch (task 704): gates the topicbar transcript|trajectory switch and the trajectory surface; off = transcript only. */
@@ -2846,8 +2847,8 @@ export interface DesktopStartupSettingsView {
   experimentalPrepairAutosplice?: boolean;
   /** Task 262: gates the whole quick-commands surface; ships off; boot snapshot. */
   experimentalQuickCommands?: boolean;
-  /** Task 342: WebView2 CDP debug endpoint (loopback-only random port); ships off; restart to apply. */
-  experimentalCDPDebugPort?: boolean;
+  // tl1741x：experimentalCDPDebugPort 镜像字段随撤开关退役——CDP endpoint
+  // 无条件起（loopback-only 随机端口），无状态可读。
   /** Task 385a: lab 回答风格 gate; ships off; UI surface only. */
   experimentalOutputStyleUI?: boolean;
   /** Task 385a: persisted [agent] output_style ("" = default, no style). */
@@ -2904,8 +2905,8 @@ export interface DesktopStartupSettingsView {
   experimentalComposerToolsFold?: boolean;
   /** Task 979: capability-group disclosure layer (tasks 953/954/955 shared switch); off unless the user opts in. */
   experimentalCapabilityGroups?: boolean;
-  /** multi-session collaboration experiment (task 19); off unless the user opts in. */
-  experimentalSessionCollab?: boolean;
+  // tl1741x：experimentalSessionCollab 镜像字段随撤开关退役——跨会话协作
+  // 常开，家族子键（hop 限/后台化/allow 门等）各自独立生效。
   /** tl1816: the task-517 master switch retired — the three task-722 sub-switch overrides below are the only surface. */
   /** 任务 722: fine-grained sub-switch overrides (null = absent; reads off after the tl1816 master retirement). */
   safetyIdleTerminate?: boolean | null;
@@ -2915,8 +2916,8 @@ export interface DesktopStartupSettingsView {
   sentinelPenetrationGuard?: boolean;
   /** merged orphan switch (task 449; folds task 244 B5 lease reclaim + B4 recovery sweep); off unless the user opts in. */
   experimentalOrphanHandling?: boolean;
-  /** Task 363A: reuse the runtime assembly across same-config tabs instead of full rebuild; off unless the user opts in. */
-  experimentalRuntimeReuse?: boolean;
+  // tl1741x：experimentalRuntimeReuse 镜像字段随撤开关退役——运行时复用池
+  // 无条件启用，池冷热是唯一变量。
   sessionCollabHopLimit?: number; // task 204: cross-session chain ceiling (3..1000, default 5)
   /** Task 308-O4: detached idle runtime release threshold in minutes (0 = never release). */
   detachedIdleReleaseMinutes?: number;
@@ -2976,7 +2977,9 @@ export interface DesktopStartupSettingsView {
   statusBarStyle: string; // "icon" | "text"
   statusBarItems: string[]; // ordered visible status bar item ids
   quickCommands?: QuickCommandEntry[]; // user-defined composer snippets (#18)
-  autopilot?: boolean; // offers the autopilot mode in the composer when on
+  // tl1741x：autopilot 偏好镜像字段随撤主键退役（desktop.autopilot 已入
+  // deprecated 清单；Go 启动视图同款收场无字段）——新会话恒默认 unattended，
+  // composer 模式条 autopilot 档恒显（tl1796 r2）。
   checkUpdates: boolean; // check for new versions on startup
   updateChannel: string; // compatibility field; always "stable"
   conversationWidth?: string; // "standard" | "full"; absent from older Wails payloads

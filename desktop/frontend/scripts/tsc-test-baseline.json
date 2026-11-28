@@ -584,9 +584,6 @@
     "src/__tests__/session-wall.test.tsx": [
       "TS6133"
     ],
-    "src/__tests__/settings-cdp-debug-port.test.ts": [
-      "TS6133"
-    ],
     "src/__tests__/settings-lifecycle-noise-gate.test.ts": [
       "TS6133"
     ],
