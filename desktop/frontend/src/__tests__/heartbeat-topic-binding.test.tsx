@@ -161,12 +161,14 @@ ok(query("[data-testid='heartbeat-bind-topic-toggle']")?.textContent?.includes("
 ok(query("[data-testid='heartbeat-bind-topic-toggle']")?.textContent?.includes("(default)") === true,
   "placeholder marks no-binding as the default behaviour");
 
-console.log("\nheartbeat topic binding: edit form keeps the binding read-only");
+console.log("\nheartbeat topic binding: edit form offers the re-bind picker (tl1851)");
 await act(async () => {
   renderEditor(editTask, async (task) => { submitted = task; return true; }, "edit");
   await flush();
 });
-ok(query("[data-testid='heartbeat-bind-topic-field']") === null, "the picker is create-only: hidden on an existing task");
+ok(query("[data-testid='heartbeat-bind-topic-field']") !== null, "the bind-conversation field renders on an existing task (re-bind)");
+ok(query("[data-testid='heartbeat-bind-topic-toggle']")?.textContent?.includes("Not bound") === true,
+  "an existing unbound task shows the unbound placeholder");
 
 await act(async () => {
   renderEditor(newTask, async (task) => { submitted = task; return true; }, "create-2");

@@ -627,7 +627,16 @@ func mergeHeartbeatRunUpdates(tasks []HeartbeatTask, updates map[string]Heartbea
 		// merge a stale snapshot later, but must not roll back the owner's timestamp
 		// or fresh-conversation topic.
 		newerRun := update.LastRunAt > tasks[i].LastRunAt
-		if update.TopicID != "" && (tasks[i].TopicID == "" || newerRun) {
+		// tl1851: a fixed binding the user re-bound from the panel mid-run must
+		// not be rolled back by this run's write-back (the run captured the OLD
+		// binding at start). On a non-fresh task a differing disk binding is
+		// either that deliberate re-bind — disk wins — or a tombstoned dead
+		// binding this run just recreated (tl1363b self-heal), which must pass
+		// through. Fresh-conversation tasks advance their topic every run, so
+		// their updates always win as before.
+		reboundOnDisk := tasks[i].TopicID != "" && tasks[i].TopicID != update.TopicID &&
+			!heartbeatFreshConversationMode(tasks[i]) && !topicDeletedTombstoned(tasks[i].TopicID)
+		if update.TopicID != "" && !reboundOnDisk && (tasks[i].TopicID == "" || newerRun) {
 			tasks[i].TopicID = update.TopicID
 		}
 		if newerRun {
@@ -685,8 +694,18 @@ func mergeRunHistory(base, extra []HeartbeatRun) []HeartbeatRun {
 }
 
 // mergeHeartbeatDiskRunHistory protects engine-owned execution state during a
-// frontend full-list save. A stale snapshot must not roll back TopicID or
-// LastRunAt, and run history is unioned by timestamp so both snapshots survive.
+// frontend full-list save. LastRunAt must not roll back and run history is
+// unioned by timestamp so both snapshots survive.
+//
+// tl1851: TopicID is no longer forced back to the disk value. Both callers
+// (ReplaceTasks / ReplaceConfig) run their revision/digest conflict gate BEFORE
+// this merge, so a save that reaches this point carries a snapshot as fresh as
+// the disk — any TopicID difference is therefore the user's deliberate re-bind
+// from the panel picker, not stale run state, and it must persist. The gate
+// keeps protecting against genuinely stale snapshots (they are rejected with
+// ErrHeartbeatConfigConflict before the merge runs); LastRunAt / RunsUsed /
+// RunHistory stay engine-owned here because a fresh snapshot can still lag a
+// just-finished in-process run (the engine merges those after the panel load).
 func mergeHeartbeatDiskRunHistory(submitted, disk []HeartbeatTask) []HeartbeatTask {
 	if len(disk) == 0 {
 		return submitted
@@ -702,7 +721,6 @@ func mergeHeartbeatDiskRunHistory(submitted, disk []HeartbeatTask) []HeartbeatTa
 		if !ok {
 			continue
 		}
-		out[i].TopicID = diskTask.TopicID
 		out[i].LastRunAt = diskTask.LastRunAt
 		// Task 327: runsUsed is engine-owned like LastRunAt — a stale panel
 		// snapshot must not roll the counter back and grant extra runs. The one

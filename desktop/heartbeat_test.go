@@ -624,11 +624,19 @@ func TestHeartbeatMergeRunUpdatesNeverRegressesNewerRunState(t *testing.T) {
 		t.Fatalf("stale run state regressed the owner result: %+v", tasks[0])
 	}
 
-	mergeHeartbeatRunUpdates(tasks, map[string]HeartbeatTask{
-		"run": {ID: "run", TopicID: "topic-latest", LastRunAt: 400},
+	// tl1851: on a fixed-binding task a differing TopicID from a newer run is no
+	// longer adopted blindly — that difference now means either a panel re-bind
+	// (disk wins, pinned in TestMergeHeartbeatRunUpdatesKeepsPanelRebind) or a
+	// tombstoned dead binding (recreation passes through, tl1363b). Topic
+	// advance run-over-run is the fresh-conversation mode's contract; pin it there.
+	fresh := []HeartbeatTask{{
+		ID: "fresh-run", NewConversationEachRun: true, TopicID: "topic-new", LastRunAt: 300,
+	}}
+	mergeHeartbeatRunUpdates(fresh, map[string]HeartbeatTask{
+		"fresh-run": {ID: "fresh-run", TopicID: "topic-latest", LastRunAt: 400},
 	})
-	if tasks[0].TopicID != "topic-latest" || tasks[0].LastRunAt != 400 {
-		t.Fatalf("newer run state was not adopted: %+v", tasks[0])
+	if fresh[0].TopicID != "topic-latest" || fresh[0].LastRunAt != 400 {
+		t.Fatalf("newer fresh-conversation run state was not adopted: %+v", fresh[0])
 	}
 }
 

@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import type { HeartbeatTask } from "../custom/features/heartbeat/heartbeat.types";
 import type { HeartbeatFrequencyType } from "../custom/features/heartbeat/heartbeat.presentation";
-export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "reuseSession", "maxRuns", "notifyChannels", "timeWindowStart", "timeWindowEnd", "provider", "model", "goalMode", "goalText"] as const;
+// tl1851: "topicId" joined the editable fields — the panel's session picker can
+// re-bind an existing task. The reconcile loop below now treats it like any
+// user-owned field: a locally picked binding survives a remote reconcile, and a
+// genuinely conflicting remote change (first-run self-bind while the user was
+// picking) surfaces as a conflict instead of being silently overwritten.
+export const automationEditableFields = ["title", "prompt", "interval", "enabled", "scope", "workspaceRoot", "approvalMode", "newConversationEachRun", "reuseSession", "topicId", "maxRuns", "notifyChannels", "timeWindowStart", "timeWindowEnd", "provider", "model", "goalMode", "goalText"] as const;
 type Field = typeof automationEditableFields[number];
 export type AutomationDraft = {
   baseline: HeartbeatTask | null; draft: HeartbeatTask; conflicts: Field[];
@@ -31,7 +36,7 @@ export function reconcileAutomationDraft(entry: AutomationDraft, current?: Heart
     if (!localChanged) Object.assign(draft, { [key]: current[key] });
     if (draft[key] === current[key]) conflicts.delete(key);
   }
-  draft.topicId = current.topicId; draft.lastRunAt = current.lastRunAt; draft.runHistory = current.runHistory;
+  draft.lastRunAt = current.lastRunAt; draft.runHistory = current.runHistory;
   draft.runsUsed = current.runsUsed; // engine-owned counter (task 327): always take the freshest value
   return { ...entry, baseline: { ...current }, draft, missing: false, conflicts: [...conflicts],
     frequency: draft.interval === entry.draft.interval ? entry.frequency : frequencyOf(draft.interval) };

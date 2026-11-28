@@ -1,10 +1,11 @@
 package main
 
-// tl 1059: the create-only explicit topicId binding. Covers the agent upsert
+// tl 1059: the create-time explicit topicId binding. Covers the agent upsert
 // adapter (create accepts a binding that resolves, rejects an unknown topic and
 // the newConversationEachRun contradiction; update rejects the field outright —
-// the engine's mid-life re-bind protection), the panel save gate (ReplaceConfig
-// validates bindings on NEW rows only), and the first-run injection (a task
+// the agent surface has no re-bind), the panel save gate (ReplaceConfig
+// validates bindings on NEW rows and, since tl1851, CHANGED bindings on
+// existing rows — the panel's re-bind), and the first-run injection (a task
 // created with a binding resolves to that conversation instead of spawning a
 // fresh one).
 
@@ -122,8 +123,8 @@ func TestHeartbeatUpsertUpdateRejectsTopicBinding(t *testing.T) {
 		},
 		ExpectedRevision: view.Revision,
 	})
-	if err == nil || !strings.Contains(err.Error(), "topicId") || !strings.Contains(err.Error(), "engine-owned") {
-		t.Fatalf("update must refuse topicId outright, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "topicId") || !strings.Contains(err.Error(), "cannot be changed") {
+		t.Fatalf("agent update must refuse topicId outright, got %v", err)
 	}
 	fresh := mustList(t, a)
 	if len(fresh.Tasks) != 1 || fresh.Tasks[0].Title != "bound task" || fresh.Tasks[0].TopicID != "topic_live" {
@@ -185,5 +186,162 @@ func TestHeartbeatCreatedWithBindingFirstRunInjectsBoundTopic(t *testing.T) {
 	legacy.TopicID = external.ID
 	if _, topicID, _, ok := engine.resolveHeartbeatTopic(legacy, "global", "", "Heartbeat: Bound"); !ok || topicID != external.ID {
 		t.Fatalf("legacy first run must inject the bound topic %q, got %q", external.ID, topicID)
+	}
+}
+
+// ── tl1851: the panel's re-bind (更换绑定会话) ──────────────────────────────
+
+// Panel re-bind on an EXISTING row: a binding that resolves is accepted and
+// persisted (the mergeHeartbeatDiskRunHistory change stops forcing the disk
+// TopicID back; the revision gate guarantees the snapshot is fresh, so a
+// differing TopicID is the user's deliberate re-bind).
+func TestHeartbeatReplaceConfigRebindsExistingTask(t *testing.T) {
+	a, engine := newBindingTestAdapter(t)
+	engine.topicExists = func(topicID string) bool { return topicID == "topic_live" || topicID == "topic_other" }
+	created, err := mustCreateWithBinding(t, a, "topic_live", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := mustList(t, a)
+	if view.Tasks[0].TopicID != "topic_live" {
+		t.Fatalf("seed binding missing: %+v", view.Tasks[0])
+	}
+	rebound := []HeartbeatTask{{
+		ID: created.TaskID, Title: "bound task", Prompt: "p", Interval: "30m",
+		Enabled: true, TopicID: "topic_other", LastRunAt: view.Tasks[0].LastRunAt,
+	}}
+	updated, err := engine.ReplaceConfig(HeartbeatConfigUpdate{Revision: view.Revision, ETag: view.ETag, Tasks: rebound})
+	if err != nil {
+		t.Fatalf("panel re-bind refused: %v", err)
+	}
+	if updated.Tasks[0].TopicID != "topic_other" {
+		t.Fatalf("re-bind not persisted: topic=%q, want topic_other", updated.Tasks[0].TopicID)
+	}
+	if fresh := mustList(t, a); fresh.Tasks[0].TopicID != "topic_other" {
+		t.Fatalf("re-bind not on disk: %+v", fresh.Tasks[0])
+	}
+}
+
+// Panel re-bind to an id that resolves nowhere is refused before any write —
+// same gate a create faces.
+func TestHeartbeatReplaceConfigRejectsUnknownRebind(t *testing.T) {
+	a, engine := newBindingTestAdapter(t)
+	engine.topicExists = func(topicID string) bool { return topicID == "topic_live" }
+	created, err := mustCreateWithBinding(t, a, "topic_live", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := mustList(t, a)
+	rebound := []HeartbeatTask{{
+		ID: created.TaskID, Title: "bound task", Prompt: "p", Interval: "30m",
+		Enabled: true, TopicID: "topic_ghost",
+	}}
+	if _, err := engine.ReplaceConfig(HeartbeatConfigUpdate{Revision: view.Revision, ETag: view.ETag, Tasks: rebound}); err == nil {
+		t.Fatal("re-bind to an unknown conversation must be refused")
+	}
+	if fresh := mustList(t, a); fresh.Tasks[0].TopicID != "topic_live" {
+		t.Fatalf("refused re-bind must not persist: %+v", fresh.Tasks[0])
+	}
+}
+
+// A re-bind combined with per-run-fresh mode is refused, matching the create
+// gate (the frontend clears the binding on the mode switch; a crafted payload
+// must not sneak both through).
+func TestHeartbeatReplaceConfigRejectsRebindPlusFreshPerRun(t *testing.T) {
+	a, engine := newBindingTestAdapter(t)
+	engine.topicExists = func(string) bool { return true }
+	created, err := mustCreateWithBinding(t, a, "topic_live", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := mustList(t, a)
+	rebound := []HeartbeatTask{{
+		ID: created.TaskID, Title: "bound task", Prompt: "p", Interval: "30m",
+		Enabled: true, TopicID: "topic_other", NewConversationEachRun: true,
+	}}
+	if _, err := engine.ReplaceConfig(HeartbeatConfigUpdate{Revision: view.Revision, ETag: view.ETag, Tasks: rebound}); err == nil {
+		t.Fatal("re-bind + newConversationEachRun must be refused")
+	}
+	if fresh := mustList(t, a); fresh.Tasks[0].TopicID != "topic_live" || fresh.Tasks[0].NewConversationEachRun {
+		t.Fatalf("refused re-bind must not persist: %+v", fresh.Tasks[0])
+	}
+}
+
+// Un-binding (clear) on an existing row is a legitimate re-bind to "none": the
+// first run after the clear creates and binds one, unchanged semantics.
+func TestHeartbeatReplaceConfigAcceptsUnbind(t *testing.T) {
+	a, engine := newBindingTestAdapter(t)
+	engine.topicExists = func(string) bool { return true }
+	created, err := mustCreateWithBinding(t, a, "topic_live", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	view := mustList(t, a)
+	unbound := []HeartbeatTask{{
+		ID: created.TaskID, Title: "bound task", Prompt: "p", Interval: "30m", Enabled: true,
+	}}
+	updated, err := engine.ReplaceConfig(HeartbeatConfigUpdate{Revision: view.Revision, ETag: view.ETag, Tasks: unbound})
+	if err != nil {
+		t.Fatalf("unbind refused: %v", err)
+	}
+	if updated.Tasks[0].TopicID != "" {
+		t.Fatalf("unbind not persisted: topic=%q", updated.Tasks[0].TopicID)
+	}
+}
+
+// The run write-back must not roll back a mid-run panel re-bind: the run
+// captured the OLD binding at start; on a non-fresh task with a live disk
+// binding the disk value wins. Fresh-conversation tasks keep today's
+// always-advance behaviour, and a tombstoned dead binding lets the run's
+// recreation through (tl1363b self-heal).
+func TestMergeHeartbeatRunUpdatesKeepsPanelRebind(t *testing.T) {
+	isolateDesktopUserDirs(t)
+
+	// ① Bound task re-bound mid-run: disk T2 beats the run's stale T1.
+	tasks := []HeartbeatTask{{ID: "a", Title: "t", Prompt: "p", Interval: "1h", Enabled: true, TopicID: "topic_new"}}
+	mergeHeartbeatRunUpdates(tasks, map[string]HeartbeatTask{
+		"a": {ID: "a", TopicID: "topic_old", LastRunAt: 500, RunHistory: []HeartbeatRun{{At: 500, TopicID: "topic_old"}}},
+	})
+	if tasks[0].TopicID != "topic_new" {
+		t.Fatalf("panel re-bind rolled back by run write-back: topic=%q", tasks[0].TopicID)
+	}
+	// Run-state fields still advance: the timestamp and history are the run's.
+	if tasks[0].LastRunAt != 500 || len(tasks[0].RunHistory) != 1 {
+		t.Fatalf("run state not merged: lastRunAt=%d history=%d", tasks[0].LastRunAt, len(tasks[0].RunHistory))
+	}
+
+	// ② First bind (disk empty) still takes the run's topic.
+	first := []HeartbeatTask{{ID: "b", Title: "t", Prompt: "p", Interval: "1h", Enabled: true}}
+	mergeHeartbeatRunUpdates(first, map[string]HeartbeatTask{
+		"b": {ID: "b", TopicID: "topic_first", LastRunAt: 100},
+	})
+	if first[0].TopicID != "topic_first" {
+		t.Fatalf("first-run bind lost: topic=%q", first[0].TopicID)
+	}
+
+	// ③ Fresh-conversation task: the topic advance always wins (unchanged).
+	fresh := []HeartbeatTask{{ID: "c", Title: "t", Prompt: "p", Interval: "1h", Enabled: true, NewConversationEachRun: true, TopicID: "topic_prev"}}
+	mergeHeartbeatRunUpdates(fresh, map[string]HeartbeatTask{
+		"c": {ID: "c", TopicID: "topic_next", LastRunAt: 300},
+	})
+	if fresh[0].TopicID != "topic_next" {
+		t.Fatalf("fresh-mode topic advance blocked: topic=%q", fresh[0].TopicID)
+	}
+
+	// ④ Tombstoned disk binding: the run's recreated topic passes through
+	// (tl1363b dead-binding self-heal must survive the new guard).
+	tombstoned := "topic_dead_tombstoned"
+	if err := updateProjectsFile(func(f *desktopProjectFile) (bool, error) {
+		f.DeletedTopics = prependUniqueString(f.DeletedTopics, tombstoned)
+		return true, nil
+	}); err != nil {
+		t.Fatalf("seed tombstone: %v", err)
+	}
+	dead := []HeartbeatTask{{ID: "d", Title: "t", Prompt: "p", Interval: "1h", Enabled: true, TopicID: tombstoned}}
+	mergeHeartbeatRunUpdates(dead, map[string]HeartbeatTask{
+		"d": {ID: "d", TopicID: "topic_recreated", LastRunAt: 200},
+	})
+	if dead[0].TopicID != "topic_recreated" {
+		t.Fatalf("dead-binding recreation blocked by re-bind guard: topic=%q", dead[0].TopicID)
 	}
 }

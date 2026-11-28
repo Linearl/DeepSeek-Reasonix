@@ -55,6 +55,7 @@ export function HeartbeatSessionPicker({
   onOpenTopic,
   taskScope,
   taskRoot,
+  boundLabel,
 }: {
   value?: string;
   disabled?: boolean;
@@ -62,6 +63,11 @@ export function HeartbeatSessionPicker({
   onOpenTopic?: (scope: string, workspaceRoot: string, topicId: string) => void;
   taskScope?: string;
   taskRoot?: string;
+  // tl1851 ①: pre-resolved「项目名-会话名」for the currently bound id, from
+  // the panel's session directory. Preferred over the picker's own fetch so
+  // the closed picker shows the readable name immediately (its internal data
+  // only loads when the menu opens) and renames follow the directory.
+  boundLabel?: string;
 }) {
   const t = useHeartbeatT();
   const [open, setOpen] = useState(false);
@@ -131,6 +137,9 @@ export function HeartbeatSessionPicker({
 
   const selectedLabel = useMemo(() => {
     if (!value) return "";
+    // tl1851 ①: the panel-resolved「项目名-会话名」wins — it follows session
+    // renames via the shared directory even while this menu has never opened.
+    if (boundLabel) return boundLabel;
     for (const group of groups) {
       const hit = group.entries.find((entry) => entry.topicId === value);
       if (hit) return hit.label;
@@ -139,7 +148,7 @@ export function HeartbeatSessionPicker({
       if (item.topicId === value) return item.title || value;
     }
     return value;
-  }, [value, groups, sessions]);
+  }, [value, boundLabel, groups, sessions]);
 
   return (
     <div className="heartbeat-bind-topic" data-testid="heartbeat-bind-topic" ref={wrapRef}>

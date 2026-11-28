@@ -40,6 +40,7 @@ import { useHeartbeatT, type HeartbeatTranslator } from "./heartbeat.i18n";
 // 无样式闪烁（FOUC）。node 单测通过 css-stub-register.mjs 的 loader hook 解析。
 import "./heartbeat.css";
 import { formatInterval, formatTaskNextRun, prepareTasksByNextRun, normalizeHeartbeatApproval, demoteAutoForHeartbeat, type HeartbeatApprovalMode } from "./heartbeat.presentation";
+import { useHeartbeatSessionDirectory, useHeartbeatBoundTopicLabel } from "./heartbeat.directory";
 import { TaskEditor } from "./HeartbeatTaskEditor";
 import { CirclePlaySolid } from "./HeartbeatShared";
 export { changeHeartbeatFrequency, cronToInterval, heartbeatNextRunAt, intervalToCron, nextCycleRunAt, prepareTasksByNextRun } from "./heartbeat.presentation";
@@ -234,6 +235,12 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
   }, []);
 
   useEffect(() => { if (active) void loadTasks(); else { editorIntent.current++; dismiss(); } }, [active, loadTasks, dismiss]);
+
+  // tl1851 ①: bound-conversation display names（项目名-会话名）. Refetches on
+  // activation and on every tasks revision (load/save/trigger reload), so a
+  // session rename follows without a page reload.
+  const sessionDirectory = useHeartbeatSessionDirectory(active, tasks);
+  const boundTopicLabel = useHeartbeatBoundTopicLabel(sessionDirectory, t("heartbeat.scopeGlobal"));
 
   // tl 1142：全局默认审批模式（设置→默认工具审批模式）。手动新建跟随它，
   // 推荐区例外（保留 ask 安全默认）。读取失败保持 ""，新建时按 ask 兜底。
@@ -787,8 +794,11 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                           <div className="worktree-node__meta">
                             <span className="worktree-node__scope-tag">{scopeLabel}</span>
                             {task.reuseSession && (
-                              <span className="worktree-node__scope-tag heartbeat-reuse-badge" title={t("heartbeat.reuseBadgeTip")}>
-                                {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
+                              <span
+                                className="worktree-node__scope-tag heartbeat-reuse-badge"
+                                title={task.topicId ? `${t("heartbeat.reuseBadgeTip")} (${task.topicId})` : t("heartbeat.reuseBadgeTip")}
+                              >
+                                {task.topicId ? t("heartbeat.reuseBadge", { name: boundTopicLabel(task.topicId).name }) : t("heartbeat.reuseBadgeUnbound")}
                               </span>
                             )}
                             <MaxRunsBadge task={task} t={t} />
@@ -906,8 +916,11 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                                 </div>
                                 <div className="worktree-node__meta">
                                   {task.reuseSession && (
-                                    <span className="worktree-node__scope-tag heartbeat-reuse-badge" title={t("heartbeat.reuseBadgeTip")}>
-                                      {task.topicId ? t("heartbeat.reuseBadge", { id: task.topicId.slice(0, 6) }) : t("heartbeat.reuseBadgeUnbound")}
+                                    <span
+                                      className="worktree-node__scope-tag heartbeat-reuse-badge"
+                                      title={task.topicId ? `${t("heartbeat.reuseBadgeTip")} (${task.topicId})` : t("heartbeat.reuseBadgeTip")}
+                                    >
+                                      {task.topicId ? t("heartbeat.reuseBadge", { name: boundTopicLabel(task.topicId).name }) : t("heartbeat.reuseBadgeUnbound")}
                                     </span>
                                   )}
                                   <MaxRunsBadge task={task} t={t} />
@@ -995,7 +1008,8 @@ export function HeartbeatView({ onOpenTopic, active = true, onBack = () => {} }:
                   onDelete={() => handleDelete(editing.id)}
                   onDiscard={() => { const id = editing.id; drafts().discard(id); if (!drafts().entries[id]) { setEditing(null); setDetailOpen(false); } }}
                   onCloseDetail={() => setDetailOpen(false)} onOpenTopic={onOpenTopic} onTrigger={handleTrigger}
-                  globalApprovalDefault={globalApprovalDefault} />
+                  globalApprovalDefault={globalApprovalDefault}
+                  sessionDirectory={sessionDirectory} globalScopeLabel={t("heartbeat.scopeGlobal")} />
               ) : (
                 <div className="heartbeat-split__empty">
                   <div className="heartbeat-split__empty-inner">

@@ -286,11 +286,15 @@ func TestHeartbeatReplaceConfigPreservesRunHistory(t *testing.T) {
 	}
 }
 
+// TestMergeHeartbeatDiskRunHistoryPreservesAllEngineRunState: tl1851 起契约
+// 分两半——TopicID 是用户可改绑字段（提交值直接生效；两个调用方的
+// revision/digest 门保证到达这里的快照不旧，差异=面板蓄意改绑），
+// LastRunAt/RunsUsed/RunHistory 仍是引擎运行态，旧快照不得回滚。
 func TestMergeHeartbeatDiskRunHistoryPreservesAllEngineRunState(t *testing.T) {
 	submitted := []HeartbeatTask{{
 		ID:         "t1",
 		Title:      "edited title",
-		TopicID:    "stale-topic",
+		TopicID:    "rebound-topic", // tl1851: 面板改绑，跟随提交值
 		LastRunAt:  100,
 		RunHistory: []HeartbeatRun{{At: 100, TopicID: "stale-topic"}},
 	}}
@@ -306,8 +310,11 @@ func TestMergeHeartbeatDiskRunHistoryPreservesAllEngineRunState(t *testing.T) {
 	if got[0].Title != "edited title" {
 		t.Fatalf("user-owned title=%q, want edited title", got[0].Title)
 	}
-	if got[0].TopicID != "fresh-topic" || got[0].LastRunAt != 200 {
-		t.Fatalf("engine run state rolled back: topic=%q lastRunAt=%d", got[0].TopicID, got[0].LastRunAt)
+	if got[0].TopicID != "rebound-topic" {
+		t.Fatalf("panel re-bind not persisted: topic=%q, want rebound-topic", got[0].TopicID)
+	}
+	if got[0].LastRunAt != 200 {
+		t.Fatalf("engine run state rolled back: lastRunAt=%d, want 200", got[0].LastRunAt)
 	}
 	if len(got[0].RunHistory) != 2 {
 		t.Fatalf("run history len=%d, want union of both snapshots", len(got[0].RunHistory))

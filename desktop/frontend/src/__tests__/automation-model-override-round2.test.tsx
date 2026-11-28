@@ -22,6 +22,8 @@ Object.assign(window, { go: { main: { App: {
   },
   async ListWorkspaces() { return []; },
   async HeartbeatGenerateID() { return "draft-new"; },
+  // tl1851: the panel resolves bound-conversation display names on mount.
+  async ListAddressableSessions() { return []; }, async ListProjectTree() { return []; },
   async Settings() {
     return { providers: [
       { name: "mimo-api", models: ["mimo-v2.6-flash"] },

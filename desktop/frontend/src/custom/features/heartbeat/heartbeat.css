@@ -1993,6 +1993,12 @@
 .heartbeat-editor__bound-id:hover {
   text-decoration: underline;
 }
+/* tl1851 ①: the bound display is now「项目名-会话名」— the readable name
+   keeps the UI font; the raw id sits next to it in the faint small span. */
+.heartbeat-editor__bound-name {
+  font-family: inherit;
+  flex: 0 1 auto;
+}
 .heartbeat-editor__bound-unbound {
   min-width: 0;
   color: var(--fg-faint);

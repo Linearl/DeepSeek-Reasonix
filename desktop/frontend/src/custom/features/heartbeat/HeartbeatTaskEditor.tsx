@@ -8,6 +8,7 @@ import { providerDisplayLabel } from "../../../lib/providerLabel";
 import type { WorkspaceView } from "../../../lib/types";
 import { CycleEditor } from "./HeartbeatCycleEditor";
 import { HeartbeatSessionPicker } from "./HeartbeatSessionPicker";
+import { emptySessionDirectory, heartbeatBoundTopicLabel, type HeartbeatSessionDirectory } from "./heartbeat.directory";
 import { CirclePlaySolid, mergeEngineRunState } from "./HeartbeatShared";
 import { useHeartbeatT } from "./heartbeat.i18n";
 import { changeHeartbeatFrequency, describeCron, formatCronNext, formatRelativeTime, isCronExpr, nextCronRunAt, type HeartbeatApprovalMode, type HeartbeatFrequencyType } from "./heartbeat.presentation";
@@ -27,6 +28,8 @@ export function TaskEditor({
   onOpenTopic,
   onTrigger, onDiscard, onToggleEnabled, onSaveAsNew,
   globalApprovalDefault = "",
+  sessionDirectory = emptySessionDirectory,
+  globalScopeLabel = "Global",
 }: {
   onDiscard?: () => void;
   onToggleEnabled?: () => Promise<boolean>;
@@ -41,6 +44,10 @@ export function TaskEditor({
   // tl 1142：全局默认审批模式（设置→默认工具审批模式），空串=尚未读到。
   // 仅用于新建草稿的 auto 降级提示，不参与保存。
   globalApprovalDefault?: HeartbeatApprovalMode | "";
+  // tl1851 ①/②: the panel's session directory — resolves「项目名-会话名」
+  // for the bound-conversation displays and follows renames via refetch.
+  sessionDirectory?: HeartbeatSessionDirectory;
+  globalScopeLabel?: string;
 }) {
   const t = useHeartbeatT();
   const m = useManagementT();
@@ -81,6 +88,11 @@ export function TaskEditor({
     else setLocalDraft(update);
   }, [managed, task.id]);
   const initialTaskRef = useRef(task);
+  // tl1851: the binding baseline as of THIS editor instance's first render. The
+  // run-state sync below must keep a locally picked re-bind while still adopting
+  // engine-side topic advances — and initialTaskRef cannot serve that judgement
+  // because it re-syncs to every incoming task prop.
+  const initialTopicIdRef = useRef(task.topicId);
   // 保存后父组件 setEditing({...task}) 传入新引用，同步基线使 isDirty
   // 复位（保存按钮与 dirtyRef 不再保持脏状态）。
   useEffect(() => {
@@ -91,7 +103,17 @@ export function TaskEditor({
   // while the user is editing title, prompt, or schedule.
   useEffect(() => {
     if (managed) return;
-    setDraft((current) => mergeEngineRunState({ ...current, enabled: task.enabled }, task));
+    setDraft((current) => {
+      const merged = mergeEngineRunState({ ...current, enabled: task.enabled }, task);
+      // tl1851: the binding is user-editable, so an engine-side topic advance
+      // must not clobber a locally picked re-bind. "Local" = the draft differs
+      // from the editor instance's first-render baseline; otherwise the engine
+      // advance adopts as before.
+      if (current.topicId && current.topicId !== initialTopicIdRef.current) {
+        merged.topicId = current.topicId;
+      }
+      return merged;
+    });
   }, [managed, setDraft, task.enabled, task.lastRunAt, task.runHistory, task.topicId, task.runsUsed]);
   const isNew = managed ? !entry?.baseline : !task.createdAt;
   const isDirty = managed && entry ? automationDraftDirty(entry) : draft.title !== initialTaskRef.current.title
@@ -101,6 +123,7 @@ export function TaskEditor({
     || draft.approvalMode !== initialTaskRef.current.approvalMode
     || draft.newConversationEachRun !== initialTaskRef.current.newConversationEachRun
     || draft.reuseSession !== initialTaskRef.current.reuseSession
+    || draft.topicId !== initialTaskRef.current.topicId // tl1851: re-bind counts as an edit
     || draft.maxRuns !== initialTaskRef.current.maxRuns
     || draft.notifyChannels !== initialTaskRef.current.notifyChannels
     || draft.scope !== initialTaskRef.current.scope
@@ -582,29 +605,37 @@ export function TaskEditor({
         </span>
       </div>
 
-      {/* 绑定会话（tl 1059，仅新建可选）：显式指定任务绑定的已有会话，
-          首跑直接注入该会话而非自建；不选 = 现行为（首跑自建并绑定）。
-          与「每轮新建对话」互斥（选中后禁用）。 */}
-      {isNew && (
-        <div className="heartbeat-editor__field" data-testid="heartbeat-bind-topic-field">
-          <label>
-            {t("heartbeat.fieldBindTopic")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
-          </label>
-          <HeartbeatSessionPicker
-            value={draft.topicId}
-            disabled={Boolean(draft.newConversationEachRun)}
-            onChange={(topicId) => setDraft((prev) => ({ ...prev, topicId }))}
-            onOpenTopic={onOpenTopic}
-            taskScope={draft.scope}
-            taskRoot={draft.workspaceRoot}
-          />
-          <span className="heartbeat-editor__mode-hint">
-            {draft.newConversationEachRun
-              ? t("heartbeat.bindTopicExclusive")
-              : t("heartbeat.bindTopicHint")}
-          </span>
-        </div>
-      )}
+      {/* 绑定会话（tl 1059 新建可选；tl1851 起已有任务同样可改绑）：
+          显式指定任务绑定的已有会话，首跑直接注入该会话而非自建；不选 =
+          现行为（首跑自建并绑定）。已有任务在此更换绑定后，下一次运行起
+          改用新会话，topicId 随保存落盘。与「每轮新建对话」互斥（选中后禁用）。 */}
+      <div className="heartbeat-editor__field" data-testid="heartbeat-bind-topic-field">
+        <label>
+          {t("heartbeat.fieldBindTopic")} <span className="heartbeat-editor__optional">{t("heartbeat.optional")}</span>
+        </label>
+        <HeartbeatSessionPicker
+          value={draft.topicId}
+          disabled={Boolean(draft.newConversationEachRun)}
+          onChange={(topicId) => setDraft((prev) => ({ ...prev, topicId }))}
+          onOpenTopic={onOpenTopic}
+          taskScope={draft.scope}
+          taskRoot={draft.workspaceRoot}
+          boundLabel={(() => {
+            if (!draft.topicId) return undefined;
+            // Only a resolved「项目名-会话名」overrides the picker's own lookup —
+            // an unresolved id would mask the label the picker can still derive.
+            const resolved = heartbeatBoundTopicLabel(draft.topicId, sessionDirectory, globalScopeLabel);
+            return resolved.resolved ? resolved.name : undefined;
+          })()}
+        />
+        <span className="heartbeat-editor__mode-hint">
+          {draft.newConversationEachRun
+            ? t("heartbeat.bindTopicExclusive")
+            : isNew
+              ? t("heartbeat.bindTopicHint")
+              : t("heartbeat.bindTopicHintExisting")}
+        </span>
+      </div>
 
       {/* 复用已有会话续跑（task 437）：开 = 每次运行把 prompt 追加到绑定的会话
           （上下文连续、不新增会话）；目标会话忙时跳过等下次。默认关 = 现有行为。 */}
@@ -624,18 +655,23 @@ export function TaskEditor({
           <div className="heartbeat-editor__bound-topic" data-testid="heartbeat-bound-topic">
             <span className="heartbeat-editor__bound-label">{t("heartbeat.reuseSessionBoundLabel")}</span>
             {draft.topicId ? (
-              <button
-                className="heartbeat-editor__bound-id"
-                type="button"
-                title={t("heartbeat.openTopic")}
-                onClick={() => {
-                  if (draft.topicId && onOpenTopic) {
-                    onOpenTopic(draft.scope || "global", draft.workspaceRoot || "", draft.topicId);
-                  }
-                }}
-              >
-                {draft.topicId}
-              </button>
+              <>
+                {/* tl1851 ①:「项目名-会话名」为主显示（跟随会话改名），
+                    id 降为小字；tooltip 补全 id 便于对照。 */}
+                <button
+                  className="heartbeat-editor__bound-id heartbeat-editor__bound-name"
+                  type="button"
+                  title={`${heartbeatBoundTopicLabel(draft.topicId, sessionDirectory, globalScopeLabel).name} (${draft.topicId})`}
+                  onClick={() => {
+                    if (draft.topicId && onOpenTopic) {
+                      onOpenTopic(draft.scope || "global", draft.workspaceRoot || "", draft.topicId);
+                    }
+                  }}
+                >
+                  {heartbeatBoundTopicLabel(draft.topicId, sessionDirectory, globalScopeLabel).name}
+                </button>
+                <span className="heartbeat-editor__bound-unbound" data-testid="heartbeat-bound-topic-id">{draft.topicId}</span>
+              </>
             ) : (
               <span className="heartbeat-editor__bound-unbound">{t("heartbeat.reuseSessionUnbound")}</span>
             )}
