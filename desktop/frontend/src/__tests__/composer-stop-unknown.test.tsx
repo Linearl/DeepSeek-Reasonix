@@ -143,6 +143,10 @@ async function renderComposer(props: Partial<Parameters<typeof Composer>[0]> = {
 }
 
 const stopButton = () => document.querySelector<HTMLButtonElement>(".composer__btn--stop");
+// tl1847 去文字: the button renders the Square icon only — no text child
+// nodes at all (the Square svg paths carry no text, so textContent === ""
+// is the authoritative check; a stray label span would light this up).
+const stopButtonIsTextFree = () => (stopButton()?.textContent ?? "x") === "";
 
 console.log("\ncomposer stop entry under unknown runtime state (task 510)");
 
@@ -172,6 +176,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   ok(stopButton() !== null, "unknown state keeps the stop button visible");
   eq(stopButton()?.disabled, false, "unknown stop button is not disabled by a stale projection");
   eq(stopButton()?.getAttribute("aria-label"), en["composer.stopUnknownState"], "unknown stop aria-label discloses the degraded state");
+  eq(stopButton()?.getAttribute("title"), en["composer.stopUnknownState"], "tl1847 unknown stop hover title matches the degraded-state hint (no tier hints while unknown)");
   await act(async () => {
     stopButton()?.click();
     await flushTimers();
@@ -357,10 +362,12 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
-// ── tl1420 三级终止档位显形：主反馈在按钮本体（三档三文案三色 class），hover 为辅 ──
-// ⑦ L1 已受理：首击后文案「停止中…」直接上按钮 + stopping 档 class（琥珀）；
-// 1s 无可见效果 armed 加脉冲 class（再点一次进强制的视觉信号；脉冲本体 CSS
-// 动画 jsdom 不可验，这里钉 class 配对）。
+// ── tl1420 三级终止档位显形 → tl1847 去文字：主反馈在按钮本体的色阶
+// （三档三色 class），按钮零文字，hover title/卡片接管全部文案，aria 保留
+// 完整档位语义 ──
+// ⑦ L1 已受理：首击后按钮仍零文字（tl1847），只有 stopping 档 class（琥珀）
+// + aria 全文案 + title 档位说明；1s 无可见效果 armed 加脉冲 class（再点一
+// 次进强制的视觉信号；脉冲本体 CSS 动画 jsdom 不可验，这里钉 class 配对）。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
@@ -371,18 +378,23 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
     stopButton()?.click();
     await flushTimers();
   });
-  eq(stopButton()?.textContent, en["composer.stopCompactStopping"], "tl1420 L1 label reads the compact tag on the button itself (tl1582: full copy moved to the hover card)");
-  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopStopping"], "tl1420 L1 aria-label still reads the full tier text 停止中… (tl1582: SR keeps the full copy)");
+  eq(stopButton()?.textContent, "", "tl1847 L1 button is text-free (no 停止中 copy, no compact tag)");
+  eq(stopButton()?.querySelector("span"), null, "tl1847 L1 button carries no label span child");
+  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopStopping"], "tl1420 L1 aria-label still reads the full tier text 停止中… (tl1847: SR unaffected by the de-texting)");
+  eq(stopButton()?.getAttribute("title"), en["composer.stopNormal"], "tl1847 L1 hover title reads the first-press semantics");
   eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 L1 carries the stopping tier class right after the click");
   eq(stopButton()?.classList.contains("composer__btn--stop-armed"), false, "tl1420 fresh L1 does not pulse yet");
   await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
   ok(Boolean(stopButton()?.classList.contains("composer__btn--stop-armed")), "tl1420 armed adds the pulse class 1s after the click without visible effect");
   eq(stopButton()?.classList.contains("composer__btn--stop-stopping"), true, "tl1420 armed stays on the stopping (amber) tier");
+  ok(stopButtonIsTextFree(), "tl1847 armed button stays text-free");
   await act(async () => { root.unmount(); });
   dom.window.close();
 }
 
-// ⑧ L2 强制宽限：倒计时数字直接在按钮上，且每秒更新（红色渐深档 class）。
+// ⑧ L2 强制宽限：倒计时数字不上按钮（tl1847 零文字），改走 aria-label 每秒
+// 更新（红色渐深档 class 不动，state 机零改动只改呈现）；hover title 挂
+// 15s 宽限说明。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
@@ -392,22 +404,26 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const btn = stopButton();
   ok(Boolean(btn?.classList.contains("composer__btn--stop-grace")), "tl1420 L2 grace carries the grace tier class");
   ok(!btn?.classList.contains("composer__btn--stop-stopping"), "tl1420 grace is not the amber step (red escalation)");
+  ok(stopButtonIsTextFree(), "tl1847 grace button is text-free (countdown digits live in aria + hover card, not on the button)");
   const readNs = (): number => {
-    const m = stopButton()?.textContent?.match(/(\d+)\s*s/);
+    const aria = stopButton()?.getAttribute("aria-label") ?? "";
+    const m = aria.match(/(\d+)\s*s/);
     return m ? Number(m[1]) : -1;
   };
   const n0 = readNs();
-  ok(n0 >= 7 && n0 <= 9, `tl1420 grace renders the countdown on the button (got ${n0}s)`);
-  ok(!stopButton()?.textContent?.includes("Force stop ·"), "tl1582 grace button carries no long copy (Force stop · lives in the hover card now)");
-  eq(stopButton()?.getAttribute("aria-label"), en["composer.stopForceCountdown"].replace("{n}", String(n0)), "tl1582 grace aria-label keeps the full 强制停止 · Ns text");
+  ok(n0 >= 7 && n0 <= 9, `tl1847 grace aria-label carries the live countdown (got ${n0}s)`);
+  eq(btn?.getAttribute("aria-label"), en["composer.stopForceCountdown"].replace("{n}", String(n0)), "tl1847 grace aria-label keeps the full 强制停止 · Ns text");
+  eq(btn?.getAttribute("title"), en["composer.stopForceHint"], "tl1847 grace hover title reads the 15s-grace hint (点击两次…)");
   await act(async () => { await new Promise((r) => setTimeout(r, 1100)); });
   const n1 = readNs();
-  ok(n1 >= 0 && n1 < n0, `tl1420 grace countdown updates every second (${n0}s → ${n1}s)`);
+  ok(n1 >= 0 && n1 < n0, `tl1847 grace countdown still updates every second via aria (${n0}s → ${n1}s); the tier class (渐深) follows the same state`);
+  eq(stopButton()?.classList.contains("composer__btn--stop-grace"), true, "tl1847 grace tier class holds while the countdown ticks");
   await act(async () => { root.unmount(); });
   dom.window.close();
 }
 
-// ⑨ L3 已终止：force 档 class + 「已终止」文案（还在 running 期间即显形）。
+// ⑨ L3 已终止：force 档 class（最深红阶）+ 零文字（tl1847），aria/title 接管
+// 「已终止」语义（还在 running 期间即显形）。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
@@ -415,8 +431,9 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const { root } = await renderComposer({ running: true, tabId: "tl1420-l3", stopLevel: 3, stopDeadlineUnix: 0 });
   const btn = stopButton();
   ok(Boolean(btn?.classList.contains("composer__btn--stop-force")), "tl1420 L3 carries the force tier class");
-  eq(btn?.textContent, en["composer.stopCompactTerminated"], "tl1420/tl1582 L3 reads the compact tag; the full 已终止 lives in aria + the hover card");
+  eq(btn?.textContent, "", "tl1847 L3 button is text-free (已终止 lives in aria + the hover card)");
   eq(btn?.getAttribute("aria-label"), en["composer.stopTerminated"], "tl1582 L3 aria-label keeps the full 已终止 text");
+  eq(btn?.getAttribute("title"), en["composer.stopImmediate"], "tl1847 L3 hover title reads the immediate-stop hint (点击三次…)");
   await act(async () => { root.unmount(); });
   dom.window.close();
 }
@@ -437,7 +454,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const btn = stopButton();
   ok(btn !== null, "tl1420 settled keeps the button mounted during the hold");
   ok(Boolean(btn?.classList.contains("composer__btn--stop-settled")), "tl1420 settled carries the settled tier class");
-  eq(btn?.textContent, en["composer.stopCompactTerminated"], "tl1420/tl1582 settled reads the compact tag during the hold");
+  eq(btn?.textContent, "", "tl1847 settled button is text-free during the hold");
+  eq(btn?.getAttribute("title"), en["composer.stopImmediate"], "tl1847 settled hover title keeps the immediate-stop hint during the hold");
   eq(btn?.disabled, true, "tl1420 settled button is inert (nothing left to stop)");
   await act(async () => { await new Promise((r) => setTimeout(r, 1900)); });
   eq(stopButton(), null, "tl1420 after the linger the button is back to idle and unmounts");
@@ -445,10 +463,11 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
-// ── tl1582 按钮紧凑化 + hover 卡片：完整三段档位文案上既有 Tooltip 载体 ──
+// ── tl1582 hover 卡片（tl1847 起为文案唯一完整载体之一）：完整三段档位文案
+// 上既有 Tooltip 载体 ──
 // 验收②：hover 悬浮卡片完整显示三段文案+可读性（三行结构、当前档高亮、
 // note 说明齐备）；验收③：载体与 hover 体系一致（还是任务1033 的 .tooltip，
-// 不新造弹层）。
+// 不新造弹层）。tl1847：按钮本体零文字，卡片 + 原生 title 双通道接管文案。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
@@ -459,8 +478,7 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
     await flushTimers();
   });
   const btn = stopButton();
-  eq(btn?.textContent, en["composer.stopCompactStopping"], "tl1582 L1 button carries only the compact tag");
-  ok(!btn?.textContent?.includes(en["composer.stopStopping"]), "tl1582 L1 button no longer renders the full 停止中… copy");
+  eq(btn?.textContent, "", "tl1847 L1 button carries no text at all (compact tag gone with tl1847)");
   const trigger = btn?.closest(".tooltip-trigger");
   ok(trigger !== null, "tl1582 stop button sits in the tooltip trigger (carrier unchanged)");
   await act(async () => {
@@ -484,7 +502,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
-// tl1582 grace 态：当前档 = 强制行，卡片主文案带实时倒计时数字。
+// tl1582 grace 态：当前档 = 强制行，卡片主文案带实时倒计时数字（tl1847：
+// 按钮零文字，实时数字从 aria-label 读）。
 {
   const dom = installDom();
   runtimeStateStore.commit(projection("synced"));
@@ -501,8 +520,8 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   const rows = card?.querySelectorAll(".tooltip__stopcard-row");
   ok(rows?.[1]?.classList.contains("tooltip__stopcard-row--current") === true, "tl1582 grace hover marks the force row as current");
   ok(rows?.[0]?.classList.contains("tooltip__stopcard-row--current") === false, "tl1582 grace hover does not mark row 1");
-  const n = Number(stopButton()?.textContent?.match(/(\d+)\s*s/)?.[1] ?? -1);
-  ok(n >= 7 && n <= 9, `tl1582 grace pre: countdown on the button (${n}s)`);
+  const n = Number(stopButton()?.getAttribute("aria-label")?.match(/(\d+)\s*s/)?.[1] ?? -1);
+  ok(n >= 7 && n <= 9, `tl1847 grace pre: live countdown readable from aria-label (${n}s)`);
   ok((card?.textContent ?? "").includes(en["composer.stopForceCountdown"].replace("{n}", String(n))), "tl1582 grace card shows the live countdown in the force row");
   await act(async () => { root.unmount(); });
   dom.window.close();
@@ -528,9 +547,11 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   dom.window.close();
 }
 
-// tl1582 CSS 防线（上限+新增即红）：按钮物理封顶 72px + 标签 span 内省略号。
-// compact 文案预算由 stop-button.test.ts 的字符断言把守；这里把守 CSS 面——
-// 两条防线任一被删都立刻红，不再回到「nowrap 长文案画出按钮边界」的形态。
+// tl1847 CSS 防线（上限+新增即红）：按钮零文字后，三档可区分性完全压在
+// 色阶/动画上——这里把守 ① 72px 物理上限（残留回归守卫）② 三档渐深色值
+// （--stop-tier-pct 阶梯）③ armed 脉冲动画 ④ 主题包守卫规则 ⑤ 去文字死规则
+// 不复活（.composer__stop-label / .composer__stop-countdown 一旦回来即红）。
+// compact 文案预算仍由 stop-button.test.ts 的字符断言把守（键保留防回滚）。
 {
   const css = readFileSync(
     resolve(dirname(fileURLToPath(import.meta.url)), "..", "styles.css"),
@@ -538,11 +559,23 @@ console.log("\ncomposer stop entry under unknown runtime state (task 510)");
   );
   const stopBlock = /\.composer__btn--stop \{[^}]*\}/.exec(css);
   ok(stopBlock !== null, "tl1582 the .composer__btn--stop block exists in styles.css");
-  ok(stopBlock?.[0].includes("max-width: 72px") === true, "tl1582 stop button keeps the 72px physical cap");
-  const labelBlock = /\.composer__btn--stop \.composer__stop-label \{[^}]*\}/.exec(css);
-  const countdownBlock = /\.composer__btn--stop \.composer__stop-countdown \{[^}]*\}/.exec(css);
-  ok(labelBlock?.[0].includes("text-overflow: ellipsis") === true, "tl1582 the stop label span ellipsizes inside the cap");
-  ok(countdownBlock?.[0].includes("text-overflow: ellipsis") === true, "tl1582 the grace countdown span ellipsizes inside the cap");
+  ok(stopBlock?.[0].includes("max-width: 72px") === true, "tl1847 stop button keeps the 72px physical cap (regression guard)");
+  // 渐深阶梯（tl1420 色阶 = tl1847 后唯一档位信号，动一档即红）：
+  // L1 琥珀 16% → L2 红 34% → L3 红 48%（定格 26%）。
+  const tierPct = (cls: string): string | null =>
+    new RegExp(`\\.composer__btn--stop-${cls} \\{[^}]*--stop-tier-pct: ([^;]+);`).exec(css)?.[1] ?? null;
+  eq(tierPct("stopping"), "16%", "tl1847 L1 stopping tier keeps the amber 16% step");
+  eq(tierPct("grace"), "34%", "tl1847 L2 grace tier keeps the red 34% step (deeper than L1)");
+  eq(tierPct("force"), "48%", "tl1847 L3 force tier keeps the deepest red 48% step");
+  eq(tierPct("settled"), "26%", "tl1847 settled tier keeps its 26% hold tone");
+  // L1 armed 脉冲动画（无文字后的 armed 升级信号本体）。
+  ok(/@keyframes composer-stop-pulse \{/.test(css), "tl1847 the armed pulse keyframes exist (escalation signal without text)");
+  ok(/\.composer__btn--stop-armed \{\s*animation: composer-stop-pulse/.test(css), "tl1847 the armed class still drives the pulse animation");
+  // 主题包场景下三档色阶不被压平（守卫规则仍引用档位变量）。
+  ok(css.includes('.composer__btn--stop[class*="composer__btn--stop-"]') && css.includes("var(--stop-tier-color"), "tl1847 the theme-pack guard still re-applies the tier hue");
+  // 死规则不复活：去文字后标签 span 的 CSS 一旦回来即红（防静默回滚）。
+  ok(!css.includes(".composer__stop-label"), "tl1847 the dead .composer__stop-label rule stays removed");
+  ok(!css.includes(".composer__stop-countdown"), "tl1847 the dead .composer__stop-countdown rule stays removed");
 }
 
 process.stdout.write(`\ncomposer stop unknown: ${passed} passed, ${failed} failed\n`);

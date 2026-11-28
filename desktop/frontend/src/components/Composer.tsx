@@ -6,7 +6,7 @@ import {
   stopButtonView,
   stopButtonTier,
   stopButtonLabelSpec,
-  stopButtonCompactLabelSpec,
+  stopButtonTitleSpec,
   STOP_SETTLE_LINGER_MS,
   type StopButtonPhase,
 } from "../lib/stopButton";
@@ -1040,20 +1040,20 @@ export function Composer({
     stopEverEngaged,
     stopSettledAt,
   });
-  // tl1420 档位显形: the label itself is the tier feedback (L1 停止中… /
-  // L2 强制停止 · Ns / L3 已终止); the tooltip hint stays auxiliary.
-  // tl1582 按钮紧凑化: the full tier copy no longer renders on the button —
-  // it was the overflow source (nowrap label inside a squeezeable
-  // tooltip-trigger). The button shows the compact tag; the aria-label keeps
-  // the full tier text and the hover card (same Tooltip carrier) lists all
-  // three tiers with the current one highlighted.
+  // tl1420 档位显形 → tl1847 去文字 (tl1420-r2, user 2026-11-27): the button
+  // carries NO text — the three tiers separate by color/animation alone
+  // (L1 amber pulse / L2 red grace / L3 freeze). The copy lives in the hover
+  // title (tier-matched hint) and the hover card below; the aria-label keeps
+  // the full tier text so screen readers are unaffected by the de-texting.
+  // The state machine (stopButtonView) is untouched — presentation only.
   const stopTier = stopButtonTier(stopView.phase);
   const stopLabelSpec = stopButtonLabelSpec(stopView.phase, stopView.countdownSeconds);
   const stopButtonLabel = t(stopLabelSpec.key, stopLabelSpec.n != null ? { n: stopLabelSpec.n } : undefined);
-  const stopCompactSpec = stopButtonCompactLabelSpec(stopView.phase, stopView.countdownSeconds);
-  const stopButtonCompactLabel = stopCompactSpec
-    ? t(stopCompactSpec.key, stopCompactSpec.n != null ? { n: stopCompactSpec.n } : undefined)
-    : "";
+  // tl1847: native hover title — tier-matched hint copy (unknown degraded
+  // state overrides with the state-unknown text, mirroring aria/tooltip).
+  const stopTitle = runtimeState.unknown && stopView.phase !== "settled"
+    ? t("composer.stopUnknownState")
+    : t(stopButtonTitleSpec(stopView.phase).key);
   // tl1582 hover card: full three-tier copy on the existing Tooltip carrier
   // (ReactNode label renders verbatim into .tooltip — no new popover). The
   // non-grace rows show the 15s ceiling the hint copy already names.
@@ -7005,14 +7005,16 @@ export function Composer({
                   （run strip「连接中断／状态待同步」+ 输入禁用）保留，但安全出口
                   必须始终在场。unknown 下 tooltip/aria 明示状态未知，点击照常
                   发出停止请求；disabled 只由「非 unknown 的明确不可取消」触发。
-                  tl1420 档位显形：主反馈在按钮本体——三档三文案三色阶
-                  （停止中…琥珀 / 强制停止·Ns 深红+倒计时 / 已终止定格），
-                  tooltip 降为辅助；L3 后定格短暂显示「已终止」再回 idle。
+                  tl1420 档位显形：主反馈在按钮本体——三档三色阶
+                  （L1 琥珀+脉冲 / L2 深红+倒计时 / L3 定格）。
                   tl1582 按钮紧凑化：完整档位文案不再上按钮（溢出根因——
-                  nowrap 长文案在可被压缩的 tooltip-trigger 里画出按钮边界），
-                  按钮只留图标+紧凑短标（档位色阶继续承档位语义），aria-label
-                  仍读完整档位文案；完整三段说明走既有 Tooltip 载体的 hover
-                  卡片（当前档高亮）。
+                  nowrap 长文案在可被压缩的 tooltip-trigger 里画出按钮边界）。
+                  tl1847 去文字（tl1420-r2，用户 2026-11-27）：按钮上不再有
+                  任何文字（含倒计时秒数）——三档只靠颜色/动画区分，hover 足
+                  以说明：档位说明挂原生 title（stopNormal/stopForceHint/
+                  stopImmediate），完整三段说明走既有 Tooltip 载体的 hover
+                  卡片（当前档高亮）；aria-label 保留完整档位文案（屏幕阅读
+                  不受视觉去字影响）；i18n 键全数保留不删（防回滚）。
                   tl1765：cancellable=false 的否决收窄为「本地同样不在跑」——
                   分叉现场（本地 reducer running=true 而投影已翻引擎 idle，
                   turn_done 断链形态，20261122 GC专员截图）不再锁死停止出口，
@@ -7034,15 +7036,9 @@ export function Composer({
                     }}
                     disabled={stopView.phase === "settled" || (!runtimeState.unknown && runtimeState.cancellable === false && !running) || cancelSettlingDraftsRef.current.has(draftKey)}
                     aria-label={runtimeState.unknown && stopView.phase !== "settled" ? t("composer.stopUnknownState") : stopButtonLabel}
+                    title={stopTitle}
                   >
-                    {stopView.phase === "idle"
-                      ? <Square size={12} fill="currentColor" />
-                      : <>
-                          <Square size={12} fill="currentColor" />
-                          <span className={stopView.phase === "grace" ? "composer__stop-countdown" : "composer__stop-label"}>
-                            {stopButtonCompactLabel}
-                          </span>
-                        </>}
+                    <Square size={12} fill="currentColor" />
                   </button>
                 </Tooltip>
               ) : null}

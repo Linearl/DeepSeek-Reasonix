@@ -5,11 +5,14 @@
 // tl1420 档位显形: the button itself carries the tier feedback (main signal,
 // hover/tooltip stays auxiliary). Three engaged tiers read directly off the
 // button —
-//   L1 已受理 (normal/armed): 「停止中…」 amber; armed adds the pulse.
-//   L2 强制宽限 (grace):      「强制停止 · Ns」 deep red, the deadline counts
-//                             down on the button.
-//   L3 已终止 (force/settled): 「已终止」 holds briefly (settle linger) after
-//                             the turn ends, then the button returns to idle.
+//   L1 已受理 (normal/armed): amber; armed adds the pulse.
+//   L2 强制宽限 (grace):      deep red, the deadline counts down (aria).
+//   L3 已终止 (force/settled): holds briefly (settle linger) after the turn
+//                             ends, then the button returns to idle.
+// tl1847 去文字 (tl1420-r2, user 2026-11-27): the button carries NO text at
+// all — the three tiers separate by color/animation alone; the copy moved to
+// the hover title + the hover card, and aria-label keeps the full tier text
+// for screen readers. The state machine below is untouched (呈现层改动).
 // All tier helpers are pure so the harness can pin label/class pairing.
 
 export type StopButtonPhase =
@@ -95,8 +98,9 @@ export function stopButtonTier(phase: StopButtonPhase): StopButtonTier | null {
   return null;
 }
 
-/** tl1420: the on-button label (i18n key + optional countdown var). The label
- * IS the main tier feedback; the tooltip hint stays secondary. */
+/** tl1420: the full tier label (i18n key + optional countdown var). tl1847:
+ * no longer rendered on the button — it now feeds the aria-label only, so
+ * screen readers keep the full tier text after the visual de-texting. */
 export type StopButtonLabelSpec = {
   key: "composer.stopStopping" | "composer.stopForceCountdown" | "composer.stopTerminated";
   n?: number;
@@ -111,15 +115,12 @@ export function stopButtonLabelSpec(
   return { key: "composer.stopStopping" };
 }
 
-// tl1582 按钮紧凑化: the full tier labels (「停止中…」/「强制停止 · 14s」/
-// 「已终止」) are long nowrap strings that overflow the button whenever the
-// toolbar flex row squeezes the tooltip-trigger wrapper (it has min-width:0
-// and no flex-shrink guard). The button now carries only a compact tag
-// (≤3 CJK-equivalent chars, see STOP_COMPACT_LABEL_MAX_CHARS) — the tier hue
-// (tl1420) and the aria-label keep the full semantics, and the complete
-// three-tier copy moves to the hover card. Pure like stopButtonLabelSpec so
-// the harness can pin label/key pairing AND the width budget (char count)
-// without a layout engine.
+// tl1582 按钮紧凑化 → tl1847 superseded on the button: the compact tag no
+// longer renders anywhere (tl1847 removes ALL text from the button). The spec
+// stays pure-and-exported on purpose — it pins the composer.stopCompact* i18n
+// keys (tl1847 ④: unused keys are kept, not deleted, so a rollback is a
+// one-line revert) and keeps the width budget contract testable without a
+// layout engine.
 export type StopButtonCompactLabelSpec = {
   key: "composer.stopCompactStopping" | "composer.stopCompactGrace" | "composer.stopCompactTerminated";
   n?: number;
@@ -140,4 +141,20 @@ export function stopButtonCompactLabelSpec(
   if (phase === "grace") return { key: "composer.stopCompactGrace", n: countdownSeconds ?? 0 };
   if (phase === "force" || phase === "settled") return { key: "composer.stopCompactTerminated" };
   return { key: "composer.stopCompactStopping" };
+}
+
+/** tl1847 去文字: the hover title (native tooltip) copy — the on-button text
+ * moved here. Tier-matched: idle/L1 reads the first-press semantics, L2 the
+ * 15s-grace hint, L3 the immediate hint. Pure like the other tier helpers so
+ * the harness can pin phase→hint-key pairing. (The unknown degraded state
+ * overrides this in the component with composer.stopUnknownState — same
+ * override the aria-label and the tooltip carrier already apply.) */
+export type StopButtonTitleSpec = {
+  key: "composer.stopNormal" | "composer.stopForceHint" | "composer.stopImmediate";
+};
+
+export function stopButtonTitleSpec(phase: StopButtonPhase): StopButtonTitleSpec {
+  if (phase === "grace") return { key: "composer.stopForceHint" };
+  if (phase === "force" || phase === "settled") return { key: "composer.stopImmediate" };
+  return { key: "composer.stopNormal" };
 }

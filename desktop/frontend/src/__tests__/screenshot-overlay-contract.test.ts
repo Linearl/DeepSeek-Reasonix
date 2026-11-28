@@ -99,8 +99,12 @@ ok(
 );
 
 ok(
-  /\{attachmentInputEnabled && !heroMode && \(\s*<div className="composer-screenshot-picker">/.test(composerSource),
-  "the screenshot button is gated by attachmentInputEnabled and hidden in hero mode",
+  // tl1847 预存红收口（tl1450 漂移）：tl1450-creation 步骤② (5eddbd9508)
+  // 删 creation 布局时把 !heroMode 从 gating 中移除（三布局→两布局，
+  // hero 概念退役），本断言未跟随——基线即红 21 天。对齐现状：按钮只由
+  // attachmentInputEnabled gate。
+  /\{attachmentInputEnabled && \(\s*<div className="composer-screenshot-picker">/.test(composerSource),
+  "the screenshot button is gated by attachmentInputEnabled (tl1450: hero gate removed with the creation layout)",
 );
 
 ok(
