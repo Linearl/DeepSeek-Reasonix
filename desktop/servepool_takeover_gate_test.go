@@ -337,3 +337,105 @@ func TestGatewayTakeoverGateRefusesUnsafeName(t *testing.T) {
 		t.Fatalf("prompts = %d, want 0 for unsafe names", len(f.prompts))
 	}
 }
+
+// tl1866 (F-a): replays the J1 integration sequence and pins the gate's
+// judgment against the exact shape that was misdiagnosed as "the judgment
+// read a stale state". The real timeline: the desktop tab bound session A and
+// took its lease (19:30:38 "lease acquired on tab bind"); the card-game serve
+// spawned (20:03); the phone /resume'd a DIFFERENT session B (20:14, the
+// pooled serve takes B's lease via SessionLeaseKeeper.Rebind); the takeover
+// for B (20:15) passed through "no desktop tab holds the session". The
+// handoff recorded F-a as "the tab held the lease yet the gate judged none".
+// The lease-transfer-chain audit proved otherwise, and this test pins it:
+//   - no desktop-side event in the spawn/resume chain writes tab leases
+//     (internal/servepool/servepool.go (*Manager).spawn and
+//     desktop/servepool_host.go touch no tab lease; serve's
+//     control.SessionLeaseKeeper.Rebind takes the target lease in the serve
+//     process only), so A's lease stays visible to the gate throughout;
+//   - takeover(B) must pass through WITHOUT a prompt — B never had a desktop
+//     holder, and the J1 scenario was misconstructed (phone session ≠ tab
+//     session);
+//   - takeover(A) must still prompt — the bind lease is live;
+//   - the pass-through line must name what the desktop DOES hold
+//     (desktop_holds), so the "the tab held it!" surprise is a one-line
+//     desktop.log read (the original triage needed lock-file and rewritelog
+//     forensics to learn the phone had targeted a different session);
+//   - a rejection after all of that leaves A's lease untouched.
+func TestGatewayTakeoverGateBindSpawnResumeSequenceJudgesEachSession(t *testing.T) {
+	f := newGatewayTakeoverFixture(t)
+	logs := captureSlog(t)
+
+	// Session B: the phone's /resume target — a DIFFERENT transcript in the
+	// same project session directory (the 20260608 vs 20260624 shape).
+	bPath := filepath.Join(filepath.Dir(f.path), "sess-resumed.jsonl")
+	if err := os.WriteFile(bPath, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// bind (19:30:38): the desktop tab acquires A's cross-process lease.
+	leaseA, err := agent.TryAcquireSessionLease(f.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.tab.sessionLease = leaseA
+	f.tab.storeSessionLeaseRuntimeKey(sessionRuntimeKey(f.path))
+
+	// spawn (20:03): servepool spawns the serve subprocess. Nothing to
+	// simulate on the desktop side — the audit confirmed the spawn chain
+	// writes no tab lease (the zero-touch fact this test documents).
+
+	// resume (20:14): the pooled serve takes B's lease in its own process
+	// (control.SessionLeaseKeeper.Rebind). Held here for the test lifetime to
+	// mirror "B is genuinely held — by someone else", then released.
+	leaseB, err := agent.TryAcquireSessionLease(bPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leaseB.Release()
+
+	RegisterTakeoverPromptSink(func(req takeoverDecisionReq) {
+		f.prompts = append(f.prompts, req)
+		if req.Path == bPath {
+			t.Errorf("session B prompted; no desktop tab holds it: %+v", req)
+			SubmitTakeoverDecision(req.Marker, false)
+			return
+		}
+		// Session A: someone IS at the desktop — reject to keep A's lease.
+		SubmitTakeoverDecision(req.Marker, false)
+	})
+
+	// takeover(B) (20:15:01): pass through, no prompt, evidence field names A.
+	reqB := f.request()
+	reqB.SessionName = "sess-resumed"
+	allow, status, message := f.app.servePoolTakeoverGate(reqB)
+	if !allow || status != 0 || message != "" {
+		t.Fatalf("gate(B) = (%v, %d, %q), want pass-through for a session no tab holds", allow, status, message)
+	}
+	if len(f.prompts) != 0 {
+		t.Fatalf("prompts after takeover(B) = %d, want 0", len(f.prompts))
+	}
+	text := logs.String()
+	if !strings.Contains(text, "passed through (no desktop tab holds the session)") {
+		t.Fatalf("takeover(B) must log the pass-through line; log:\n%s", text)
+	}
+	if !strings.Contains(text, `"desktop_holds":["sess-gate.jsonl"]`) {
+		t.Fatalf("pass-through line must name the held base (desktop_holds); log:\n%s", text)
+	}
+
+	// takeover(A): the bind lease is still visible — prompt, then reject.
+	reqA := f.request() // SessionName = "sess-held"
+	allow, status, message = f.app.servePoolTakeoverGate(reqA)
+	if allow || status != http.StatusConflict {
+		t.Fatalf("gate(A) = (%v, %d, %q), want a prompt answered with 409", allow, status, message)
+	}
+	if len(f.prompts) != 1 {
+		t.Fatalf("prompts after takeover(A) = %d, want exactly 1", len(f.prompts))
+	}
+	if f.prompts[0].Path != f.path {
+		t.Fatalf("prompt path = %q, want session A's transcript", f.prompts[0].Path)
+	}
+	// The whole spawn+resume sequence left A's lease untouched.
+	if leaseA.Released() {
+		t.Fatal("session A's lease was released by the spawn/resume sequence; the tab must keep local control")
+	}
+}

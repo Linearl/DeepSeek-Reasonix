@@ -89,7 +89,13 @@ func (a *App) servePoolTakeoverGate(req servepool.TakeoverGateRequest) (bool, in
 	// the no-sink case; the serve answers on its own authority (tl1854 R2
 	// makes a self-held takeover a direct 204).
 	if !a.desktopHoldsSessionLease(path) {
-		slog.Info("desktop: gateway takeover passed through (no desktop tab holds the session)", "path", path, "from", req.From)
+		// tl1866: desktop_holds names what the tabs DO hold. The J1 run
+		// misread this pass-through as a stale judgment because the phone had
+		// targeted a DIFFERENT session than the tab held (bind 20260624 vs
+		// takeover 20260608); the line itself now carries the held bases, so
+		// that shape is a one-line desktop.log read instead of a lock-file and
+		// rewritelog dig.
+		slog.Info("desktop: gateway takeover passed through (no desktop tab holds the session)", "path", path, "from", req.From, "desktop_holds", a.desktopHeldSessionBases())
 		return true, 0, ""
 	}
 	// The marker id is a bridge correlation key only — no marker file is
@@ -183,6 +189,36 @@ func (a *App) desktopHoldsSessionLease(path string) bool {
 	return false
 }
 
+// desktopHeldSessionBases lists the transcript file bases the workspace tabs
+// currently hold leases for (tl1866). It feeds the pass-through / nothing-to-
+// yield log lines' desktop_holds field: when the gate says "no desktop tab
+// holds the session" while the triager believes the desktop holds it, the
+// line itself shows which session(s) the desktop DOES hold — the F-a
+// misdiagnosis (phone targeted a different session than the tab held) cost a
+// lock-file and rewritelog dig to learn what this field states outright.
+// Same locking discipline as desktopHoldsSessionLease: snapshot tabs under
+// a.mu, read each lease under the tab's leaf mutex only.
+func (a *App) desktopHeldSessionBases() []string {
+	a.mu.Lock()
+	tabs := make([]*WorkspaceTab, 0, len(a.tabs))
+	for _, tab := range a.tabs {
+		if tab != nil {
+			tabs = append(tabs, tab)
+		}
+	}
+	a.mu.Unlock()
+	bases := make([]string, 0, len(tabs))
+	for _, tab := range tabs {
+		tab.sessionLeaseMu.Lock()
+		lease := tab.sessionLease
+		tab.sessionLeaseMu.Unlock()
+		if lease != nil {
+			bases = append(bases, filepath.Base(lease.Path()))
+		}
+	}
+	return bases
+}
+
 // yieldTabsToGatewayTakeover performs the accept side for a gateway-gated
 // takeover: every tab holding the session enters the yielding state (539 —
 // the lease is KEPT until the tab's turn finishes, then released with a
@@ -205,7 +241,9 @@ func (a *App) yieldTabsToGatewayTakeover(path string, force bool) {
 	if len(tabs) == 0 {
 		// tl1854 R2: the accept path used to be fully silent when nothing held
 		// the session, which hid the idle-takeover misroute during triage.
-		slog.Info("desktop: no desktop tab holds the session, nothing to yield", "path", path)
+		// tl1866: same evidence field as the pass-through line — what the tabs
+		// DO hold, for the same one-line diagnosis.
+		slog.Info("desktop: no desktop tab holds the session, nothing to yield", "path", path, "desktop_holds", a.desktopHeldSessionBases())
 		return
 	}
 	for _, tab := range tabs {
