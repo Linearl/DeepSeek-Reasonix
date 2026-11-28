@@ -4890,13 +4890,9 @@ func (a *App) buildTabControllerWithContextCore(tab *WorkspaceTab, loadedSession
 	// 随 tl1741 撤 experimental_runtime_reuse 退役（池无条件启用）——
 	// ReuseAssembly 仅在池冷时为 nil，BuildWithAssembly 届时与 boot.Build
 	// 同形。
-	// Task 363A key identity: deref the effort pointer the same way the
-	// rebind chain does (empty string when unset).
-	effortKey := ""
-	if buildEffort != nil {
-		effortKey = *buildEffort
-	}
-	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
+	// tl1859（方案A）：key identity=root-only——同项目换模型/effort 打开对话
+	// 命中同一池条目，不再全额冷建（persona 由 boot 复用后 strip+prepend 重贴）。
+	assemblyKey := runtimeAssemblyKeyForTab(root)
 	ctrl, assembly, err := a.buildTabControllerBootFenced(buildCtx, extensionGen, boot.Options{
 		Model: model,
 		// 任务 824 ②: 回填 boot 内部 stage 串（total/config/.../mcp/prompt/

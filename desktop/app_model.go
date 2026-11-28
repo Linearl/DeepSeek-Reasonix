@@ -641,25 +641,12 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 	handoffJobs, handoffLease := jobsHandoffFrom(oldCtrl)
 	// tl1389 P0: feed the 363A runtime-reuse pool into the model-switch
 	// rebuild (same shape as the rebind chain in app_session_rebind.go).
-	// Acquire the OUTGOING generation's assembly — keyed by the tab's
-	// pre-switch root/model/effort identity, the one identity guaranteed warm
-	// once the tab has built; the new-model key would be cold on first
-	// arrival. Skill/command/hook discovery and the prompt re-scan are
-	// model-independent, and boot re-derives the persona on top of the reused
-	// prompt (strip+prepend), so a boundary crossing stays correct. A fast
-	// effort switch between builds can leave the warm entry under the older
-	// effort key — the same accepted miss profile the rebind chain carries.
-	// ReuseAssembly is nil when the gate is off or the pool is cold and the
-	// build is then byte-identical to the pre-tl1389 one.
-	oldEffortKey := ""
-	if snap.effort != nil {
-		oldEffortKey = *snap.effort
-	}
-	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, oldEffortKey))
-	newEffortKey := ""
-	if effortOverride != nil {
-		newEffortKey = *effortOverride
-	}
+	// tl1859（方案A）：键放宽为 root-only——acquire 命中的是本 tab 出向代际的
+	// 同 root 池条目（键里已无 model/effort 维度，出向/入向天然同键）。复用
+	// 跨模型边界仍由 boot 的 persona strip+prepend 兜底
+	// （deepseek_v4_pro_persona.go:22-31），effort 不进复用内容。
+	// ReuseAssembly 仅在池冷时为 nil，构建退化为 boot.Build 同形。
+	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot))
 	newCtrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		AutonomousUpdateController: newAutonomousUpdateController(a),
 		WorktreeProjectOpener:      appWorktreeProjectOpener{app: a}, // 任务128：会话自主建项目——注册为项目并开后台 tab
@@ -731,9 +718,10 @@ func (a *App) buildModelSwitchController(tab *WorkspaceTab, tabID, name string, 
 	}
 	// Task 405 Q1: publish the freshly built assembly under the post-switch
 	// identity so switching back to this model (or any later same-key
-	// rebuild) skips discovery too. No-op when the gate is off or the build
+	// rebuild) skips discovery too. tl1859（方案A）：identity=root-only，切回
+	// 模型/换 effort 命中同一池条目（last-writer-wins）。No-op when the build
 	// reused without producing a new assembly.
-	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, name, newEffortKey), assembly)
+	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot), assembly)
 	timing.Build = time.Since(stageStarted)
 	a.bindControllerDisplayRecorder(newCtrl)
 	configureControllerRuntime(newCtrl, oldCtrl, runtime)

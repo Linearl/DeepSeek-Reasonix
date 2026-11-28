@@ -403,16 +403,11 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 	// and the prompt re-scan are effort-independent, so the 20261117 incident's
 	// 14-30s builds (skills 8.5-13s + agent:tools 1.6-2.6s per boot: stage
 	// timings) are pure rediscovery tax. Acquire the OUTGOING generation's
-	// assembly (keyed by the tab's pre-switch root/model/effort identity, the
-	// one guaranteed warm once the tab has built); publish the fresh one under
-	// the post-switch identity. ReuseAssembly is nil when the gate is off or
-	// the pool is cold and the build is then byte-identical to the pre-tl1660
-	// one.
-	oldEffortKey := ""
-	if snap.effort != nil {
-		oldEffortKey = *snap.effort
-	}
-	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, oldEffortKey))
+	// assembly; publish the fresh one under the post-switch identity.
+	// tl1859（方案A）：键放宽为 root-only——effort 本就不进复用内容，键里也
+	// 不再有 model/effort 维度，出向/入向天然同键。ReuseAssembly 仅在池冷时
+	// 为 nil，构建退化为 boot.Build 同形。
+	reuseAssembly := a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot))
 	buildSegmentStart := time.Now()
 	newCtrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), boot.Options{
 		AutonomousUpdateController: newAutonomousUpdateController(a),
@@ -484,9 +479,10 @@ func (a *App) buildEffortController(tab *WorkspaceTab, tabID, modelRef string, e
 	}
 	// tl1660: publish the freshly built assembly under the post-switch identity
 	// so the next effort switch (or any same-key rebuild) skips discovery too.
-	// No-op when the gate is off or the build reused without producing a new
+	// tl1859（方案A）：identity=root-only，换 effort/模型 命中同一池条目
+	// （last-writer-wins）。No-op when the build reused without producing a new
 	// assembly.
-	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, effort), assembly)
+	a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot), assembly)
 	a.bindControllerDisplayRecorder(newCtrl)
 	configureControllerRuntime(newCtrl, oldCtrl, runtime)
 	// tl1660: the build/swap boundary read — boot's stage timings cover only

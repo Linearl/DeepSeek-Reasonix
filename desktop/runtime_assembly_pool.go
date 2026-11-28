@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -11,20 +10,22 @@ import (
 	"reasonix/internal/boot"
 )
 
-// runtimeAssemblyPool is the task-363A reuse pool: one ReusedAssembly per
-// (workspace root, model, effort) so a new conversation tab with the same
-// configuration skips prompt/skills/commands/hooks discovery instead of
-// paying the full boot rebuild. tl1741x：experimental_runtime_reuse 门随撤
-// 开关删除（tl1741 主件已撤 runtimeReuseEnabled 配置门）——池无条件启用，
-// helper 不再有 off 分支；池冷时 acquire 返回 nil、构建路径退化为
-// boot.Build 同形。
+// runtimeAssemblyPool is the task-363A reuse pool. tl1859（方案A）：键放宽为
+// root-only——一个 root 一条 ReusedAssembly，同项目换模型/effort 打开对话不再
+// 全额冷建 prompt/skills/commands/hooks 发现。依据（启动耗时根因诊断报告
+// §七）：复用产物全部按 root 构建（base prompt/rules/memory/skills），模型维度
+// 的唯一已知分支 persona 由 boot 复用后 strip+prepend 重贴
+// （deepseek_v4_pro_persona.go），effort 不进任何复用内容；跨维度复用已有两条
+// 生产先例链（切模型 app_model.go / 切 effort app_effort.go 用出向键取池）。
+// tl1741x：experimental_runtime_reuse 门随撤开关删除（tl1741 主件已撤
+// runtimeReuseEnabled 配置门）——池无条件启用，helper 不再有 off 分支；池冷时
+// acquire 返回 nil、构建路径退化为 boot.Build 同形。
 //
 // Lifecycle is last-writer-wins per key: store overwrites the entry for that
 // key and acquire never mutates. Pooled assemblies share the exact objects
 // wired into the live controller — treat them as immutable. Stale entries are
-// bounded by the number of distinct (root, model, effort) triples the user
-// actually opens, and each is GC-able once overwritten or dropped by
-// DropRuntimeAssemblyPools.
+// bounded by the number of distinct roots the user actually opens, and each is
+// GC-able once overwritten or dropped by DropRuntimeAssemblyPools.
 type runtimeAssemblyPool struct {
 	mu         sync.Mutex
 	entries    map[string]*boot.ReusedAssembly
@@ -33,9 +34,11 @@ type runtimeAssemblyPool struct {
 
 var runtimeAssemblies = &runtimeAssemblyPool{entries: map[string]*boot.ReusedAssembly{}}
 
-// runtimeAssemblyKey fingerprints the reuse identity.
-func runtimeAssemblyKey(root, model, effort string) string {
-	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s", root, model, effort)))
+// runtimeAssemblyKey fingerprints the reuse identity. tl1859（方案A）：只有
+// root 参与指纹——model/effort 维度随键移除（跨维度复用的正确性由 boot 的
+// persona 重贴与 memory 指纹回退保证，不靠键隔离）。
+func runtimeAssemblyKey(root string) string {
+	digest := sha256.Sum256([]byte(root))
 	return hex.EncodeToString(digest[:8])
 }
 
@@ -77,8 +80,8 @@ func DropRuntimeAssemblyPools() {
 }
 
 // runtimeAssemblyKeyForTab derives the pool key for a tab snapshot in one
-// place so acquire/store always agree on the identity.
-func runtimeAssemblyKeyForTab(workspaceRoot, model, effort string) string {
-	norm := func(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
-	return runtimeAssemblyKey(norm(workspaceRoot), norm(model), norm(effort))
+// place so acquire/store always agree on the identity. tl1859（方案A）：签名
+// 收窄为 root-only——编译期堵死「某条链私自加回 model/effort 维度」的回归面。
+func runtimeAssemblyKeyForTab(workspaceRoot string) string {
+	return runtimeAssemblyKey(strings.ToLower(strings.TrimSpace(workspaceRoot)))
 }
