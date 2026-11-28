@@ -50,6 +50,23 @@ const requiredRootTokens = new Map([
   ["--brand-qq", "#ff5a3d"],
   ["--brand-lark", "#4f7dff"],
   ["--brand-weixin", "#22b35f"],
+  // tl1800 batch 2 (tl1814 plan B4 registry): high-frequency status pairs.
+  ["--status-done", "#2e9e5b"],
+  ["--status-blocked", "#d9534f"],
+  ["--status-error", "#ef4444"],
+  ["--status-ok-bright", "#4ade80"],
+  ["--status-danger-hover", "#e5534b"],
+  // Approximate IM palette (tailwind 500/600) — deliberately distinct from
+  // the official --brand-* identities above.
+  ["--im-generic", "#3b82f6"],
+  ["--im-generic-deep", "#2563eb"],
+  ["--im-feishu", "#0ea5e9"],
+  ["--im-feishu-deep", "#0284c7"],
+  ["--im-weixin", "#22c55e"],
+  ["--im-weixin-deep", "#16a34a"],
+  // Onboarding error row (component-scoped, tl1814 naming spec).
+  ["--onboarding-error-text", "#ff8b7a"],
+  ["--onboarding-error-tint", "rgb(255, 70, 70)"],
 ]);
 
 const themeStyles = ["graphite", "aurora", "slate", "carbon", "nocturne", "amber"];

@@ -23,10 +23,12 @@
 // hardcoding another value. If a B5 batch legitimately LOWERS the count,
 // tighten PIN in the same commit. Never raise it.
 //
-// Current stock (tl1814x baseline 5cfce0caa6), 12 uses:
+// Current stock, 9 uses (tl1800 batch 2 tightened from 12: the error row's
+// #ff8b7a / rgba(255,70,70,.08) / rgba(255,70,70,.25) moved to
+// var(--onboarding-error-text) / color-mix(var(--onboarding-error-tint)) —
+// tl1814 plan B4; the remaining 9 are the B5 declaration-microdiff stock):
 //   scrim/glow   rgba(217,119,87,.06) / rgba(7,8,10,.92) x2 / rgba(217,119,87,.04)
 //   focus ring   rgba(217,119,87,.18)
-//   error row    #ff8b7a / rgba(255,70,70,.08) / rgba(255,70,70,.25)
 //   submit hover #1a0e08 / #e08868
 //   spinner      rgba(26,14,8,.3) / #1a0e08
 //   link/foot    #e08868
@@ -130,10 +132,11 @@ while ((m = COLOR_VALUE.exec(stripped)) !== null) {
   hits.push({ line: start + line, literal: m[0].toLowerCase() });
 }
 
-// tl1814 报告 B5 项 + tl1814x 实测（5cfce0caa6）：当前 12 处。
-// 收口（B5 落地）时同 commit 下调；新增任何字面色值即红——走 tl1814 批次
-// 语义对齐或豁免清单登记，禁止静默加第三个混用位。
-const PIN = 12;
+// tl1814 报告 B5 项 + tl1814x 实测（5cfce0caa6）12 处；tl1800 批二（B4
+// 错误族收口）同 commit 下调至 9 处。收口（B5 落地）时继续同 commit 下调；
+// 新增任何字面色值即红——走 tl1814 批次语义对齐或豁免清单登记，禁止静默
+// 加第三个混用位。
+const PIN = 9;
 ok(hits.length === PIN, `bare color stock pinned at ${PIN} (found ${hits.length})${hits.length !== PIN ? `:\n${hits.map((h) => `    styles.css:${h.line}  ${h.literal}`).join("\n")}` : ""}`);
 
 process.stdout.write(`\n${passed} passed, ${failed} failed\n`);

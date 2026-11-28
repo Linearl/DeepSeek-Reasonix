@@ -97,7 +97,7 @@
 .provider-editor-footer .btn { min-height: 36px; padding-inline: 18px; font-size: var(--text-base); }
 
 .provider-model-dialog { width: min(820px, calc(100vw - 32px)); max-height: calc(100vh - 40px); box-sizing: border-box; padding: 28px; border: 1px solid var(--border); border-radius: 14px; background: var(--bg-elev); color: var(--fg); font: 14px var(--font-sans); }
-.provider-model-dialog::backdrop { background: #0008; }
+.provider-model-dialog::backdrop { background: color-mix(in srgb, var(--scrim-color) 53.33%, transparent); }
 .provider-model-dialog header, .provider-model-dialog footer { display: flex; align-items: center; gap: 12px; }
 .provider-model-dialog h2 { flex: 1; margin: 0; font-size: 21px; }
 .provider-model-dialog h3 { margin: 0 0 16px; font-size: 16px; }
