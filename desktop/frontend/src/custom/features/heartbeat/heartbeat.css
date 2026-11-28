@@ -656,11 +656,11 @@
 }
 
 .worktree-node__dot--on {
-  background: #4caf50;
+  background: var(--ok-strong);
 }
 
 .worktree-node--task.worktree-node--selected .worktree-node__dot--on {
-  background: #4caf50;
+  background: var(--ok-strong);
 }
 
 /* ── toolbar ──────────────────────────────────────────────────── */
@@ -1374,11 +1374,11 @@
 }
 
 .heartbeat-editor__toggle--on {
-  background: #4caf50;
+  background: var(--ok-strong);
 }
 
 .heartbeat-editor__toggle--on:hover {
-  background: #43a047;
+  background: var(--ok-strong-hover);
 }
 
 .heartbeat-editor__toggle-knob {
@@ -1667,7 +1667,9 @@
 }
 
 .heartbeat-project-menu__item--active {
-  background: rgba(128, 128, 128, 0.08);
+  /* tl1800 batch 3: consolidated onto --wash-neutral (rgb 127 base); the
+     literal here was rgb(128,128,128) — declared Δ1, imperceptible at 8%. */
+  background: color-mix(in srgb, var(--wash-neutral) 8%, transparent);
   color: var(--fg-dim);
 }
 
