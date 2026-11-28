@@ -4,6 +4,8 @@ import { app } from "../lib/bridge";
 import { useT } from "../lib/i18n";
 import { EXPERIMENT_FEATURE_TIERS } from "../lib/experimentTiers";
 import type { SettingsView } from "../lib/settingsViewTypes";
+import { SettingsField } from "./SettingsForm";
+import { SettingsOptions } from "./SettingsOptions";
 import { TierBadge } from "./TierBadge";
 
 const QRCodeSVG = lazy(() => import("qrcode.react").then((module) => ({ default: module.QRCodeSVG })));
@@ -108,7 +110,7 @@ export function LocalServerPage({ s }: { s?: SettingsView | null } = {}) {
   const [acpStatus, setAcpStatus] = useState<Awaited<ReturnType<typeof app.ACPListenStatus>> | null>(null);
   const [acpRestartNeeded, setAcpRestartNeeded] = useState(false);
   // 乐观显示态：本页不走 SettingsPageShell 的 apply 链，s 快照不随翻转刷新
-  // ——成功翻转后本地记忆，防 checkbox 视觉态卡旧值导致二次点击回翻。
+  // ——成功落值后本地记忆，防开关控件视觉态卡旧值导致重复请求旧值。
   const [acpOnLocal, setAcpOnLocal] = useState<boolean | null>(null);
 
   // failWith renders the classified cause and keeps the raw text beside it: the
@@ -160,11 +162,11 @@ export function LocalServerPage({ s }: { s?: SettingsView | null } = {}) {
     };
   }, []);
 
-  // tl1855：ACP 开关翻转（键/setter/重启语义与实验室行零变化）——翻转后
-  // 拉新状态，横幅与 awaitRestart 行共同表达「重启生效」。
-  const toggleAcpListen = async () => {
+  // tl1855：ACP 开关落值（键/setter/重启语义与实验室行零变化；tl1855r2 起
+  // 行形态为实验室同款分段开/关，点按携带显式目标值）——落值后拉新状态，
+  // 横幅与 awaitRestart 行共同表达「重启生效」。
+  const setAcpListen = async (next: boolean) => {
     if (busy) return;
-    const next = !(acpOn ?? false);
     setBusy(true);
     try {
       await app.SetExperimentalACPListen(next);
@@ -474,13 +476,25 @@ export function LocalServerPage({ s }: { s?: SettingsView | null } = {}) {
           </div>
         ) : null}
 
-        <div className="settings-field">
-          <label className="settings-toggle">
-            <input type="checkbox" checked={acpOn} onChange={() => void toggleAcpListen()} disabled={busy} />
-            <span>{t(acpOn ? "settings.acpListen.on" : "settings.acpListen.off")}</span>
-          </label>
-          <small>{acpHint}</small>
-        </div>
+        {/* tl1855r2（包121 装机验收返修）：行形态换实验室统一样式——
+            SettingsField（label+hint 左 / 控件右）+ set-seg 分段开/关
+            （= tl1855 前实验室资源治理卡成员行 5 原形态，orphanHandling
+            行同款控件）；键/SetExperimentalACPListen/重启横幅/hint 三态
+            等功能元素零变化，仅布局样式对齐。 */}
+        <SettingsField testId="acp-listen-toggle" label={t("settings.acpListen")} hint={acpHint}>
+          <SettingsOptions layout="field" className="set-seg">
+            {[false, true].map((on) => (
+              <button
+                key={String(on)}
+                className={`set-seg__btn${acpOn === on ? " set-seg__btn--on" : ""}`}
+                disabled={busy}
+                onClick={() => void setAcpListen(on)}
+              >
+                {t(on ? "settings.acpListen.on" : "settings.acpListen.off")}
+              </button>
+            ))}
+          </SettingsOptions>
+        </SettingsField>
       </div>
     </div>
   );
