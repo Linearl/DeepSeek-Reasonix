@@ -1083,7 +1083,12 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 	// 「通讯录」 maps to list_addressable_sessions / talk_to_session, and the
 	// first package shipped without this line — the model answered "no such
 	// tool" even with the tools registered.
-	sysPrompt += "\n\n" + sessionCollabIndexBlock()
+	// tl1859（撞面修复）：追加点幂等化——池里存的 assembly.SystemPrompt 是
+	// 最终版（已含本段），复用轮 serve 后若再裸追加，每复用一次多一份
+	// （多轮累积，provider-visible 前缀漂移）。strip 旧段再追加，恰一份；
+	// 与 persona 的 strip+prepend 同构（applyOfficialDeepSeekV4ProPersona
+	// 先例）。冷建路径输入无旧段，TrimSuffix 为 no-op，行为逐字节等价。
+	sysPrompt = applySessionCollabIndexBlock(sysPrompt)
 	promptSegs.mark("collab_block")
 	sysPrompt = config.ApplyOfficialDeepSeekV4ProPersona(sysPrompt, entry)
 	promptSegs.mark("persona")
@@ -1126,7 +1131,9 @@ func build(ctx context.Context, opts Options) (*BuildResult, error) {
 		// 任务 1005 C4 → tl1741：sessionCollab 撤开关常开，boot 在 skills policy
 		// 之后追加通讯录索引段。压缩后的 memory 重建必须与 boot 同构，否则
 		// 会话在首次压缩后就丢掉该段教学（模型会对「通讯录」答 no such tool）。
-		rebuilt += "\n\n" + sessionCollabIndexBlock()
+		// tl1859：与 boot 主路径共用幂等追加点（输入来自 sysPromptBase，无旧
+		// 段时行为与裸追加逐字节等价）。
+		rebuilt = applySessionCollabIndexBlock(rebuilt)
 		return config.ApplyOfficialDeepSeekV4ProPersona(rebuilt, entry)
 	}
 
@@ -4463,4 +4470,19 @@ Tools:
 The user saying 「通讯录」, 「联系人」, 「找另一个会话」, or 「派给专家」 means these
 tools. Prefer contact_id when you have one; the title is fine when you have not
 met the conversation yet.`
+}
+
+// applySessionCollabIndexBlock keeps exactly one copy of the collab index
+// block at the tail of the prompt: an older copy (a pooled assembly's stored
+// prompt already carries the block — the store saves the final prompt) is
+// stripped before the fresh one is appended, so reuse generations do not
+// accumulate duplicates. tl1859（撞面修复）：与 persona 的 strip+prepend 同构
+// （ApplyOfficialDeepSeekV4ProPersona 先例）；冷建输入无旧段，行为与裸追加
+// 逐字节等价。
+func applySessionCollabIndexBlock(prompt string) string {
+	prompt = strings.TrimSuffix(prompt, "\n\n"+sessionCollabIndexBlock())
+	if strings.TrimSpace(prompt) == "" {
+		return sessionCollabIndexBlock()
+	}
+	return prompt + "\n\n" + sessionCollabIndexBlock()
 }

@@ -10,18 +10,24 @@ import (
 )
 
 // TestStartupChainReuseKeyMatchesRebindChain: the task-405 Q1 wiring must
-// derive the pool key from the same root+model+effort identity as the rebind
-// chain (runtimeAssemblyKeyForTab, normalized), so an assembly stored by the
-// startup chain is visible to the rebind chain and vice versa.
+// derive the pool key from the same normalized-root identity as the rebind
+// chain (runtimeAssemblyKeyForTab), so an assembly stored by the startup
+// chain is visible to the rebind chain and vice versa.
+// tl1859（方案A）：identity=root-only——model/effort 不再参与键，同 root 跨
+// 模型/effort 必须同键（这正是放宽的目的：换模型打开不再全额冷建）。
 func TestStartupChainReuseKeyMatchesRebindChain(t *testing.T) {
-	startupKey := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
-	rebindKey := runtimeAssemblyKey("d:\\proj", "deepseek/v4", "high") // rebind normalizes before hashing
+	startupKey := runtimeAssemblyKeyForTab("D:\\Proj")
+	rebindKey := runtimeAssemblyKey("d:\\proj") // rebind normalizes before hashing
 	if startupKey != rebindKey {
 		t.Fatalf("startup key %q != rebind key %q — the two chains would never share assemblies", startupKey, rebindKey)
 	}
-	// Distinct effort or model must not collide.
-	if runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high") == runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "low") {
-		t.Fatal("different efforts share a pool key")
+	// tl1859: the root-only key keeps its case/whitespace normalization, and a
+	// distinct root must not collide with it.
+	if runtimeAssemblyKeyForTab("D:\\Proj") != runtimeAssemblyKeyForTab("  d:\\proj  ") {
+		t.Fatal("root-only key lost its case/whitespace normalization")
+	}
+	if runtimeAssemblyKeyForTab("D:\\Proj") == runtimeAssemblyKeyForTab("D:\\Other") {
+		t.Fatal("different roots share a pool key")
 	}
 }
 
@@ -37,7 +43,7 @@ func TestStartupChainReuseHitAndStore(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	a := &App{}
-	key := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
+	key := runtimeAssemblyKeyForTab("D:\\Proj")
 
 	// tl1741：开关退役（复用池常开）——gate on/off 双分支退化为单分支：
 	// 冷池 acquire nil + store→hit 返回原 assembly（语义与原 gate-on 一致）。

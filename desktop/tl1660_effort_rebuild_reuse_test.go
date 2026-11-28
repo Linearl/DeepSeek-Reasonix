@@ -14,11 +14,12 @@ import (
 // per effort rebuild (boot: stage timings) — pure rediscovery tax on a switch
 // that changes only the wire's reasoning depth. These nails pin the wiring.
 
-// TestTL1660R2EffortReuseGateOffAndRoundTrip: gate off — the pool helpers stay
-// no-ops (byte-identical pre-tl1660 build); gate on — an assembly stored under
-// the outgoing (root, model, effort) identity is visible at the new identity
-// after a store, the exact acquire-old/store-new shape the effort rebuild
-// performs.
+// TestTL1660R2EffortReuseGateOffAndRoundTrip: the pool helpers keep their
+// acquire/store round trip — an assembly stored under the root identity is
+// visible on the next acquire, the exact acquire-old/store-new shape the
+// effort rebuild performs. tl1859（方案A）：identity=root-only——effort 不再
+// 参与键，换 effort 后发布入向 assembly 覆盖同一池条目（last-writer-wins），
+// 这正是切 effort 复用不冷建的前提。
 func TestTL1660R2EffortReuseGateOffAndRoundTrip(t *testing.T) {
 	DropRuntimeAssemblyPools()
 	defer DropRuntimeAssemblyPools()
@@ -26,25 +27,26 @@ func TestTL1660R2EffortReuseGateOffAndRoundTrip(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("REASONIX_HOME", home)
 	a := &App{}
-	oldKey := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "low")
-	newKey := runtimeAssemblyKeyForTab("D:\\Proj", "deepseek/v4", "high")
+	rootKey := runtimeAssemblyKeyForTab("D:\\Proj")
 
-	// tl1741：开关退役（复用池常开）——gate off 分支退化为单分支：
-	// effort rebuild 仍 acquire 出向 identity 的 assembly + 发布入向 assembly
-	// （下一次同配置高效 build 跳过 discovery）。
+	// tl1741：开关退役（复用池常开）——无 gate 分支：effort rebuild 仍
+	// acquire 出向 identity 的 assembly + 发布入向 assembly（下一次同配置
+	// 高效 build 跳过 discovery）。
 	cfgPath := filepath.Join(home, "config.toml")
 	if err := os.WriteFile(cfgPath, []byte(""), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	outgoing := &boot.ReusedAssembly{}
-	a.storeRuntimeAssembly(oldKey, outgoing)
-	if got := a.acquireRuntimeAssembly(oldKey); got != outgoing {
-		t.Fatal("gate-on acquire did not return the outgoing-effort assembly (effort rebuild would pay rediscovery)")
+	a.storeRuntimeAssembly(rootKey, outgoing)
+	if got := a.acquireRuntimeAssembly(rootKey); got != outgoing {
+		t.Fatal("acquire did not return the pooled assembly (effort rebuild would pay rediscovery)")
 	}
+	// tl1859: publishing the incoming assembly under the same root-only key
+	// overwrites last-writer-wins; the next acquire must see exactly it.
 	fresh := &boot.ReusedAssembly{}
-	a.storeRuntimeAssembly(newKey, fresh)
-	if got := a.acquireRuntimeAssembly(newKey); got != fresh {
-		t.Fatal("gate-on acquire did not return the incoming-effort assembly")
+	a.storeRuntimeAssembly(rootKey, fresh)
+	if got := a.acquireRuntimeAssembly(rootKey); got != fresh {
+		t.Fatal("acquire did not return the freshly published assembly after the same-key store")
 	}
 }
 
@@ -61,8 +63,8 @@ func TestTL1660R2EffortRebuildReuseWiring(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"boot.BuildWithAssembly(",
-		"a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, oldEffortKey))",
-		"a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot, snap.model, effort), assembly)",
+		"a.acquireRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot))",
+		"a.storeRuntimeAssembly(runtimeAssemblyKeyForTab(snap.workspaceRoot), assembly)",
 		"boot.RuntimeReload{",
 		"boot.FullReusePlan()",
 	} {

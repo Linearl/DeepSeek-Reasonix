@@ -518,14 +518,11 @@ func (a *App) buildSessionRebindCandidate(
 	runtimeBuildStart := time.Now()
 	slog.Info("desktop: runtime build begin", "trigger", "rebind", "model", model, "session", sessionPath, "autopilot", source.autopilot) // task 196: name who is building a runtime, so a startup burst can be attributed instead of inferred.
 	defer logRuntimeBuildEnd("rebind", runtimeBuildStart, sharedHost != nil)                                                              // task 334: begin→end pair.
-	// Task 363A: feed the pooled assembly (same root+model+effort) so discovery
-	// is skipped on the second same-key tab; gate-off keeps the legacy path
-	// byte-identical (acquire returns nil, store is a no-op).
-	effortKey := ""
-	if source.effort != nil {
-		effortKey = *source.effort
-	}
-	assemblyKey := runtimeAssemblyKeyForTab(root, model, effortKey)
+	// Task 363A: feed the pooled assembly so discovery is skipped on the
+	// second same-key tab. tl1859（方案A）：identity=root-only——复用产物按
+	// root 构建，换模型/effort 打开同项目对话命中同一池条目，不再全额冷建；
+	// 跨模型边界由 boot 的 persona strip+prepend 兜底。
+	assemblyKey := runtimeAssemblyKeyForTab(root)
 	ctrl, assembly, err := boot.BuildWithAssembly(a.bootContext(), a.rebindCandidateBuildOptions(tab, source, model, root, sessionDir, sink, cfg, sharedHost, runtimeProfile, assemblyKey))
 	if err != nil {
 		sink.clearContext()
